@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/politics_flavor.schema.json",
+  "title": "politics_flavor.json — LLM output, prose only",
+
+  "$comment": "Non-negotiable #1: the LLM contributes prose, never numbers. This schema enforces that structurally — additionalProperties is false everywhere and no property has a numeric type except schemaVersion. A numeric field smuggled in here fails the build, which is the entire point of validating this file.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAtSimDate"],
+
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "generatedAtSimDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+
+    "partyFlavor": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["partyId", "name"],
+        "properties": {
+          "partyId": { "type": "string" },
+          "name": { "type": "string", "maxLength": 80 },
+          "shortName": { "type": "string", "maxLength": 12 },
+          "description": { "type": "string", "maxLength": 600 },
+          "slogan": { "type": "string", "maxLength": 120 }
+        }
+      }
+    },
+
+    "factionFlavor": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["factionId", "name"],
+        "properties": {
+          "factionId": { "type": "string" },
+          "partyId": { "type": "string" },
+          "name": { "type": "string", "maxLength": 80 },
+          "shortName": { "type": "string", "maxLength": 12 },
+          "description": { "type": "string", "maxLength": 600 },
+          "leaderName": { "type": "string", "maxLength": 80 }
+        }
+      }
+    },
+
+    "articles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "outlet", "headline", "body"],
+        "properties": {
+          "id": { "type": "string" },
+          "outlet": { "type": "string", "maxLength": 60 },
+          "headline": { "type": "string", "maxLength": 140 },
+          "body": { "type": "string", "maxLength": 900 },
+          "tone": { "type": "string", "enum": ["neutral", "supportive", "critical", "alarmed", "celebratory"] },
+          "refs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "eventId": { "type": "string" },
+              "districtId": { "type": "string" },
+              "partyId": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "eventProse": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["eventId", "localAngle"],
+        "properties": {
+          "eventId": { "type": "string" },
+          "localAngle": { "type": "string", "maxLength": 900 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Agora.Mod — the game glue.
+
+    Game assemblies are referenced directly out of the install's Managed folder, so this builds with
+    or without the official modding toolchain installed. When the toolchain IS installed it sets
+    CSII_INSTALLATIONPATH / CSII_LOCALMODSPATH and those win; otherwise we fall back to the default
+    Steam location.
+
+    Every game reference is Private=false: the game already has these loaded, and copying them into
+    the mod folder causes assembly identity conflicts at load time.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Agora.Mod</AssemblyName>
+    <RootNamespace>Agora.Mod</RootNamespace>
+
+    <!-- Game assemblies pull in types we do not annotate; do not fail the build over their warnings. -->
+    <NoWarn>$(NoWarn);CS0436;CS1701;CS1702</NoWarn>
+
+    <!--
+      MSB3277: System.Net.Http resolves to 4.1.2.0 from the netstandard2.1 reference pack and to
+      4.2.0.0 through the Unity assemblies. Harmless here — Agora never touches System.Net.Http, and
+      at runtime the game's own assembly resolution applies rather than ours. Demoted to a message so
+      a genuinely new warning stays visible instead of being lost in this one's noise.
+    -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <GameRoot Condition="'$(CSII_INSTALLATIONPATH)' != ''">$(CSII_INSTALLATIONPATH)</GameRoot>
+    <GameRoot Condition="'$(GameRoot)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Cities Skylines II</GameRoot>
+    <ManagedPath>$(GameRoot)\Cities2_Data\Managed</ManagedPath>
+
+    <LocalModsPath Condition="'$(CSII_LOCALMODSPATH)' != ''">$(CSII_LOCALMODSPATH)</LocalModsPath>
+    <LocalModsPath Condition="'$(LocalModsPath)' == ''">$(LOCALAPPDATA)\..\LocalLow\Colossal Order\Cities Skylines II\Mods</LocalModsPath>
+    <DeployPath>$(LocalModsPath)\Agora</DeployPath>
+  </PropertyGroup>
+
+  <Target Name="CheckGamePath" BeforeTargets="BeforeBuild" Condition="!Exists('$(ManagedPath)')">
+    <Error Text="Cities: Skylines II assemblies not found at '$(ManagedPath)'. Set CSII_INSTALLATIONPATH (installing the in-game modding toolchain does this), or edit GameRoot in Agora.Mod.csproj. Note that Agora.Core and its tests build without the game — only this project needs it." />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Agora.Core\Agora.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Game">              <HintPath>$(ManagedPath)\Game.dll</HintPath>                        <Private>false</Private></Reference>
+    <Reference Include="Colossal.Core">     <HintPath>$(ManagedPath)\Colossal.Core.dll</HintPath>               <Private>false</Private></Reference>
+    <Reference Include="Colossal.Logging">  <HintPath>$(ManagedPath)\Colossal.Logging.dll</HintPath>            <Private>false</Private></Reference>
+    <Reference Include="Colossal.UI">       <HintPath>$(ManagedPath)\Colossal.UI.dll</HintPath>                 <Private>false</Private></Reference>
+    <Reference Include="Colossal.UI.Binding"><HintPath>$(ManagedPath)\Colossal.UI.Binding.dll</HintPath>        <Private>false</Private></Reference>
+    <Reference Include="Colossal.IO.AssetDatabase"><HintPath>$(ManagedPath)\Colossal.IO.AssetDatabase.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Localization"><HintPath>$(ManagedPath)\Colossal.Localization.dll</HintPath>    <Private>false</Private></Reference>
+    <Reference Include="Colossal.Collections"><HintPath>$(ManagedPath)\Colossal.Collections.dll</HintPath>      <Private>false</Private></Reference>
+    <Reference Include="Colossal.Mathematics"><HintPath>$(ManagedPath)\Colossal.Mathematics.dll</HintPath>      <Private>false</Private></Reference>
+    <Reference Include="Unity.Entities">    <HintPath>$(ManagedPath)\Unity.Entities.dll</HintPath>              <Private>false</Private></Reference>
+    <Reference Include="Unity.Collections"> <HintPath>$(ManagedPath)\Unity.Collections.dll</HintPath>           <Private>false</Private></Reference>
+    <Reference Include="Unity.Mathematics"> <HintPath>$(ManagedPath)\Unity.Mathematics.dll</HintPath>           <Private>false</Private></Reference>
+    <Reference Include="Unity.Burst">       <HintPath>$(ManagedPath)\Unity.Burst.dll</HintPath>                 <Private>false</Private></Reference>
+    <Reference Include="UnityEngine">       <HintPath>$(ManagedPath)\UnityEngine.dll</HintPath>                 <Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath>  <Private>false</Private></Reference>
+    <!-- Ships with the game — never add a Newtonsoft package on top of it. -->
+    <Reference Include="Newtonsoft.Json">   <HintPath>$(ManagedPath)\Newtonsoft.Json.dll</HintPath>             <Private>false</Private></Reference>
+  </ItemGroup>
+
+  <!--
+    Deploy to the local Mods folder so the game picks the build up. Skipped when the folder does not
+    exist (CI, or a machine with no game), so a missing Mods folder is never a build failure.
+  -->
+  <Target Name="DeployMod" AfterTargets="Build" Condition="Exists('$(LocalModsPath)')">
+    <MakeDir Directories="$(DeployPath)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DeployPath)" ContinueOnError="true" />
+    <Copy SourceFiles="$(TargetDir)Agora.Core.dll" DestinationFolder="$(DeployPath)" ContinueOnError="true" />
+    <Message Importance="high" Text="Agora deployed to $(DeployPath)" />
+  </Target>
+
+</Project>

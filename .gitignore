@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Decompiled game reference tree — large, regenerable, never committed
+refsrc/
+
+# UI
+node_modules/
+ui/dist/
+ui/.parcel-cache/
+
+# Local runtime artifacts
+*.log

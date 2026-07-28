@@ -1,0 +1,6 @@
+{
+  "id": "Agora.Mod",
+  "displayName": "Agora",
+  "description": "Political layer for Cities: Skylines II.",
+  "entry": "src/index.tsx"
+}

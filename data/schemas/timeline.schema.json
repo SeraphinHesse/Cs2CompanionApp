@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/timeline.schema.json",
+  "title": "timeline_*.json — curated real-history event catalogs",
+
+  "$comment": "Shape validation only. Two further checks run in the schema suite and cannot be expressed here: every effectId must exist in the effect palette registry, and every magnitude must sit inside that effect's declared cap.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "events"],
+
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "dateISO", "region", "title", "severity", "durationMonths", "headlineBrief"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "dateISO": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "region": { "type": "string", "enum": ["eu", "na", "global"] },
+          "title": { "type": "string", "maxLength": 120 },
+
+          "severity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "$comment": "Drives effect scaling. Be conservative — a catalog where everything is a 4 has no dynamic range."
+          },
+
+          "durationMonths": { "type": "integer", "minimum": 0, "maximum": 240 },
+
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["effectId", "scope", "magnitude", "durationMonths"],
+              "properties": {
+                "effectId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+                "scope": { "type": "string", "enum": ["city", "district"] },
+                "magnitude": { "type": "number" },
+                "durationMonths": { "type": "integer", "minimum": 0, "maximum": 240 }
+              }
+            }
+          },
+
+          "headlineBrief": {
+            "type": "string",
+            "maxLength": 300,
+            "$comment": "A prompt input, not published prose. Factual and terse — the LLM writes the article."
+          },
+
+          "tags": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+          }
+        }
+      }
+    }
+  }
+}

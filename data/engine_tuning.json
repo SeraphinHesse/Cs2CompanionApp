@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. Values below are M0 placeholders — M2 tunes them against real simulation runs.",
+
+  "voter": {
+    "_comment": "Issue weights are per-bloc and derived from composition; these are the base priors before lived metrics adjust them.",
+    "issueWeightPriors": {
+      "services": 1.0,
+      "costOfLiving": 1.0,
+      "environment": 1.0,
+      "transit": 1.0,
+      "growth": 1.0,
+      "heritageOrder": 1.0
+    },
+    "incumbencyBonus": 0.05,
+    "mandatePerformanceWeight": 0.15,
+    "affinityNoiseSigma": 0.03
+  },
+
+  "turnout": {
+    "_comment": "Turnout scales with happiness and education and can flip close races (§3 Campaigns).",
+    "base": 0.55,
+    "happinessCoefficient": 0.20,
+    "educationCoefficient": 0.15,
+    "noiseSigma": 0.02
+  },
+
+  "polls": {
+    "_comment": "Published polls under-sample low-education, low-turnout districts. Error direction is asserted in the simulation harness, not the magnitude.",
+    "errorSigma": 0.030,
+    "educationUnderSampleBias": 0.040,
+    "turnoutUnderSampleBias": 0.025,
+    "weeksBeforeElection": 26
+  },
+
+  "lifecycle": {
+    "_comment": "EU parties die below the threshold across two consecutive elections; a dead brand may revive if its core grievance resurges.",
+    "deathVoteShareThreshold": 0.03,
+    "deathConsecutiveElections": 2,
+    "revivalGrievanceThreshold": 0.35,
+    "splitTensionThreshold": 0.45,
+    "mergeAffinityThreshold": 0.85
+  },
+
+  "terms": {
+    "euTermYears": 3,
+    "naTermYears": 4,
+    "campaignMonths": 6
+  },
+
+  "mandates": {
+    "fulfilledHappinessBonus": 2.0,
+    "defiedHappinessPenalty": 3.0,
+    "monitoringIntervalMonths": 1
+  }
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Agora.Core — the political engine.
+
+    This project deliberately has NO references to Game.*, Colossal.*, Unity.* or UnityEngine.
+    That is what allows the determinism suite and the headless simulation harness to run under
+    plain `dotnet test` on a machine with no copy of Cities: Skylines II. Adding a game reference
+    here is a review-blocking defect (see CLAUDE.md).
+
+    netstandard2.1 so that Agora.Mod (which must be netstandard2.1 for the game) can reference it.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Agora.Core</AssemblyName>
+    <RootNamespace>Agora.Core</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>
