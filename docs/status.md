@@ -35,31 +35,48 @@ assemblies involved — the check that the Core/Mod split is real. The deployed
 `Agora.Mod.dll` was confirmed by metadata inspection to be `.NETFramework,v4.8` and to expose
 `AgoraMod : IMod`, `AgoraHeartbeatSystem : GameSystemBase`, and `AgoraDebugUISystem : UISystemBase`.
 
-**Not yet verified: nothing has run inside the game.** Every claim above is about build artifacts. The
-UI panel has never rendered, no heartbeat has ever been logged, and the settings page has never been
-drawn. The gate below is entirely untested.
+**First in-game evidence, 2026-07-30 01:32.** The game was launched to the settings screen only, with
+no city loaded and **without** the dev flags:
+
+```
+Modding.log  Loaded Agora.Mod,  Version=1.0.0.0 in 49.8005ms
+Modding.log  Loaded Agora.Core, Version=1.0.0.0 in 0.4558ms
+Modding.log  Registered UI Module {"m_ModuleId":"Agora.Mod","m_Author":"Serph", …}
+             from [assetdb://user/Mods/Agora.Mod/Agora.Mod.mjs]
+Agora.log    Agora loading. / Agora asset: …\Mods\Agora.Mod\Agora.Mod.dll / Agora loaded.
+Agora.log    Agora unloading.        (clean dispose, both assemblies, no exception)
+```
+
+So both halves load, and **neither dev flag is needed for that** — they only add the dev menu and the
+UI debugger. Alongside ~20 other installed mods, with no conflict.
+
+**Still unverified:** the heartbeat has never fired, the panel has never rendered, and the toggle has
+never been flipped. All three need a loaded, unpaused city.
 
 Run `.\tools\verify-setup.ps1 -Build` for the current state of all preconditions.
 
 ### M0 gate — manual checklist
 
-Launch with `--developerMode --uiDeveloperMode`, then:
-
-Both halves of the mod are built and deployed to `…\Mods\Agora.Mod\`, so every item below is
-testable now:
-
-- [ ] Agora appears in the game's mod list
-- [ ] Options page renders with readable labels (not raw keys)
+- [x] Agora appears in the game's mod list
+- [x] Options page renders with readable labels (not raw keys) — two toggles seen
+- [x] UI module registers and the bundle is found by the asset database
 - [ ] Master toggle flips without exception
-- [ ] `Player.log` shows exactly one Agora heartbeat line per in-game day
+- [ ] `Logs\Agora.log` shows exactly one heartbeat line per in-game day
 - [ ] Debug panel renders and its day counter ticks with the sim clock
 - [ ] Toggling the mod off mid-session stops the heartbeat, with no exceptions
 
-A city must be loaded and unpaused — the heartbeat is driven by the sim clock, so nothing is logged
-on the main menu.
+The last four need a city **loaded and unpaused** — the heartbeat is driven by the sim clock, so
+nothing is logged on the main menu.
 
-`Player.log` lives at
-`%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II\Player.log`.
+**Where to look.** `Colossal.Logging` gives every logger its own file, so Agora's output does **not**
+go to `Player.log` — grepping that file for "Agora" returns nothing even on a healthy run. Ours is:
+
+```
+%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II\Logs\Agora.log
+```
+
+`Logs\Modding.log` is the other one worth reading: it records assembly load times, UI module
+registration, and dispose. A mod that fails to load says so there, not in `Agora.log`.
 
 ---
 
