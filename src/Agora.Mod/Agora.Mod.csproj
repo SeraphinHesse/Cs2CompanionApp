@@ -3,17 +3,40 @@
   <!--
     Agora.Mod — the game glue.
 
-    Game assemblies are referenced directly out of the install's Managed folder, so this builds with
-    or without the official modding toolchain installed. When the toolchain IS installed it sets
-    CSII_INSTALLATIONPATH / CSII_LOCALMODSPATH and those win; otherwise we fall back to the default
-    Steam location.
+    Two build modes, chosen automatically:
+
+    1. TOOLCHAIN MODE (preferred; active when the in-game modding toolchain is installed).
+       Imports the toolchain's Mod.props / Mod.targets, which supply:
+         - the net48 target and the game's own mscorlib
+         - the Unity.Entities source generators, required for SystemAPI / IJobEntity codegen
+         - ModPostProcessor, which prepares the assembly for Windows/macOS/Linux
+         - DeployWIP, which copies the build into the local Mods folder
+         - the Publish path to PDX Mods
+       Mod.props reads the CSII_* variables from the USER environment (the registry) rather than the
+       process environment, so this works even in a shell that predates the toolchain install.
+
+    2. FALLBACK MODE (no toolchain: CI, a fresh clone, a machine without the game).
+       Targets netstandard2.1 and references the Managed folder directly. No post-processing and no
+       publishing — enough to compile, and enough to catch API breakage.
+
+    Force a mode with -p:UseCsiiToolchain=true|false.
 
     Every game reference is Private=false: the game already has these loaded, and copying them into
     the mod folder causes assembly identity conflicts at load time.
   -->
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <CsiiToolPath>$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CsiiToolPath>
+    <UseCsiiToolchain Condition="'$(UseCsiiToolchain)' == '' AND '$(CsiiToolPath)' != '' AND Exists('$(CsiiToolPath)\Mod.props')">true</UseCsiiToolchain>
+    <UseCsiiToolchain Condition="'$(UseCsiiToolchain)' == ''">false</UseCsiiToolchain>
+  </PropertyGroup>
+
+  <Import Project="$(CsiiToolPath)\Mod.props" Condition="'$(UseCsiiToolchain)' == 'true'" />
+
+  <!-- After the import, so these win over Mod.props. -->
+  <PropertyGroup>
+    <!-- Toolchain mode takes net48 from Mod.props; fallback mode matches the game's own TFM. -->
+    <TargetFramework Condition="'$(UseCsiiToolchain)' != 'true'">netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <AssemblyName>Agora.Mod</AssemblyName>
@@ -23,26 +46,28 @@
     <NoWarn>$(NoWarn);CS0436;CS1701;CS1702</NoWarn>
 
     <!--
-      MSB3277: System.Net.Http resolves to 4.1.2.0 from the netstandard2.1 reference pack and to
-      4.2.0.0 through the Unity assemblies. Harmless here — Agora never touches System.Net.Http, and
-      at runtime the game's own assembly resolution applies rather than ours. Demoted to a message so
-      a genuinely new warning stays visible instead of being lost in this one's noise.
+      MSB3277: System.Net.Http resolves to two different versions across the reference pack and the
+      Unity assemblies. Harmless here — Agora never touches System.Net.Http, and at runtime the
+      game's own assembly resolution applies rather than ours. Demoted to a message so a genuinely
+      new warning stays visible instead of being lost in this one's noise.
     -->
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- Mod.props already sets ManagedPath in toolchain mode; only compute it when it did not. -->
     <GameRoot Condition="'$(CSII_INSTALLATIONPATH)' != ''">$(CSII_INSTALLATIONPATH)</GameRoot>
     <GameRoot Condition="'$(GameRoot)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Cities Skylines II</GameRoot>
-    <ManagedPath>$(GameRoot)\Cities2_Data\Managed</ManagedPath>
+    <ManagedPath Condition="'$(ManagedPath)' == ''">$(GameRoot)\Cities2_Data\Managed</ManagedPath>
 
-    <LocalModsPath Condition="'$(CSII_LOCALMODSPATH)' != ''">$(CSII_LOCALMODSPATH)</LocalModsPath>
+    <!-- Likewise LocalModsPath, used only by the fallback deploy at the bottom of this file. -->
+    <LocalModsPath Condition="'$(LocalModsPath)' == '' AND '$(CSII_LOCALMODSPATH)' != ''">$(CSII_LOCALMODSPATH)</LocalModsPath>
     <LocalModsPath Condition="'$(LocalModsPath)' == ''">$(LOCALAPPDATA)\..\LocalLow\Colossal Order\Cities Skylines II\Mods</LocalModsPath>
-    <DeployPath>$(LocalModsPath)\Agora</DeployPath>
+    <DeployPath>$(LocalModsPath)\$(AssemblyName)</DeployPath>
   </PropertyGroup>
 
   <Target Name="CheckGamePath" BeforeTargets="BeforeBuild" Condition="!Exists('$(ManagedPath)')">
-    <Error Text="Cities: Skylines II assemblies not found at '$(ManagedPath)'. Set CSII_INSTALLATIONPATH (installing the in-game modding toolchain does this), or edit GameRoot in Agora.Mod.csproj. Note that Agora.Core and its tests build without the game — only this project needs it." />
+    <Error Text="Cities: Skylines II assemblies not found at '$(ManagedPath)'. Install the in-game modding toolchain (Options -> Modding), or edit GameRoot in Agora.Mod.csproj. Note that Agora.Core and its tests build without the game — only this project needs it." />
   </Target>
 
   <ItemGroup>
@@ -69,15 +94,61 @@
     <Reference Include="Newtonsoft.Json">   <HintPath>$(ManagedPath)\Newtonsoft.Json.dll</HintPath>             <Private>false</Private></Reference>
   </ItemGroup>
 
+  <Import Project="$(CsiiToolPath)\Mod.targets" Condition="'$(UseCsiiToolchain)' == 'true'" />
+
   <!--
-    Deploy to the local Mods folder so the game picks the build up. Skipped when the folder does not
-    exist (CI, or a machine with no game), so a missing Mods folder is never a build failure.
+    ModPostProcessor.exe and ModPublisher.exe were built against .NET 6, which is out of support and
+    is not installed here (this machine has 8 and 9). Rather than installing an EOL runtime, roll the
+    tools forward onto the newest available one. Verified: with DOTNET_ROLL_FORWARD=LatestMajor,
+    ModPostProcessor starts and runs on .NET 9.
+
+    Set as an Exec-scoped environment variable, deliberately. Setting DOTNET_ROLL_FORWARD globally
+    would silently change version resolution for every other dotnet app on the machine.
+
+    Mod.targets documents this override pattern: redefining a target after the import replaces it.
+    Both bodies are otherwise copied from Mod.targets verbatim, so behaviour is unchanged apart from
+    the added environment variable. If a future toolchain update changes those targets, this needs to
+    be re-synced, or deleted outright once the tools ship against a supported runtime.
+
+    Both are additionally gated on UseCsiiToolchain. Mod.targets sets NeedBuild to a literal
+    'true'/'false' in BuildGetFullPaths, so its own bare Condition="'$(NeedBuild)'" is safe there; in
+    fallback mode that target never runs, NeedBuild is empty, and MSBuild fails with MSB4113 rather
+    than treating the empty string as false.
   -->
-  <Target Name="DeployMod" AfterTargets="Build" Condition="Exists('$(LocalModsPath)')">
+  <Target Name="RunModPostProcessor" AfterTargets="AfterBuild"
+          Condition="'$(UseCsiiToolchain)' == 'true' AND '$(NeedBuild)' == 'true'">
+    <Error Condition="!Exists('$(ModPostProcessorFullPath)')" Text="Post processor not found, please check the path: $(ModPostProcessorFullPath)" />
+    <Message Text="Run post processor (rolled forward from .NET 6)" Importance="high" />
+    <Exec Command="$(ModPostProcessorArgs)" LogStandardErrorAsError="true"
+          EnvironmentVariables="DOTNET_ROLL_FORWARD=LatestMajor" />
+  </Target>
+
+  <Target Name="RunModPublisher" AfterTargets="Publish" Condition="'$(UseCsiiToolchain)' == 'true'">
+    <Error Condition="!Exists('$(ModPublisherPath)')" Text="Mod publisher not found, please check the path: $(ModPublisherPath)" />
+    <Message Text="Run mod publisher: $(ModPublisherArgs)" Importance="high" />
+    <Exec Command="$(ModPublisherArgs)" LogStandardErrorAsError="true"
+          EnvironmentVariables="DOTNET_ROLL_FORWARD=LatestMajor" />
+  </Target>
+
+  <!--
+    Fallback deploy, for when the toolchain is absent and DeployWIP therefore does not exist.
+
+    Conditioned on the GAME being present, not on the Mods folder existing. Gating on the Mods folder
+    made this target skip silently and permanently on a machine that had never deployed before —
+    nothing else creates that folder, so the condition could never become true. MakeDir creates it.
+    CI has no game, so this correctly does nothing there.
+
+    Also requires the toolchain to be genuinely ABSENT, not merely switched off. Otherwise
+    `-p:UseCsiiToolchain=false` on a developer machine — the way to check the build still works for
+    contributors without the toolchain — would deploy a netstandard2.1 assembly over the net48 one the
+    game is meant to load, leaving a broken install behind as a side effect of a verification step.
+  -->
+  <Target Name="DeployMod" AfterTargets="Build"
+          Condition="'$(UseCsiiToolchain)' != 'true' AND Exists('$(ManagedPath)') AND !Exists('$(CsiiToolPath)\Mod.props')">
     <MakeDir Directories="$(DeployPath)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DeployPath)" ContinueOnError="true" />
     <Copy SourceFiles="$(TargetDir)Agora.Core.dll" DestinationFolder="$(DeployPath)" ContinueOnError="true" />
-    <Message Importance="high" Text="Agora deployed to $(DeployPath)" />
+    <Message Importance="high" Text="Agora deployed to $(DeployPath) (fallback mode — no toolchain)" />
   </Target>
 
 </Project>

@@ -9,6 +9,11 @@ obj/
 # Decompiled game reference tree — large, regenerable, never committed
 refsrc/
 
+# Modding toolchain scratch. ModPostProcessor drops Library/ilpp.pid next to the project, and
+# Mod.props explicitly excludes both of these from the compile — so they are its artifacts, not ours.
+Library/
+Logs/
+
 # UI
 node_modules/
 ui/dist/

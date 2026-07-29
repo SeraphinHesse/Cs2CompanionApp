@@ -8,11 +8,15 @@
     plain `dotnet test` on a machine with no copy of Cities: Skylines II. Adding a game reference
     here is a review-blocking defect (see CLAUDE.md).
 
-    netstandard2.1 so that Agora.Mod (which must be netstandard2.1 for the game) can reference it.
+    netstandard2.0, because the modding toolchain builds Agora.Mod as net48 and .NET Framework
+    cannot reference netstandard2.1. Verified that nothing here needs a 2.1-only API: no Span<T>,
+    no MathF, no Math.Clamp, no HashCode.Combine, no default interface members. If you reach for one
+    of those, polyfill it inside Core rather than raising the target. Raising it breaks the toolchain
+    build with NU1201, and the failure surfaces over in Agora.Mod, far from the actual cause.
   -->
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>Agora.Core</AssemblyName>

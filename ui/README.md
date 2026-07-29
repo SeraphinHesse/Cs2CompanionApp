@@ -19,7 +19,8 @@ registry, so an invented `package.json` would not install.
 2. Copy the generated `package.json`, `tsconfig.json` and webpack/build config into `ui/`.
 
 3. **Keep this repo's `mod.json` and `src/`.** Reconcile only one field: `id` must equal
-   `Agora.Mod`'s assembly name (`Agora.Mod`), which is what links the UI mod to the code mod.
+   `Agora.Mod`'s assembly name (`Agora.Mod`), which is what links the UI mod to the code mod. That is
+   also the deploy folder name the toolchain uses (`…\Mods\Agora.Mod\`), so all three agree.
 
 4. Install and build:
 
@@ -28,15 +29,34 @@ registry, so an invented `package.json` would not install.
    npm run build
    ```
 
-5. Wire the UI build into the C# build by adding this to `src/Agora.Mod/Agora.Mod.csproj`:
+5. Wire the UI build into the C# build. Two targets in `src/Agora.Mod/Agora.Mod.csproj`, added
+   **after** the `Mod.targets` import:
 
    ```xml
-   <Target Name="BuildUI" AfterTargets="AfterBuild" Condition="Exists('$(MSBuildProjectDirectory)\..\..\ui\node_modules')">
+   <!-- Build the bundle before the mod is deployed. -->
+   <Target Name="BuildUI" BeforeTargets="AfterBuild"
+           Condition="Exists('$(MSBuildProjectDirectory)\..\..\ui\node_modules')">
      <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)\..\..\ui" />
+   </Target>
+
+   <!-- Then copy it in. DeployWIP wipes $(DeployDir), so this MUST run after it, not before. -->
+   <Target Name="DeployUI" AfterTargets="DeployWIP" Condition="Exists('$(UiBundleDir)')">
+     <ItemGroup>
+       <AdditionalFilesToDeploy Include="$(UiBundleDir)\**\*.*" />
+     </ItemGroup>
+     <Copy SourceFiles="@(AdditionalFilesToDeploy)"
+           DestinationFiles="@(AdditionalFilesToDeploy->'$(DeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
    </Target>
    ```
 
-   The `Condition` matters: without it, anyone who has not run `npm install` gets a broken C# build.
+   Set `UiBundleDir` to whatever the template actually emits — confirm it rather than assuming
+   `ui/dist`. `AdditionalFilesToDeploy` / `AfterTargets="DeployWIP"` is the extension point
+   `Mod.targets` documents for exactly this.
+
+   The `Condition`s matter. Without them, anyone who has not run `npm install` gets a broken C# build.
+   But note the failure mode they introduce: a condition that is never true makes the target skip
+   **silently**, which is how the original deploy step sat dormant. After wiring these up, confirm the
+   bundle actually lands in `…\Mods\Agora.Mod\` rather than trusting a green build.
 
 ## Node version
 

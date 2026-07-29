@@ -1,7 +1,7 @@
 # AGORA — Status
 
 **Current milestone:** M0 · Bootstrap
-**Updated:** 2026-07-28
+**Updated:** 2026-07-30
 
 ---
 
@@ -12,6 +12,8 @@
 | Repo scaffold + folder structure | ✅ |
 | Root router `CLAUDE.md` + per-folder contexts | ✅ |
 | Scout report 0001 (API index) | ✅ |
+| Scout report 0002 (modding toolchain build surface) | ✅ |
+| `tools/` — verify-setup, api-query, decompile | ✅ |
 | `Agora.Core` + determinism kernel | ✅ |
 | `Agora.Core.Tests` determinism suite | ✅ |
 | `Agora.Mod` — `IMod`, settings, day heartbeat | ✅ |
@@ -19,28 +21,45 @@
 | `ui/` React panel — **source only** | 🟨 build config pending toolchain (see `ui/README.md`) |
 | Skills (§9) | ✅ |
 | Agent definitions (§10) | ✅ |
-| **Modding toolchain installed** | ⬜ **blocked on user** |
-| Deploy to local `Mods/` folder | ⬜ blocked — folder does not exist until the toolchain installs |
-| `refsrc/` decompiled reference tree | ⬜ |
-| In-game verification | ⬜ blocked on the three above |
+| **Modding toolchain installed** | ✅ all 15 `CSII_*` set, 12 Entities analyzers present |
+| Toolchain build integration (`Mod.props` / `Mod.targets`) | ✅ |
+| Deploy to local `Mods/` folder | ✅ `…\Mods\Agora.Mod\` |
+| `refsrc/` decompiled reference tree | ✅ 5,209 `.cs` files |
+| In-game verification | ⬜ **the only thing left in M0** |
 
-**Verified so far:** `dotnet build Agora.sln` succeeds with 0 warnings and 0 errors.
-`dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` passes 22/22 in ~40 ms, with no game
-assemblies involved — which is the check that the Core/Mod split is real. `Agora.Mod.dll` was
-confirmed by metadata inspection to expose one `IMod` implementation and two registered systems.
+**Verified so far.** `dotnet build Agora.sln` succeeds with 0 warnings and 0 errors in **both** build
+modes: toolchain mode (`net48`, post-processor runs, deploys) and fallback mode
+(`-p:UseCsiiToolchain=false`, netstandard2.1, no deploy).
+`dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` passes 22/22 in ~40 ms with no game
+assemblies involved — the check that the Core/Mod split is real. The deployed
+`…\Mods\Agora.Mod\Agora.Mod.dll` was confirmed by metadata inspection to be `.NETFramework,v4.8` and
+to expose `AgoraMod : IMod`, `AgoraHeartbeatSystem : GameSystemBase`, and
+`AgoraDebugUISystem : UISystemBase`.
 
-**Not yet verified:** nothing has run inside the game. The UI panel has never rendered.
+**Not yet verified: nothing has run inside the game.** Every claim above is about build artifacts. The
+UI panel has never rendered, no heartbeat has ever been logged, and the settings page has never been
+drawn. The gate below is entirely untested.
+
+Run `.\tools\verify-setup.ps1 -Build` for the current state of all preconditions.
 
 ### M0 gate — manual checklist
 
 Launch with `--developerMode --uiDeveloperMode`, then:
 
+**Testable now** — the C# mod is built and deployed to `…\Mods\Agora.Mod\`:
+
 - [ ] Agora appears in the game's mod list
 - [ ] Options page renders with readable labels (not raw keys)
 - [ ] Master toggle flips without exception
 - [ ] `Player.log` shows exactly one Agora heartbeat line per in-game day
-- [ ] Debug panel renders and its day counter ticks with the sim clock
 - [ ] Toggling the mod off mid-session stops the heartbeat, with no exceptions
+
+**Needs `ui/` to be built first** (blocker 1 above):
+
+- [ ] Debug panel renders and its day counter ticks with the sim clock
+
+A city must be loaded and unpaused — the heartbeat is driven by the sim clock, so nothing is logged
+on the main menu.
 
 `Player.log` lives at
 `%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II\Player.log`.
@@ -49,14 +68,26 @@ Launch with `--developerMode --uiDeveloperMode`, then:
 
 ## Blocked / needs a decision
 
-1. **Modding toolchain not installed.** Game → Options → Modding. Until then the build uses direct
-   Managed-DLL references (which works), but there is no UI template, no bundled Harmony, and no
-   one-click publish.
+1. **`ui/` has no build config.** The only blocker left before the M0 gate can be walked in full.
+   `npx create-csii-ui-mod` in `ui/`, then reconcile per `ui/README.md`. The C# side and its bindings
+   are done and deployed; the panel simply has no bundle to load.
 2. **Effect palette rescope.** Scout 0001 §3 found no enum support for RCI demand, rent/land value,
    birth rate, or subsidies, and district scope has only 14 modifiers. `politicsmodplan.md` §7 needs
    a pass before M5.
 3. **`politicsmodplan.md` §14 open decisions** remain open: NA primaries, timeline jitter, snapshot
    retention, post-2026 authorship, unrest ceiling.
+
+## Known toolchain quirks (all worked around; see `docs/scout/0002-modding-toolchain.md`)
+
+- `ModPostProcessor.exe` / `ModPublisher.exe` target **.NET 6, which is EOL and not installed here.**
+  `Agora.Mod.csproj` overrides both targets to pass `DOTNET_ROLL_FORWARD=LatestMajor` scoped to the
+  `Exec`. Re-sync those overrides if a toolchain update changes them.
+- **`Agora.Core` is pinned to netstandard2.0** because toolchain mode builds `Agora.Mod` as `net48`,
+  which cannot reference netstandard2.1.
+- `CSII_LOCALMODSPATH` is set before the folder exists. Never gate a build step on that folder
+  existing — it will skip silently forever.
+- A shell opened **before** the toolchain install sees no `CSII_*` variables. `Mod.props` dodges this
+  by reading the registry directly; our own scripts check both.
 
 ## Next milestone
 
