@@ -1,6 +1,8 @@
 {
   "id": "Agora.Mod",
+  "author": "Serph",
+  "version": "0.1.0",
+  "dependencies": [],
   "displayName": "Agora",
-  "description": "Political layer for Cities: Skylines II.",
-  "entry": "src/index.tsx"
+  "description": "Political layer for Cities: Skylines II."
 }

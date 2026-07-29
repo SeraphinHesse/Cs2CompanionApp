@@ -127,6 +127,16 @@ if (Test-Path $modsPath) {
     Add-Check 'Agora deployed' 'FAIL' 'Agora.Mod.dll not in the Mods folder' `
       'Run: dotnet build Agora.sln   (look for the "Copy output to deploy directory" line)'
   }
+
+  # The UI half. DeployWIP wipes this folder, so a C# build in the wrong order silently removes the
+  # bundle and the mod loads with no interface and no error.
+  $bundle = Join-Path $modsPath 'Agora.Mod\Agora.Mod.mjs'
+  if (Test-Path $bundle) {
+    Add-Check 'UI bundle deployed' 'PASS' 'Agora.Mod.mjs present alongside the assembly'
+  } else {
+    Add-Check 'UI bundle deployed' 'FAIL' 'Agora.Mod.mjs missing from the deploy folder' `
+      'Run: dotnet build Agora.sln   (its BuildUI target runs after DeployWIP, which wipes the folder)'
+  }
 } else {
   Add-Check 'Local Mods folder' 'WARN' "Not created yet at $modsPath" `
     'The toolchain sets the variable but does not create the folder. The first build creates it.'
@@ -154,17 +164,26 @@ if ($foundFlags) {
 $sdk = (dotnet --version 2>$null)
 if ($sdk) { Add-Check '.NET SDK' 'PASS' $sdk } else { Add-Check '.NET SDK' 'FAIL' 'dotnet not on PATH' 'Install the .NET SDK.' }
 
+# Read the real constraint out of the template-provided package.json rather than assuming one.
+# The CS2 UI template declares "node": ">=18", so anything current is fine.
 $node = (node --version 2>$null)
 if ($node) {
   $major = [int]($node -replace '^v(\d+)\..*$', '$1')
-  if ($major -gt 20) {
-    Add-Check 'Node' 'WARN' "$node (CS2 UI templates target 20.11)" `
-      'If webpack misbehaves, pin Node 20 with nvm rather than debugging the config.'
+  $minMajor = 18
+  $pkgPath = Join-Path $repoRoot 'ui\package.json'
+  if (Test-Path $pkgPath) {
+    try {
+      $engines = (Get-Content $pkgPath -Raw | ConvertFrom-Json).engines.node
+      if ($engines -match '(\d+)') { $minMajor = [int]$Matches[1] }
+    } catch { }
+  }
+  if ($major -ge $minMajor) {
+    Add-Check 'Node' 'PASS' "$node (ui/ requires >=$minMajor)"
   } else {
-    Add-Check 'Node' 'PASS' $node
+    Add-Check 'Node' 'FAIL' "$node is below the required >=$minMajor" 'Install a newer Node.'
   }
 } else {
-  Add-Check 'Node' 'FAIL' 'node not on PATH' 'Install Node 20 LTS.'
+  Add-Check 'Node' 'FAIL' 'node not on PATH' 'Install Node 20 LTS or newer.'
 }
 
 if (Get-Command ilspycmd -ErrorAction SilentlyContinue) {

@@ -123,6 +123,39 @@
           EnvironmentVariables="DOTNET_ROLL_FORWARD=LatestMajor" />
   </Target>
 
+  <!--
+    Build the UI bundle AFTER DeployWIP, never before.
+
+    webpack writes its output straight into $(LocalModsPath)\$(MOD.id), the same folder DeployWIP
+    targets, and DeployWIP starts with RemoveDir. Verified: building C# after building the
+    UI deletes Agora.Mod.mjs and Agora.Mod.css, leaving a mod the game loads with no interface and no
+    error. Sequencing this after DeployWIP is what keeps the two halves of the mod in the folder
+    together.
+
+    webpack reads CSII_USERDATAPATH from the PROCESS environment and throws without it, unlike
+    Mod.props which reads the registry. So pass it explicitly: MSBuild may well have been started from
+    a shell older than the toolchain install.
+  -->
+  <PropertyGroup>
+    <UiDir>$(MSBuildProjectDirectory)\..\..\ui</UiDir>
+    <CsiiUserDataPath>$([System.Environment]::GetEnvironmentVariable('CSII_USERDATAPATH', 'EnvironmentVariableTarget.User'))</CsiiUserDataPath>
+  </PropertyGroup>
+
+  <Target Name="BuildUI" AfterTargets="DeployWIP" Condition="Exists('$(UiDir)\node_modules')">
+    <Message Importance="high" Text="Building UI bundle into the deploy folder" />
+    <Exec Command="npm run build" WorkingDirectory="$(UiDir)"
+          EnvironmentVariables="CSII_USERDATAPATH=$(CsiiUserDataPath)" />
+  </Target>
+
+  <!--
+    Say so out loud when the UI is skipped. The silent-skip failure mode has already bitten this
+    project once (the old deploy target), and a mod deployed without its bundle looks identical to a
+    working one from the build log alone.
+  -->
+  <Target Name="WarnUiNotBuilt" AfterTargets="DeployWIP" Condition="!Exists('$(UiDir)\node_modules')">
+    <Warning Text="ui/node_modules not found, so no UI bundle was built or deployed. The mod will load with no interface. Run 'npm install' in ui/." />
+  </Target>
+
   <Target Name="RunModPublisher" AfterTargets="Publish" Condition="'$(UseCsiiToolchain)' == 'true'">
     <Error Condition="!Exists('$(ModPublisherPath)')" Text="Mod publisher not found, please check the path: $(ModPublisherPath)" />
     <Message Text="Run mod publisher: $(ModPublisherArgs)" Importance="high" />
