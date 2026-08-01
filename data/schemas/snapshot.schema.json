@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/snapshot.schema.json",
+  "title": "snapshot.json — the engine's measured view of the city (engine → LLM, and a debugging artifact)",
+
+  "$comment": "Mirrors Agora.Core.Contracts.CitySnapshot / DistrictSnapshot. Wire conventions for every Agora JSON file: property names are camelCase, SimDate is the string 'YYYY-MM-DD', and enums are their C# member names. Per-district numbers are best-effort (plan §6): a sensor that cannot resolve one copies the city value, sets hasCityFallbacks, and names the property in cityFallbackFields — so the dashboard never presents a city number as a local fact.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "date", "population", "happiness", "unemployment", "money", "districts"],
+
+  "$defs": {
+    "simDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "unitInterval": { "type": "number", "minimum": 0, "maximum": 1 },
+    "happiness": { "type": "number", "minimum": 0, "maximum": 100 },
+    "idList": { "type": "array", "items": { "type": "string" } },
+
+    "wealthDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lowShare", "middleShare", "highShare"],
+      "properties": {
+        "lowShare": { "$ref": "#/$defs/unitInterval" },
+        "middleShare": { "$ref": "#/$defs/unitInterval" },
+        "highShare": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "educationDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uneducatedShare", "poorlyEducatedShare", "educatedShare", "wellEducatedShare", "highlyEducatedShare"],
+      "$comment": "Five tiers, mirroring Game.Citizens.CitizenEducationLevel value-for-value.",
+      "properties": {
+        "uneducatedShare": { "$ref": "#/$defs/unitInterval" },
+        "poorlyEducatedShare": { "$ref": "#/$defs/unitInterval" },
+        "educatedShare": { "$ref": "#/$defs/unitInterval" },
+        "wellEducatedShare": { "$ref": "#/$defs/unitInterval" },
+        "highlyEducatedShare": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "ageDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["childShare", "teenShare", "adultShare", "elderlyShare"],
+      "$comment": "Four bands, mirroring Game.Citizens.CitizenAge value-for-value.",
+      "properties": {
+        "childShare": { "$ref": "#/$defs/unitInterval" },
+        "teenShare": { "$ref": "#/$defs/unitInterval" },
+        "adultShare": { "$ref": "#/$defs/unitInterval" },
+        "elderlyShare": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "pollutionLevels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["air", "ground", "noise", "water"],
+      "properties": {
+        "air": { "$ref": "#/$defs/unitInterval" },
+        "ground": { "$ref": "#/$defs/unitInterval" },
+        "noise": { "$ref": "#/$defs/unitInterval" },
+        "water": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "serviceCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["health", "education", "police", "fire", "garbage", "transit", "water", "electricity", "parks"],
+      "properties": {
+        "health": { "$ref": "#/$defs/unitInterval" },
+        "education": { "$ref": "#/$defs/unitInterval" },
+        "police": { "$ref": "#/$defs/unitInterval" },
+        "fire": { "$ref": "#/$defs/unitInterval" },
+        "garbage": { "$ref": "#/$defs/unitInterval" },
+        "transit": { "$ref": "#/$defs/unitInterval" },
+        "water": { "$ref": "#/$defs/unitInterval" },
+        "electricity": { "$ref": "#/$defs/unitInterval" },
+        "parks": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "taxRates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["residential", "commercial", "industrial", "office"],
+      "properties": {
+        "residential": { "type": "number" },
+        "commercial": { "type": "number" },
+        "industrial": { "type": "number" },
+        "office": { "type": "number" }
+      }
+    },
+
+    "districtIndices": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["districtId"],
+      "properties": {
+        "districtId": { "type": "string" },
+        "gentrificationIndex": { "$ref": "#/$defs/unitInterval" },
+        "commuteMiseryIndex": { "$ref": "#/$defs/unitInterval" },
+        "serviceCoverageIndex": { "$ref": "#/$defs/unitInterval" },
+        "discontentIndex": { "$ref": "#/$defs/unitInterval" },
+        "giniCoefficient": { "$ref": "#/$defs/unitInterval" },
+        "hasCityFallbacks": { "type": "boolean" }
+      }
+    },
+
+    "derivedIndices": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "giniCoefficient": { "$ref": "#/$defs/unitInterval" },
+        "brainDrainIndex": { "$ref": "#/$defs/unitInterval" },
+        "serviceInequalityIndex": { "$ref": "#/$defs/unitInterval" },
+        "commuteMiseryIndex": { "$ref": "#/$defs/unitInterval" },
+        "polarizationIndex": { "$ref": "#/$defs/unitInterval" },
+        "legitimacyIndex": { "$ref": "#/$defs/unitInterval" },
+        "discontentIndex": { "$ref": "#/$defs/unitInterval" },
+        "districts": { "type": "array", "items": { "$ref": "#/$defs/districtIndices" } }
+      }
+    },
+
+    "district": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "population", "happiness", "hasCityFallbacks"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "population": { "type": "integer", "minimum": 0 },
+        "households": { "type": "integer", "minimum": 0 },
+        "happiness": { "$ref": "#/$defs/happiness" },
+        "unemployment": { "$ref": "#/$defs/unitInterval" },
+        "wealth": { "$ref": "#/$defs/wealthDistribution" },
+        "education": { "$ref": "#/$defs/educationDistribution" },
+        "age": { "$ref": "#/$defs/ageDistribution" },
+        "pollution": { "$ref": "#/$defs/pollutionLevels" },
+        "services": { "$ref": "#/$defs/serviceCoverage" },
+        "crimeRate": { "$ref": "#/$defs/unitInterval" },
+        "sickRate": { "$ref": "#/$defs/unitInterval" },
+        "averageLandValue": { "type": "number" },
+        "landValueTrend": { "type": "number" },
+        "averageRent": { "type": "number" },
+        "rentTrend": { "type": "number" },
+        "rentBurden": { "type": "number", "minimum": 0 },
+        "transitRidership": { "$ref": "#/$defs/unitInterval" },
+        "averageCommuteMinutes": { "type": "number", "minimum": 0 },
+        "trafficCongestion": { "$ref": "#/$defs/unitInterval" },
+        "hasCityFallbacks": { "type": "boolean" },
+        "cityFallbackFields": { "$ref": "#/$defs/idList" }
+      }
+    }
+  },
+
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 2,
+      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze."
+    },
+    "date": { "$ref": "#/$defs/simDate" },
+    "population": { "type": "integer", "minimum": 0 },
+    "households": { "type": "integer", "minimum": 0 },
+    "happiness": { "$ref": "#/$defs/happiness" },
+    "unemployment": { "$ref": "#/$defs/unitInterval" },
+    "money": { "type": "integer" },
+    "income": { "type": "integer" },
+    "expenses": { "type": "integer" },
+    "budgetBalance": { "type": "integer" },
+    "debt": { "type": "integer", "minimum": 0 },
+    "wealth": { "$ref": "#/$defs/wealthDistribution" },
+    "education": { "$ref": "#/$defs/educationDistribution" },
+    "age": { "$ref": "#/$defs/ageDistribution" },
+    "pollution": { "$ref": "#/$defs/pollutionLevels" },
+    "services": { "$ref": "#/$defs/serviceCoverage" },
+    "taxes": { "$ref": "#/$defs/taxRates" },
+    "crimeRate": { "$ref": "#/$defs/unitInterval" },
+    "sickRate": { "$ref": "#/$defs/unitInterval" },
+    "averageLandValue": { "type": "number" },
+    "landValueTrend": { "type": "number" },
+    "averageRent": { "type": "number" },
+    "rentTrend": { "type": "number" },
+    "rentBurden": { "type": "number", "minimum": 0 },
+    "transitRidership": { "$ref": "#/$defs/unitInterval" },
+    "averageCommuteMinutes": { "type": "number", "minimum": 0 },
+    "trafficCongestion": { "$ref": "#/$defs/unitInterval" },
+    "activePolicyIds": { "$ref": "#/$defs/idList" },
+    "recentDisasterIds": { "$ref": "#/$defs/idList" },
+    "inProgressMandateIds": { "$ref": "#/$defs/idList" },
+    "indices": { "$ref": "#/$defs/derivedIndices" },
+    "districts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/district" },
+      "$comment": "Sorted by district id ascending. The order is contractual — the engine iterates this list, and an ECS-chunk-ordered list would make results depend on chunk layout."
+    }
+  }
+}

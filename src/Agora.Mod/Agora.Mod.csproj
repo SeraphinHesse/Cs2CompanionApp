@@ -124,6 +124,21 @@
   </Target>
 
   <!--
+    Say so when the post-processor is skipped.
+
+    A Message, not a Warning, and the distinction is deliberate. NeedBuild=false means MSBuild found
+    nothing to rebuild, so DeployWIP was skipped too and the deploy folder still holds the assembly
+    the post-processor already ran on — nothing is broken. A warning on every incremental no-op build
+    is the kind of noise that trains people to stop reading warnings, which is precisely how the two
+    silent-skip bugs this repo has already shipped got through. High importance keeps it visible at
+    default verbosity.
+  -->
+  <Target Name="NoteModPostProcessorSkipped" AfterTargets="AfterBuild"
+          Condition="'$(UseCsiiToolchain)' == 'true' AND '$(NeedBuild)' != 'true'">
+    <Message Importance="high" Text="Post processor and DeployWIP both skipped: MSBuild reports nothing to rebuild (NeedBuild='$(NeedBuild)'). The deploy folder keeps the previous build." />
+  </Target>
+
+  <!--
     Build the UI bundle AFTER DeployWIP, never before.
 
     webpack writes its output straight into $(LocalModsPath)\$(MOD.id), the same folder DeployWIP
@@ -156,11 +171,86 @@
     <Warning Text="ui/node_modules not found, so no UI bundle was built or deployed. The mod will load with no interface. Run 'npm install' in ui/." />
   </Target>
 
+  <!--
+    Deploy data/ — engine_tuning.json, the three timeline catalogs, the schemas and the seed pools.
+
+    Same reason as BuildUI, and the same ordering hazard: DeployWIP starts with RemoveDir on the
+    deploy folder, so this MUST be AfterTargets="DeployWIP" or the files are copied and then deleted.
+
+    Without this the mod ships with no data at all: AgoraRuntime falls back to EngineTuning.Default
+    (which matches the shipped file, so tuning still works) but the timeline catalogs have no
+    compiled-in equivalent — history would simply never fire, with nothing in the log to say why.
+  -->
+  <PropertyGroup>
+    <DataDir>$(MSBuildProjectDirectory)\..\..\data</DataDir>
+  </PropertyGroup>
+
+  <!--
+    DataDeployDir is computed INSIDE the target, not in a PropertyGroup at the top level. Mod.targets
+    assigns $(DeployDir) from within a target (Mod.targets:52), so at evaluation time it is still
+    empty and a static PropertyGroup would silently resolve the destination to "\data" — an absolute
+    path on the current drive root. Caught by the skip warning below, which is what it is for.
+
+    The target itself is unconditional and decides inside. AfterTargets fires even when the named
+    target was skipped by its own Condition — DeployMod frequently is — so a Condition here would be
+    evaluated at the wrong time anyway, and "deployed nothing, said nothing" is the failure mode this
+    whole block exists to prevent.
+  -->
+  <Target Name="DeployAgoraData" AfterTargets="DeployWIP;DeployMod">
+    <PropertyGroup>
+      <!--
+        Same refusal as DeployMod: with the toolchain installed but switched off, the deploy folder
+        holds the net48 build the game loads and this build is a compile check only. Writing data into
+        it would be harmless today (identical JSON) but it would make the "nothing was deployed"
+        warning below a lie, and a build step that half-deploys is worse than one that does not.
+      -->
+      <AgoraDeploySuppressed Condition="'$(UseCsiiToolchain)' != 'true' AND Exists('$(CsiiToolPath)\Mod.props')">true</AgoraDeploySuppressed>
+
+      <DataDeployDir Condition="'$(AgoraDeploySuppressed)' != 'true' AND '$(DeployDir)' != ''">$(DeployDir)\data</DataDeployDir>
+      <DataDeployDir Condition="'$(AgoraDeploySuppressed)' != 'true' AND '$(DataDeployDir)' == '' AND '$(DeployPath)' != ''">$(DeployPath)\data</DataDeployDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <AgoraDataFiles Include="$(DataDir)\**\*.json" Condition="'$(DataDeployDir)' != ''" />
+    </ItemGroup>
+
+    <Message Importance="high" Condition="'$(DataDeployDir)' != ''"
+             Text="Deploying @(AgoraDataFiles->Count()) Agora data file(s) to $(DataDeployDir)" />
+    <Copy SourceFiles="@(AgoraDataFiles)" Condition="'$(DataDeployDir)' != ''"
+          DestinationFiles="@(AgoraDataFiles->'$(DataDeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
+
+    <!--
+      Silent-skip guard, same class of bug as WarnUiNotBuilt. Inside the target rather than as a
+      separate conditioned target, so it sees the resolved DeployDir. The deliberately-suppressed
+      case is excluded because WarnModNotDeployed already says so, once, accurately.
+    -->
+    <Warning Condition="'$(AgoraDeploySuppressed)' != 'true' AND ('$(DataDeployDir)' == '' OR !Exists('$(DataDir)'))"
+             Text="Agora data/ was not deployed (source '$(DataDir)', destination '$(DataDeployDir)'). The mod will load with no timeline catalogs, so no historical events will ever fire." />
+  </Target>
+
   <Target Name="RunModPublisher" AfterTargets="Publish" Condition="'$(UseCsiiToolchain)' == 'true'">
     <Error Condition="!Exists('$(ModPublisherPath)')" Text="Mod publisher not found, please check the path: $(ModPublisherPath)" />
     <Message Text="Run mod publisher: $(ModPublisherArgs)" Importance="high" />
     <Exec Command="$(ModPublisherArgs)" LogStandardErrorAsError="true"
           EnvironmentVariables="DOTNET_ROLL_FORWARD=LatestMajor" />
+  </Target>
+
+  <!--
+    Same silent-skip guard for the publish path. `dotnet publish` in fallback mode would otherwise
+    report success while uploading nothing to PDX Mods.
+  -->
+  <Target Name="WarnPublisherSkipped" AfterTargets="Publish" Condition="'$(UseCsiiToolchain)' != 'true'">
+    <Warning Text="Publish ran in fallback mode, so ModPublisher was NOT invoked and nothing was uploaded to PDX Mods. Publishing requires the in-game modding toolchain." />
+  </Target>
+
+  <!--
+    Say which mode this build chose, always. Two builds that differ only in target framework, source
+    generators and deploy behaviour are otherwise indistinguishable from the log.
+  -->
+  <Target Name="ReportBuildMode" BeforeTargets="BeforeBuild">
+    <Message Importance="high" Condition="'$(UseCsiiToolchain)' == 'true'"
+             Text="Agora.Mod: TOOLCHAIN mode (net48, source generators, post-processing, deploy) via $(CsiiToolPath)" />
+    <Message Importance="high" Condition="'$(UseCsiiToolchain)' != 'true'"
+             Text="Agora.Mod: FALLBACK mode (netstandard2.1, no source generators, no post-processing) against $(ManagedPath)" />
   </Target>
 
   <!--
@@ -182,6 +272,19 @@
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DeployPath)" ContinueOnError="true" />
     <Copy SourceFiles="$(TargetDir)Agora.Core.dll" DestinationFolder="$(DeployPath)" ContinueOnError="true" />
     <Message Importance="high" Text="Agora deployed to $(DeployPath) (fallback mode — no toolchain)" />
+  </Target>
+
+  <!--
+    The one way to build this project and end up with NOTHING deployed by either path: the toolchain
+    is installed (so DeployWIP would have run) but was switched off with -p:UseCsiiToolchain=false
+    (so it did not), and DeployMod refuses on purpose rather than dropping a netstandard2.1 assembly
+    over the net48 one the game loads. That is correct behaviour and is exactly why the contributor
+    check in src/CLAUDE.md is safe to run — but it must not be silent, or "I built it and the game
+    still shows the old version" becomes an afternoon.
+  -->
+  <Target Name="WarnModNotDeployed" AfterTargets="Build"
+          Condition="'$(UseCsiiToolchain)' != 'true' AND Exists('$(CsiiToolPath)\Mod.props')">
+    <Warning Text="Built in fallback mode with the toolchain present (-p:UseCsiiToolchain=false), so NOTHING was deployed — deliberately, to avoid overwriting the net48 build the game loads. This is a compile check only. Rebuild without that switch to deploy." />
   </Target>
 
 </Project>

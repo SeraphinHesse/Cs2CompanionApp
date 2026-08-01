@@ -1,0 +1,306 @@
+// Coherent Gameface supports the flex layout model only - CSS grid is not available and fails
+// silently. `gap` is also avoided throughout this panel; spacing is done with margins.
+
+$fallback-tint: rgba(255, 196, 96, 0.9);
+$fallback-dim: 0.62;
+
+.tooltip {
+  display: flex;
+  flex-direction: column;
+  max-width: 260rem;
+}
+
+.tooltipTitle {
+  display: flex;
+  font-weight: bold;
+  margin-bottom: 3rem;
+  color: $fallback-tint;
+}
+
+.tooltipBody {
+  display: flex;
+  line-height: 1.35;
+}
+
+// -- city fallback marking ----------------------------------------------------------------------
+
+.cityValue {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  opacity: $fallback-dim;
+  font-style: italic;
+}
+
+.cityValueText {
+  display: flex;
+}
+
+.cityBadge {
+  display: flex;
+  margin-left: 4rem;
+  padding: 0 3rem;
+  border: 1rem solid $fallback-tint;
+  border-radius: 2rem;
+  color: $fallback-tint;
+  font-size: 8rem;
+  font-style: normal;
+  letter-spacing: 1rem;
+  line-height: 12rem;
+  flex: 0 0 auto;
+}
+
+.banner {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 8rem 0;
+  padding: 6rem 8rem;
+  border-left: 3rem solid $fallback-tint;
+  background-color: rgba(255, 196, 96, 0.12);
+  border-radius: 2rem;
+}
+
+.bannerHead {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.bannerBadge {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: 6rem;
+  padding: 1rem 4rem;
+  border-radius: 2rem;
+  background-color: $fallback-tint;
+  color: #201603;
+  font-size: 9rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+}
+
+.bannerText {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+  opacity: 0.92;
+}
+
+.bannerNote {
+  display: flex;
+  margin-top: 4rem;
+  opacity: 0.75;
+  line-height: 1.3;
+}
+
+.chipRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: 5rem;
+}
+
+.chip {
+  display: flex;
+  margin: 2rem 4rem 0 0;
+  padding: 1rem 5rem;
+  border: 1rem solid rgba(255, 196, 96, 0.55);
+  border-radius: 8rem;
+  color: $fallback-tint;
+  font-size: 10rem;
+  white-space: nowrap;
+}
+
+// -- meters -------------------------------------------------------------------------------------
+
+@mixin meter-base {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0 6rem 6rem 0;
+}
+
+.meter {
+  @include meter-base;
+}
+
+.meterFallback {
+  @include meter-base;
+  opacity: $fallback-dim;
+  font-style: italic;
+}
+
+.meterTop {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.meterLabel {
+  display: flex;
+  font-size: 10rem;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-right: 4rem;
+}
+
+.meterValue {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.meterTrack {
+  display: flex;
+  flex-direction: row;
+  height: 5rem;
+  border-radius: 3rem;
+  background-color: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.meterFill {
+  display: flex;
+  height: 100%;
+  border-radius: 3rem;
+}
+
+// -- stacked bar --------------------------------------------------------------------------------
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stackTrack {
+  display: flex;
+  flex-direction: row;
+  height: 10rem;
+  border-radius: 2rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.stackSegment {
+  display: flex;
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4rem;
+}
+
+.legendCompact {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: 4rem;
+}
+
+.legendItem {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 1rem 10rem 1rem 0;
+  min-width: 0;
+}
+
+.legendSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 2rem;
+  margin-right: 4rem;
+}
+
+.legendLabel {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11rem;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 6rem;
+}
+
+.legendValue {
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.95;
+}
+
+// -- section chrome -----------------------------------------------------------------------------
+
+.sectionTitle {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin: 8rem 0 5rem 0;
+  padding-bottom: 3rem;
+  border-bottom: 1rem solid rgba(255, 255, 255, 0.12);
+}
+
+.sectionTitleText {
+  display: flex;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin-right: 8rem;
+  flex: 0 0 auto;
+}
+
+.sectionNote {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10rem;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// -- stat cells ---------------------------------------------------------------------------------
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-right: 10rem;
+}
+
+.statLabel {
+  display: flex;
+  font-size: 10rem;
+  opacity: 0.62;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.statValue {
+  display: flex;
+  font-size: 14rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

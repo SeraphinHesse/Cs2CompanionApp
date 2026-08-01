@@ -1,0 +1,417 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/political_state.schema.json",
+  "title": "state_<year>_<month>.json — the sidecar political state (plan §5)",
+
+  "$comment": "Mirrors Agora.Core.Contracts.PoliticalState. Wire conventions: camelCase property names, SimDate as 'YYYY-MM-DD', enums as their C# member names, Guid as the canonical 8-4-4-4-12 form. Every array here has a documented sort key, because §2.3 defines desync as the SHA-256 of this document changing across a reload — an unsorted list changes that hash without anything actually being wrong.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "saveGuid", "date", "settings"],
+
+  "$defs": {
+    "simDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "unitInterval": { "type": "number", "minimum": 0, "maximum": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "idList": { "type": "array", "items": { "type": "string" } },
+    "issue": { "type": "string", "enum": ["Services", "CostOfLiving", "Environment", "Transit", "Growth", "HeritageOrder"] },
+
+    "issueVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["services", "costOfLiving", "environment", "transit", "growth", "heritageOrder"],
+      "properties": {
+        "services": { "type": "number" },
+        "costOfLiving": { "type": "number" },
+        "environment": { "type": "number" },
+        "transit": { "type": "number" },
+        "growth": { "type": "number" },
+        "heritageOrder": { "type": "number" }
+      }
+    },
+
+    "partyVoteShare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partyId", "share"],
+      "properties": {
+        "partyId": { "$ref": "#/$defs/id" },
+        "share": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "voteShareList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/partyVoteShare" },
+      "$comment": "Sorted by partyId ordinal ascending."
+    },
+
+    "blocKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wealth", "education", "age"],
+      "properties": {
+        "wealth": { "type": "string", "enum": ["Low", "Middle", "High"] },
+        "education": { "type": "string", "enum": ["Uneducated", "PoorlyEducated", "Educated", "WellEducated", "HighlyEducated"] },
+        "age": { "type": "string", "enum": ["Child", "Teen", "Adult", "Elderly"] }
+      }
+    },
+
+    "bloc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["districtId", "key"],
+      "properties": {
+        "districtId": { "$ref": "#/$defs/id" },
+        "key": { "$ref": "#/$defs/blocKey" },
+        "population": { "type": "integer", "minimum": 0 },
+        "populationShare": { "$ref": "#/$defs/unitInterval" },
+        "eligibleVoters": { "type": "integer", "minimum": 0 },
+        "weights": { "$ref": "#/$defs/issueVector" },
+        "ideal": { "$ref": "#/$defs/issueVector" },
+        "happiness": { "type": "number", "minimum": 0, "maximum": 100 },
+        "discontent": { "$ref": "#/$defs/unitInterval" },
+        "previousVote": { "$ref": "#/$defs/voteShareList" },
+        "hasCityFallbacks": { "type": "boolean" }
+      }
+    },
+
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "foundedDate"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "shortName": { "type": "string", "maxLength": 12 },
+        "description": { "type": "string" },
+        "slogan": { "type": "string" },
+        "colorHex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "archetypeId": { "type": "string" },
+        "platform": { "$ref": "#/$defs/issueVector" },
+        "lastManifesto": { "$ref": "#/$defs/issueVector" },
+        "status": { "type": "string", "enum": ["Active", "Endangered", "Dissolved", "Merged", "Revived"] },
+        "foundedDate": { "$ref": "#/$defs/simDate" },
+        "dissolvedDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "lastVoteShare": { "$ref": "#/$defs/unitInterval" },
+        "seatsHeld": { "type": "integer", "minimum": 0 },
+        "isIncumbent": { "type": "boolean" },
+        "isInGovernment": { "type": "boolean" },
+        "consecutiveElectionsBelowThreshold": { "type": "integer", "minimum": 0 },
+        "predecessorPartyId": { "type": ["string", "null"] },
+        "successorPartyId": { "type": ["string", "null"] },
+        "factionIds": { "$ref": "#/$defs/idList" },
+        "coreGrievance": { "$ref": "#/$defs/issue" },
+        "revivalCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "faction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "partyId", "status", "foundedDate"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "partyId": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "shortName": { "type": "string", "maxLength": 12 },
+        "description": { "type": "string" },
+        "leaderName": { "type": "string" },
+        "archetypeId": { "type": "string" },
+        "platform": { "$ref": "#/$defs/issueVector" },
+        "internalSupport": { "$ref": "#/$defs/unitInterval" },
+        "isDominant": { "type": "boolean" },
+        "tensionWithParty": { "$ref": "#/$defs/unitInterval" },
+        "status": { "type": "string", "enum": ["Active", "Endangered", "Dissolved", "Merged", "Revived"] },
+        "foundedDate": { "$ref": "#/$defs/simDate" },
+        "dissolvedDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "predecessorFactionId": { "type": ["string", "null"] },
+        "successorFactionId": { "type": ["string", "null"] },
+        "demands": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+        "coreBlocs": { "type": "array", "items": { "$ref": "#/$defs/blocKey" } },
+        "consecutiveCyclesBelowThreshold": { "type": "integer", "minimum": 0 },
+        "coreGrievance": { "$ref": "#/$defs/issue" }
+      }
+    },
+
+    "districtResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["districtId"],
+      "properties": {
+        "districtId": { "$ref": "#/$defs/id" },
+        "shares": { "$ref": "#/$defs/voteShareList" },
+        "turnout": { "$ref": "#/$defs/unitInterval" },
+        "votesCast": { "type": "integer", "minimum": 0 },
+        "eligibleVoters": { "type": "integer", "minimum": 0 },
+        "winningPartyId": { "type": "string" },
+        "margin": { "type": "number" },
+        "seats": { "type": "integer", "minimum": 0 },
+        "decidedByTieBreak": { "type": "boolean" }
+      }
+    },
+
+    "seatAllocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partyId", "seats"],
+      "properties": {
+        "partyId": { "$ref": "#/$defs/id" },
+        "seats": { "type": "integer", "minimum": 0 },
+        "seatShare": { "$ref": "#/$defs/unitInterval" },
+        "voteShare": { "$ref": "#/$defs/unitInterval" },
+        "districtSeats": { "type": "integer", "minimum": 0 },
+        "listSeats": { "type": "integer", "minimum": 0 },
+        "passedThreshold": { "type": "boolean" }
+      }
+    },
+
+    "pollResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "date"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/simDate" },
+        "pollsterName": { "type": "string" },
+        "pollsterId": { "type": "string" },
+        "shares": { "$ref": "#/$defs/voteShareList" },
+        "trueShares": { "$ref": "#/$defs/voteShareList" },
+        "districts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["districtId"],
+            "properties": {
+              "districtId": { "$ref": "#/$defs/id" },
+              "shares": { "$ref": "#/$defs/voteShareList" },
+              "projectedTurnout": { "$ref": "#/$defs/unitInterval" },
+              "samplingBias": { "type": "number" }
+            }
+          }
+        },
+        "undecidedShare": { "$ref": "#/$defs/unitInterval" },
+        "projectedTurnout": { "$ref": "#/$defs/unitInterval" },
+        "sampleSize": { "type": "integer", "minimum": 0 },
+        "marginOfError": { "type": "number", "minimum": 0 },
+        "weeksToElection": { "type": "integer", "minimum": 0 },
+        "electionDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "isPublished": { "type": "boolean" }
+      }
+    },
+
+    "electionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "date", "system"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/simDate" },
+        "system": { "type": "string", "enum": ["Proportional", "FirstPastThePost"] },
+        "termNumber": { "type": "integer", "minimum": 1 },
+        "isSnapElection": { "type": "boolean" },
+        "partyIdsOnBallot": { "$ref": "#/$defs/idList" },
+        "cityVoteShares": { "$ref": "#/$defs/voteShareList" },
+        "districts": { "type": "array", "items": { "$ref": "#/$defs/districtResult" } },
+        "seats": { "type": "array", "items": { "$ref": "#/$defs/seatAllocation" } },
+        "totalSeats": { "type": "integer", "minimum": 0 },
+        "turnout": { "$ref": "#/$defs/unitInterval" },
+        "totalVotesCast": { "type": "integer", "minimum": 0 },
+        "totalEligibleVoters": { "type": "integer", "minimum": 0 },
+        "mayorPartyId": { "type": ["string", "null"] },
+        "mayorName": { "type": ["string", "null"] },
+        "mayorVoteShares": { "$ref": "#/$defs/voteShareList" },
+        "finalPollDeviation": { "type": "number" },
+        "nextElectionDate": { "$ref": "#/$defs/simDate" }
+      }
+    },
+
+    "coalition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "formedDate", "status"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "formedDate": { "$ref": "#/$defs/simDate" },
+        "endedDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "memberPartyIds": { "$ref": "#/$defs/idList" },
+        "leadPartyId": { "type": "string" },
+        "oppositionPartyIds": { "$ref": "#/$defs/idList" },
+        "seats": { "type": "integer", "minimum": 0 },
+        "seatShare": { "$ref": "#/$defs/unitInterval" },
+        "hasMajority": { "type": "boolean" },
+        "cohesion": { "$ref": "#/$defs/unitInterval" },
+        "stability": { "$ref": "#/$defs/unitInterval" },
+        "status": { "type": "string", "enum": ["Negotiating", "Governing", "Minority", "Collapsed", "Expired"] },
+        "collapseReason": {
+          "type": "string",
+          "enum": ["None", "StabilityDecay", "MandateFailure", "EventShock", "IdeologicalDrift", "PartnerWithdrawal"]
+        },
+        "formationAttempts": { "type": "integer", "minimum": 0 },
+        "electionId": { "type": "string" },
+        "mandateIds": { "$ref": "#/$defs/idList" }
+      }
+    },
+
+    "mandate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "partyId", "metric", "issuedDate", "deadlineDate", "status"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "partyId": { "$ref": "#/$defs/id" },
+        "coalitionId": { "type": "string" },
+        "districtId": { "type": ["string", "null"] },
+        "issue": { "$ref": "#/$defs/issue" },
+        "metric": {
+          "type": "string",
+          "enum": [
+            "Happiness", "Unemployment", "AirPollution", "GroundPollution", "NoisePollution",
+            "WaterPollution", "CrimeRate", "HealthCoverage", "EducationCoverage", "PoliceCoverage",
+            "FireCoverage", "GarbageCoverage", "TransitCoverage", "AverageCommuteMinutes",
+            "AverageRent", "AverageLandValue", "RentBurden", "Population", "BudgetBalance", "Debt"
+          ]
+        },
+        "direction": { "type": "string", "enum": ["Increase", "Decrease"] },
+        "baselineValue": { "type": "number" },
+        "targetValue": { "type": "number" },
+        "currentValue": { "type": "number" },
+        "progress": { "$ref": "#/$defs/unitInterval" },
+        "issuedDate": { "$ref": "#/$defs/simDate" },
+        "deadlineDate": { "$ref": "#/$defs/simDate" },
+        "resolvedDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "Active", "Fulfilled", "PartiallyFulfilled", "Defied", "Abandoned"]
+        },
+        "salience": { "$ref": "#/$defs/unitInterval" },
+        "resolutionEffectId": { "type": ["string", "null"], "pattern": "^([a-z0-9-]+)?$" },
+        "text": { "type": "string" },
+        "isMeasurementStalled": { "type": "boolean" }
+      }
+    },
+
+    "timelineEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "date", "region", "severity"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "date": { "$ref": "#/$defs/simDate" },
+        "region": { "type": "string", "enum": ["Eu", "Na", "Global"] },
+        "origin": { "type": "string", "enum": ["Catalog", "Procedural", "Political"] },
+        "title": { "type": "string", "maxLength": 120 },
+        "severity": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "durationMonths": { "type": "integer", "minimum": 0, "maximum": 240 },
+        "effects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["effectId", "scope", "magnitude", "durationMonths"],
+            "properties": {
+              "effectId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+              "scope": { "type": "string", "enum": ["City", "District"] },
+              "magnitude": { "type": "number" },
+              "durationMonths": { "type": "integer", "minimum": 0, "maximum": 240 },
+              "districtId": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "headlineBrief": { "type": "string", "maxLength": 300 },
+        "tags": { "$ref": "#/$defs/idList" },
+        "issuePressure": { "$ref": "#/$defs/issueVector" },
+        "archetypeId": { "type": "string" },
+        "firedDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "expiresDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+        "localAngle": { "type": "string" }
+      }
+    },
+
+    "derivedIndices": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "giniCoefficient": { "$ref": "#/$defs/unitInterval" },
+        "brainDrainIndex": { "$ref": "#/$defs/unitInterval" },
+        "serviceInequalityIndex": { "$ref": "#/$defs/unitInterval" },
+        "commuteMiseryIndex": { "$ref": "#/$defs/unitInterval" },
+        "polarizationIndex": { "$ref": "#/$defs/unitInterval" },
+        "legitimacyIndex": { "$ref": "#/$defs/unitInterval" },
+        "discontentIndex": { "$ref": "#/$defs/unitInterval" },
+        "districts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["districtId"],
+            "properties": {
+              "districtId": { "$ref": "#/$defs/id" },
+              "gentrificationIndex": { "$ref": "#/$defs/unitInterval" },
+              "commuteMiseryIndex": { "$ref": "#/$defs/unitInterval" },
+              "serviceCoverageIndex": { "$ref": "#/$defs/unitInterval" },
+              "discontentIndex": { "$ref": "#/$defs/unitInterval" },
+              "giniCoefficient": { "$ref": "#/$defs/unitInterval" },
+              "hasCityFallbacks": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "startYear", "theme", "system"],
+      "$comment": "Per-save settings live here and nowhere else (non-negotiable #10). The only global settings are the master toggle and anything that must work before a save exists.",
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "startYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
+        "theme": { "type": "string", "enum": ["Eu", "Na"] },
+        "system": { "type": "string", "enum": ["Proportional", "FirstPastThePost"] },
+        "wakeCadence": {
+          "type": "string",
+          "$comment": "Flags enum serialized as a comma-separated member list, e.g. 'Yearly, Election, Manual'."
+        },
+        "snapshotRetention": { "type": "integer", "minimum": 1 },
+        "enabled": { "type": "boolean" },
+        "effectsEnabled": { "type": "boolean" }
+      }
+    }
+  },
+
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "saveGuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "$comment": "Agora owns this (plan §5). Written into the save via the serialization hooks, never derived from a filename and never regenerated at load — it is the first argument to every seed derivation."
+    },
+    "date": { "$ref": "#/$defs/simDate" },
+    "settings": { "$ref": "#/$defs/settings" },
+    "parties": { "type": "array", "items": { "$ref": "#/$defs/party" }, "$comment": "Sorted by id." },
+    "factions": { "type": "array", "items": { "$ref": "#/$defs/faction" }, "$comment": "Sorted by id." },
+    "blocs": { "type": "array", "items": { "$ref": "#/$defs/bloc" }, "$comment": "Sorted by districtId then bloc ordinal." },
+    "currentVoteShares": { "$ref": "#/$defs/voteShareList" },
+    "currentDistrictStandings": { "type": "array", "items": { "$ref": "#/$defs/districtResult" } },
+    "recentPolls": { "type": "array", "items": { "$ref": "#/$defs/pollResult" }, "$comment": "Oldest first." },
+    "electionHistory": { "type": "array", "items": { "$ref": "#/$defs/electionResult" }, "$comment": "Oldest first, append-only." },
+    "government": { "oneOf": [{ "$ref": "#/$defs/coalition" }, { "type": "null" }] },
+    "coalitionHistory": { "type": "array", "items": { "$ref": "#/$defs/coalition" } },
+    "mandates": { "type": "array", "items": { "$ref": "#/$defs/mandate" }, "$comment": "Sorted by id." },
+    "activeEvents": { "type": "array", "items": { "$ref": "#/$defs/timelineEvent" }, "$comment": "Sorted by id." },
+    "firedEventIds": { "$ref": "#/$defs/idList" },
+    "indices": { "$ref": "#/$defs/derivedIndices" },
+    "termNumber": { "type": "integer", "minimum": 1 },
+    "nextElectionDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+    "isCampaignSeason": { "type": "boolean" },
+    "mayorPartyId": { "type": ["string", "null"] },
+    "lastFlavorDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] }
+  }
+}

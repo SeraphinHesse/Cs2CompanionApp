@@ -1,31 +1,397 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 1**
+**schemaVersion: 2**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
 must be listed here, and this file is the authority when the two sides disagree.
 
-## Naming
+**Frozen for M4.** Names and payload shapes in the *Registered bindings* table are law. Do not
+rename, do not add a field, do not reorder a sort key. If a panel needs something that is not here,
+report it — do not invent a binding name locally.
 
-`agora.<area>.<name>` — lowercase, dot-separated. The group prefix `agora` is reserved for this mod.
+---
 
-## Registered bindings
+## 1. Naming
 
-| Binding | Kind | C# type | Publisher | Consumer | Since |
-|---|---|---|---|---|---|
-| `agora.debug.simDay` | `GetterValueBinding<int>` | `int` | `UiBindings/AgoraDebugUISystem.cs` | `ui/src/panels/DebugPanel.tsx` | M0 |
-| `agora.debug.enabled` | `GetterValueBinding<bool>` | `bool` | `UiBindings/AgoraDebugUISystem.cs` | `ui/src/panels/DebugPanel.tsx` | M0 |
+`agora.<area>.<name>` — lowercase group, `camelCase` name. The group prefix `agora` is reserved for
+this mod. The JS side addresses a binding as two arguments, `(group, name)`:
 
-## Rules
+```tsx
+const seats$ = bindValue<Agora.SeatRow[]>("agora.seats", "allocation", []);
+```
+
+Five areas exist. Each has exactly one publishing `UISystemBase`.
+
+| Area | Owns | Publisher |
+|---|---|---|
+| `agora.state` | dashboard chrome: is there a political state, what date, what term | `src/Agora.Mod/UiBindings/AgoraStateUISystem.cs` |
+| `agora.parties` | the party/faction lookup table every panel renders labels and colours from | `src/Agora.Mod/UiBindings/AgoraStateUISystem.cs` |
+| `agora.seats` | seat chart, government breakdown, mayor, last election, latest poll | `src/Agora.Mod/UiBindings/AgoraSeatsUISystem.cs` |
+| `agora.districts` | per-district vote splits, wealth × education crosstabs, indices | `src/Agora.Mod/UiBindings/AgoraDistrictsUISystem.cs` |
+| `agora.news` | news feed, timeline events, mandate tracker, LLM health | `src/Agora.Mod/UiBindings/AgoraNewsUISystem.cs` |
+| `agora.debug` | M0 pipeline proof — not part of the dashboard, do not extend | `src/Agora.Mod/UiBindings/AgoraDebugUISystem.cs` |
+
+---
+
+## 2. Wire conventions
+
+Identical to the engine's JSON conventions so a payload can be produced straight from a contract
+object with no translation table.
+
+| Thing | On the wire | Notes |
+|---|---|---|
+| Property names | `camelCase` | matches `Agora.Core.Contracts` property names lower-cased |
+| `SimDate` | `"YYYY-MM-DD"` string | never a JS `Date`, never a number |
+| `SimDate?` | `""` when absent | **never `null`** — an empty string keeps every date field a `string` in TS |
+| `string?` (ids) | `""` when absent | **never `null`** — same reason |
+| Nullable *object* payloads | `null` | only the four documented ones: `seats.government`, `seats.mayor`, `seats.lastElection`, `seats.latestPoll` |
+| Enums | C# member name string | `"Governing"`, `"Proportional"`, `"HeritageOrder"`. Never the integer. |
+| Shares, rates, indices, progress | `number` in `[0,1]` | the panel formats as a percentage; C# never pre-multiplies by 100 |
+| Happiness | `number` in `[0,100]` | the one exception, because the game's own scale is 0–100 |
+| Counts (population, seats, votes) | integer `number` | a one-vote margin must survive the bridge |
+| Money | integer `number` | `long` on the C# side; values stay well inside `Number.MAX_SAFE_INTEGER` |
+| Lists | JSON array | **every list has a documented sort key below — honour it**, the panel does not re-sort |
+
+### Payload budget
+
+These cross a Gameface bridge on every update. Keep them flat and bounded:
+
+- No payload nests more than one level (a row may contain a small named group like `wealth`; it may
+  not contain a list of rows that themselves contain lists).
+- Unbounded histories are capped and the cap is part of the contract:
+  `AGORA_NEWS_FEED_MAX = 40`, `AGORA_EVENTS_MAX = 25`, `AGORA_ELECTION_HISTORY_MAX = 12`.
+- Anything per-district and expensive is a **map binding**, fetched only for the key the panel is
+  actually showing — never a city-wide array of every district's full detail.
+- Prose bodies never ride in a list payload. The feed carries headline + one-line summary; the body
+  arrives through `agora.news.article` only when an item is opened.
+
+---
+
+## 3. Binding kinds
+
+| Need | C# | JS |
+|---|---|---|
+| Cheap scalar, recomputed every UI tick | `GetterValueBinding<T>` + `AddUpdateBinding` | `bindValue` + `useValue` |
+| Payload pushed when the engine changes it | `ValueBinding<T>` + `AddBinding`, then `.Update(v)` | `bindValue` + `useValue` |
+| Per-key detail, fetched on demand | `GetterMapBinding<string,T>` + `AddBinding` | `bindMap` + `useMapValue` |
+| UI asks C# to do something | `TriggerBinding` + `AddBinding` | `bindTrigger` |
+| UI-only state shared between panels | — | `bindLocalValue` — **never a round trip through C#** |
+
+Selection state (which district is open, which party is highlighted) is UI-only. Use
+`bindLocalValue`; do not add a binding for it.
+
+---
+
+## 4. Registered bindings
+
+Direction is C# → UI for everything except the one trigger. "Cadence" is when the publisher calls
+`Update`, not how often the UI re-renders.
+
+### 4.0 `agora.debug` — M0 pipeline proof (closed)
+
+| Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|
+| `agora.debug.simDay` | `GetterValueBinding<int>` | `int` | `number` | UI tick | `0` | M0 |
+| `agora.debug.enabled` | `GetterValueBinding<bool>` | `bool` | `boolean` | UI tick | `false` | M0 |
+| `agora.debug.simDate` | `GetterValueBinding<string>` | `string` | `string` | UI tick | `""` | M0 |
+
+Consumer: `ui/src/shell/bindings.ts`, read by `ui/src/shell/AgoraButton.tsx`. This area is closed —
+it exists to prove the C# → JS pipeline still works, not to carry dashboard data. Dashboard panels
+use `agora.state.*`; they must **not** read `agora.debug.enabled` for the master toggle even though
+it currently returns the same value, and the button does not.
+
+`simDate` and `simDay` moved here when `ui/src/panels/DebugPanel.tsx` was retired and its readout
+folded into the always-mounted toggle button. The area kept its purpose: these are UI-tick getters
+straight off the clock, alive from the first frame in a loaded game, whereas `agora.state.summary`
+is empty until the engine's first monthly publish. Read the date from `agora.state.summary.date`
+for anything that is *about* the political state; read it from here only to prove the bridge works.
+
+### 4.1 `agora.state` — dashboard chrome
+
+| Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|
+| `agora.state.enabled` | `GetterValueBinding<bool>` | `bool` | `boolean` | UI tick | `false` | M4 |
+| `agora.state.ready` | `GetterValueBinding<bool>` | `bool` | `boolean` | UI tick | `false` | M4 |
+| `agora.state.summary` | `ValueBinding<T>` | `AgoraStateSummary : IJsonWritable` | `Agora.StateSummary` | monthly + on election | `EMPTY_STATE_SUMMARY` | M4 |
+
+`enabled` is the master toggle — when false a panel renders `null`, not a disabled shell. `ready` is
+true once the engine has published a political state at least once; until then panels render a
+skeleton, because every other binding in this contract is still at its empty value.
+
+### 4.2 `agora.parties` — shared lookup table
+
+| Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|
+| `agora.parties.roster` | `ValueBinding<T>` | `List<PartyBrief>` | `Agora.PartyBrief[]` | on party lifecycle change (rare) + monthly | `[]` | M4 |
+| `agora.parties.factions` | `ValueBinding<T>` | `List<FactionBrief>` | `Agora.FactionBrief[]` | on faction lifecycle change (rare) + monthly | `[]` | M4 |
+
+**Every other payload in this contract identifies a party by `partyId` only.** Name, short name and
+colour are looked up here. Do not duplicate party metadata into seat rows, district rows or news
+items — that is how the colour of one party ends up different in two panels.
+
+Sort: `roster` by `id` ordinal ascending. `factions` by `partyId` ordinal ascending, then
+`internalSupport` **descending**, then `id` ordinal ascending.
+
+### 4.3 `agora.seats` — seat chart + government breakdown
+
+| Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|
+| `agora.seats.total` | `GetterValueBinding<int>` | `int` | `number` | UI tick (reads a cached field) | `0` | M4 |
+| `agora.seats.allocation` | `ValueBinding<T>` | `List<SeatRow>` | `Agora.SeatRow[]` | on election + on monthly reprojection | `[]` | M4 |
+| `agora.seats.voteShares` | `ValueBinding<T>` | `List<PartyShare>` | `Agora.PartyShare[]` | monthly | `[]` | M4 |
+| `agora.seats.government` | `ValueBinding<T>` | `GovernmentSummary?` | `Agora.GovernmentSummary \| null` | on coalition form / collapse / stability tick | `null` | M4 |
+| `agora.seats.mayor` | `ValueBinding<T>` | `MayorSummary?` | `Agora.MayorSummary \| null` | on election + on mayor change | `null` | M4 |
+| `agora.seats.lastElection` | `ValueBinding<T>` | `ElectionSummary?` | `Agora.ElectionSummary \| null` | on election | `null` | M4 |
+| `agora.seats.latestPoll` | `ValueBinding<T>` | `PollSummary?` | `Agora.PollSummary \| null` | on poll publication | `null` | M4 |
+| `agora.seats.history` | `ValueBinding<T>` | `List<ElectionHistoryRow>` | `Agora.ElectionHistoryRow[]` | on election | `[]` | M4 |
+
+Sort keys — contractual:
+
+- `allocation`: `seats` **descending**, then `partyId` ordinal ascending. Ties are broken by id so
+  the chart does not reshuffle between updates.
+- `voteShares`, and every `PartyShare[]` nested anywhere: `partyId` ordinal ascending. This is the
+  engine contract for `List<PartyVoteShare>`; do not re-sort in the panel.
+- `history`: `date` **descending**, then `id` ascending. Capped at `AGORA_ELECTION_HISTORY_MAX = 12`.
+- `government.memberPartyIds` / `oppositionPartyIds`: ordinal ascending.
+
+**`PollResult.TrueShares` is never published.** It is model truth used to generate the published
+number; putting it on the bridge would leak the answer into the UI. `PollSummary.shares` is the
+published figure only. A publisher that writes `TrueShares` is a review-blocking defect.
+
+Under FPTP the winning party plus mayor is still modelled as a `Coalition`, so
+`agora.seats.government` is populated under both electoral systems and the panel needs one code
+path. `listSeats` is `0` for every row under FPTP; `districtSeats` is `0` for every row under a pure
+list system. The panel decides what to show from `state.summary.system`, not by sniffing zeroes.
+
+### 4.4 `agora.districts` — vote splits + wealth × education crosstabs
+
+| Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|
+| `agora.districts.list` | `ValueBinding<T>` | `List<DistrictBrief>` | `Agora.DistrictBrief[]` | monthly + on election | `[]` | M4 |
+| `agora.districts.detail` | `GetterMapBinding<string,T>` | `DistrictDetail` per key | `Agora.DistrictDetail` | on demand, per subscribed key | `EMPTY_DISTRICT_DETAIL` | M4 |
+| `agora.districts.crosstab` | `GetterMapBinding<string,T>` | `List<CrosstabCell>` per key | `Agora.CrosstabCell[]` | on demand, per subscribed key | `[]` | M4 |
+| `agora.districts.cityCrosstab` | `ValueBinding<T>` | `List<CrosstabCell>` | `Agora.CrosstabCell[]` | monthly | `[]` | M4 |
+| `agora.districts.cityIndices` | `ValueBinding<T>` | `CityIndices` | `Agora.CityIndices` | monthly | `EMPTY_CITY_INDICES` | M4 |
+
+The map key is the **district id** exactly as it appears in `DistrictBrief.id`. An unknown key
+returns the empty value, never throws — a district can be deleted by the player while its detail
+panel is open.
+
+Sort keys:
+
+- `list`: `id` ordinal ascending (matches `CitySnapshot.Districts`).
+- `crosstab` / `cityCrosstab`: `wealth` ascending (`Low`, `Middle`, `High`) then `education`
+  ascending (`Uneducated`, `PoorlyEducated`, `Educated`, `WellEducated`, `HighlyEducated`). Always
+  exactly 15 cells, in that order, even when a cell has zero population — the panel renders a fixed
+  3 × 5 grid and must not have to handle holes.
+- `detail.shares`: `partyId` ordinal ascending.
+- `detail.cityFallbackFields`: property name ascending.
+
+**Crosstab cells collapse the age axis.** The engine models 60 blocs (3 wealth × 5 education × 4
+age); this binding sums the four age bands so 15 rows cross the bridge instead of 60. Turnout in a
+cell is the vote-weighted turnout of its blocs, so the disenfranchised child/teen bands drag it down
+correctly rather than being dropped.
+
+**`hasCityFallbacks` is a rendering obligation, not decoration.** When it is true, every field named
+in `cityFallbackFields` is a city number wearing a district's name. The panel must mark those fields
+visually (dimmed + a tooltip) and must never present them as a local fact. This is
+`politicsmodplan.md` §6, and the reviewer checks it.
+
+### 4.5 `agora.news` — feed + mandate tracker
+
+| Binding | Kind | Direction | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|---|
+| `agora.news.feed` | `ValueBinding<T>` | C# → UI | `List<NewsHeadline>` | `Agora.NewsHeadline[]` | on flavor publish + on event fire | `[]` | M4 |
+| `agora.news.article` | `GetterMapBinding<string,T>` | C# → UI | `NewsArticle` per key | `Agora.NewsArticle` | on demand, per subscribed key | `EMPTY_NEWS_ARTICLE` | M4 |
+| `agora.news.events` | `ValueBinding<T>` | C# → UI | `List<TimelineEventBrief>` | `Agora.TimelineEventBrief[]` | on event fire / expire | `[]` | M4 |
+| `agora.news.mandates` | `ValueBinding<T>` | C# → UI | `List<MandateRow>` | `Agora.MandateRow[]` | monthly | `[]` | M4 |
+| `agora.news.flavorStatus` | `ValueBinding<T>` | C# → UI | `FlavorStatus` | `Agora.FlavorStatus` | on every flavor attempt, success or failure | `EMPTY_FLAVOR_STATUS` | M4 |
+| `agora.news.wakeFlavor` | `TriggerBinding` | **UI → C#** | — | `() => void` | on click | n/a | M4 |
+
+Sort keys:
+
+- `feed`: `date` **descending**, then `id` ordinal ascending. Capped at `AGORA_NEWS_FEED_MAX = 40`.
+- `events`: `firedDate` **descending**, then `id` ordinal ascending. Capped at `AGORA_EVENTS_MAX = 25`.
+- `mandates`: **status rank** ascending — `Active` 0, `Pending` 1, `PartiallyFulfilled` 2,
+  `Fulfilled` 3, `Defied` 4, `Abandoned` 5 — then `deadlineDate` ascending, then `id` ordinal
+  ascending. So the tracker opens on what is live and closest to its deadline.
+- `article.tags`, `events[].tags`, `events[].districtIds`: ordinal ascending.
+
+`agora.news.wakeFlavor` is the manual LLM wake from `politicsmodplan.md` §2. It **requests**; the
+engine decides. The panel must disable the control while `flavorStatus.pendingWake` is true and must
+not assume the feed changes as a result — a failed wake keeps the last good flavor by design
+(non-negotiable #7), and the only visible consequence may be `flavorStatus.lastError`.
+
+`flavorStatus.lastError` is an **engine-authored** short code, never LLM output and never a raw
+exception message: `""`, `"CliMissing"`, `"Timeout"`, `"BadJson"`, `"Disabled"`, `"Unknown"`.
+
+A mandate with `isMeasurementStalled === true` is **held, not failing**. Render it as paused; do not
+render its progress bar as falling behind, and never show it as `Defied` because the clock ran out
+while its metric was unreadable.
+
+---
+
+## 5. Payload shapes
+
+Authoritative declarations are in `ui/types/bindings.d.ts` under `declare namespace Agora`. They are
+global — panels reference `Agora.SeatRow` with **no import statement**. Do not `import` from a
+module path; there is no runtime module behind these types and `isolatedModules` would turn the
+import into a webpack resolution error.
+
+Summarised here so a C# publisher author does not have to read TypeScript:
+
+```
+StateSummary        schemaVersion, date, termNumber, system, theme, nextElectionDate,
+                    isCampaignSeason, weeksToElection, mayorPartyId
+PartyBrief          id, name, shortName, colorHex, status, isIncumbent, isInGovernment,
+                    coreGrievance, foundedDate, dissolvedDate
+FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
+                    tensionWithParty, status, coreGrievance
+PartyShare          partyId, share
+SeatRow             partyId, seats, seatShare, voteShare, districtSeats, listSeats, passedThreshold
+GovernmentSummary   id, status, leadPartyId, memberPartyIds, oppositionPartyIds, seats, seatShare,
+                    hasMajority, cohesion, stability, collapseReason, formedDate, endedDate,
+                    formationAttempts, electionId, mandateIds
+MayorSummary        partyId, name, electionId, sinceDate, margin, voteShares
+ElectionSummary     id, date, system, termNumber, isSnapElection, turnout, totalSeats,
+                    totalVotesCast, totalEligibleVoters, finalPollDeviation, nextElectionDate,
+                    cityVoteShares
+ElectionHistoryRow  id, date, termNumber, isSnapElection, turnout, winningPartyId, mayorPartyId,
+                    totalSeats
+PollSummary         id, date, pollsterId, pollsterName, sampleSize, marginOfError, undecidedShare,
+                    projectedTurnout, weeksToElection, electionDate, shares
+DistrictBrief       id, name, population, eligibleVoters, leadingPartyId, leadingShare,
+                    runnerUpPartyId, margin, turnout, happiness, discontent, hasCityFallbacks
+DistrictDetail      id, name, population, households, eligibleVoters, votesCast, turnout, happiness,
+                    unemployment, winningPartyId, margin, seats, decidedByTieBreak, shares,
+                    wealth{low,middle,high}, education{uneducated,poorlyEducated,educated,
+                    wellEducated,highlyEducated}, age{child,teen,adult,elderly},
+                    indices{gentrification,commuteMisery,serviceCoverage,discontent,gini},
+                    hasCityFallbacks, cityFallbackFields
+CrosstabCell        wealth, education, population, populationShare, eligibleVoters, turnout,
+                    leadingPartyId, leadingShare, happiness, discontent
+CityIndices         gini, brainDrain, serviceInequality, commuteMisery, polarization, legitimacy,
+                    discontent
+NewsHeadline        id, date, kind, headline, summary, outletId, outletName, severity, partyId,
+                    districtId, eventId, hasArticle
+NewsArticle         id, date, headline, byline, body, tone, outletId, outletName, tags, partyId,
+                    districtId, eventId
+TimelineEventBrief  id, date, title, region, origin, severity, durationMonths, firedDate,
+                    expiresDate, archetypeId, localAngle, tags, districtIds
+MandateRow          id, partyId, coalitionId, districtId, issue, metric, direction, baselineValue,
+                    targetValue, currentValue, progress, issuedDate, deadlineDate, resolvedDate,
+                    status, salience, text, isMeasurementStalled, monthsRemaining
+FlavorStatus        lastFlavorDate, lastAttemptDate, isStale, providerAvailable, pendingWake,
+                    lastError, articleCount
+```
+
+### Which fields are flavor
+
+`PartyBrief.name`/`shortName`, `FactionBrief.name`/`shortName`/`leaderName`,
+`MayorSummary.name`, `PollSummary.pollsterName`, `NewsHeadline.headline`/`summary`/`outletName`,
+`NewsArticle.*` prose, `TimelineEventBrief.localAngle` and `MandateRow.text` are **flavor-owned**.
+Render them; never parse them, never sort by them, never derive a number from them. Everything else
+is engine-owned.
+
+---
+
+## 6. Empty / loading values
+
+Copy these literally. `bindValue`'s third argument is the value rendered before C# publishes
+anything; omit it and the panel renders `undefined` on the first frame. Each panel declares the
+constants it needs module-locally — there is no shared runtime module, by design, because three
+panels are authored in parallel.
+
+```tsx
+const EMPTY_STATE_SUMMARY: Agora.StateSummary = {
+  schemaVersion: 0, date: "", termNumber: 0, system: "Proportional", theme: "Eu",
+  nextElectionDate: "", isCampaignSeason: false, weeksToElection: -1, mayorPartyId: "",
+};
+
+const EMPTY_CITY_INDICES: Agora.CityIndices = {
+  gini: 0, brainDrain: 0, serviceInequality: 0, commuteMisery: 0,
+  polarization: 0, legitimacy: 0, discontent: 0,
+};
+
+const EMPTY_DISTRICT_DETAIL: Agora.DistrictDetail = {
+  id: "", name: "", population: 0, households: 0, eligibleVoters: 0, votesCast: 0,
+  turnout: 0, happiness: 0, unemployment: 0, winningPartyId: "", margin: 0, seats: 0,
+  decidedByTieBreak: false, shares: [],
+  wealth: { low: 0, middle: 0, high: 0 },
+  education: { uneducated: 0, poorlyEducated: 0, educated: 0, wellEducated: 0, highlyEducated: 0 },
+  age: { child: 0, teen: 0, adult: 0, elderly: 0 },
+  indices: { gentrification: 0, commuteMisery: 0, serviceCoverage: 0, discontent: 0, gini: 0 },
+  hasCityFallbacks: false, cityFallbackFields: [],
+};
+
+const EMPTY_NEWS_ARTICLE: Agora.NewsArticle = {
+  id: "", date: "", headline: "", byline: "", body: "", tone: "", outletId: "", outletName: "",
+  tags: [], partyId: "", districtId: "", eventId: "",
+};
+
+const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {
+  lastFlavorDate: "", lastAttemptDate: "", isStale: false, providerAvailable: false,
+  pendingWake: false, lastError: "", articleCount: 0,
+};
+```
+
+Array bindings take `[]`. `agora.seats.government`, `agora.seats.mayor`, `agora.seats.lastElection`
+and `agora.seats.latestPoll` take `null`.
+
+`weeksToElection` is `-1` — not `0` — when no election is scheduled, so "the election is this week"
+stays distinguishable from "there is no election".
+
+---
+
+## 7. Rules
 
 1. **Register here first, implement second.** A binding not in this table does not exist.
 2. **Never rename in place.** Add the new name, migrate the consumer, then remove the old one in a
    later change. Renaming both sides in one commit works locally and breaks anyone mid-update.
-3. **Complex payloads implement `IJsonWritable`.** Do not hand-serialize to a JSON string and parse it
-   on the JS side — that defeats the binding layer's change tracking.
-4. **Bindings are a view, never a channel for engine state.** The UI reads politics; it does not
-   compute or mutate it. `TriggerBinding` may request an action (e.g. "wake the LLM now"), but the
-   engine decides what happens.
-5. **Update cost matters.** `GetterValueBinding` re-evaluates on the UI update tick — keep getters
-   cheap, and never run an `EntityQuery` inside one. Cache in a system, expose the cached value.
+3. **Never consume an unpublished binding.** `useValue` on a binding the C# side has not registered
+   returns the fallback at best and throws at worst. Nothing from §8 *Reserved* may be consumed.
+   Always pass the fallback argument, without exception.
+4. **Complex payloads implement `IJsonWritable`.** Do not hand-serialize to a JSON string and parse
+   it on the JS side — that defeats the binding layer's change tracking.
+5. **Bindings are a view, never a channel for engine state.** The UI reads politics; it does not
+   compute or mutate it. A `TriggerBinding` may request an action; the engine decides what happens.
+   No panel recomputes a share, a seat count or an index — if a number is needed, it is published.
+6. **Update cost matters.** `GetterValueBinding` re-evaluates on the UI update tick — keep getters
+   cheap, and never run an `EntityQuery` inside one. Cache in a simulation system, expose the cached
+   field. Only scalars are getters; every payload is a pushed `ValueBinding` or an on-demand map.
+7. **Honour the documented sort key.** Sorting is done once, in C#, against a stable key. A panel
+   that re-sorts by a flavor string reintroduces the ordering nondeterminism the engine spent effort
+   removing.
+8. **Never publish model-internal truth.** `PollResult.TrueShares`, seed values, RNG state, raw
+   snapshot history and unclamped intermediate scores stay on the C# side.
+9. **`hasCityFallbacks` must change the rendering.** See §4.4.
+10. **Cadence is per change, not per frame.** A `ValueBinding.Update` call with an unchanged payload
+    still costs a bridge crossing on some versions — publish on the engine's monthly/election tick,
+    not from `OnUpdate`.
+
+---
+
+## 8. Reserved — registered as names, **not yet published, do not consume**
+
+Listed so a later milestone does not pick a colliding name. A panel that binds one of these today
+gets an empty panel and no error.
+
+| Binding | Intended for | Milestone |
+|---|---|---|
+| `agora.seats.pollTrend` | trend chart of published poll shares over time | M6 |
+| `agora.districts.overlay` | political map overlay tint data per district | M6 |
+| `agora.districts.blocs` | the full 60-bloc breakdown behind a crosstab cell | M6 |
+| `agora.news.archive` | paged news archive beyond the 40-item feed | M6 |
+| `agora.news.markRead` | UI → C# read-state persistence | M6 |
+| `agora.state.settings` | per-save settings editor surface | M6 |
+
+---
+
+## 9. File hazard
+
+`ui/types/bindings.d.ts` is regenerated by `npx create-csii-ui-mod update` (`npm run update`). The
+`declare namespace Agora` block appended to it would be lost. It lives there because that is the
+only types file this contract owns; when the toolchain is next updated, move the block to
+`ui/types/agora.d.ts` (no other change needed — it is a global declaration file either way) and
+update this note.

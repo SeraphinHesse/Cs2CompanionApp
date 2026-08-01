@@ -1,0 +1,108 @@
+import { useValue } from "cs2/api";
+import { Button } from "cs2/ui";
+
+import { DistrictsPanel } from "../panels/Districts";
+import { NewsPanel } from "../panels/News";
+import { SeatsPanel } from "../panels/Seats";
+import { ShellBoundary } from "./Boundary";
+import { enabled$ } from "./bindings";
+import {
+  AgoraTab,
+  TAB_LABEL,
+  TAB_ORDER,
+  activeTab$,
+  closeDashboard,
+  dashboardOpen$,
+  showTab,
+} from "./state";
+import styles from "./Shell.module.scss";
+
+/**
+ * The dashboard shell. Mounted once at GameTopRight, replacing the three separate appends the
+ * panels used to make.
+ *
+ * Two things changed and both were the point. The panels are behind an open/closed flag, so the
+ * default view of the game is the game. And only one panel renders at a time — News alone is
+ * 760rem wide and 640rem tall, so three of them stacked in one corner exceeded the height of the
+ * hook point on any interface scale and buried the city underneath.
+ *
+ * Rendering one tab at a time also unmounts the other two, which drops their binding
+ * subscriptions. That is a feature for the Districts panel in particular: its detail and crosstab
+ * map bindings are fetched per open district and there is no reason to hold them while the player
+ * is reading the news.
+ */
+
+function renderTab(tab: AgoraTab): JSX.Element {
+  switch (tab) {
+    case "districts":
+      return <DistrictsPanel />;
+    case "news":
+      return <NewsPanel />;
+    case "council":
+    default:
+      return <SeatsPanel />;
+  }
+}
+
+const DashboardInner = (): JSX.Element | null => {
+  const enabled = useValue(enabled$);
+  const open = useValue(dashboardOpen$);
+  const tab = useValue(activeTab$);
+
+  // Every hook is above this line — neither the master toggle nor the open flag may change the
+  // hook order.
+  if (!enabled || !open) {
+    return null;
+  }
+
+  return (
+    <div className={styles.shell}>
+      <div className={styles.bar}>
+        <span className={styles.barTitle}>AGORA</span>
+
+        <div className={styles.tabs}>
+          {TAB_ORDER.map(function (candidate) {
+            return (
+              <Button
+                key={candidate}
+                variant="flat"
+                className={candidate === tab ? styles.tabSelected : styles.tab}
+                selected={candidate === tab}
+                onSelect={function () {
+                  showTab(candidate);
+                }}
+              >
+                {TAB_LABEL[candidate]}
+              </Button>
+            );
+          })}
+        </div>
+
+        <Button
+          variant="flat"
+          className={styles.close}
+          onSelect={closeDashboard}
+          tooltipLabel="Close the Agora dashboard"
+        >
+          &#215;
+        </Button>
+      </div>
+
+      {/*
+        Keyed by tab so switching tabs remounts rather than reconciling one panel's tree into
+        another's. The panels are structurally unrelated and each subscribes to its own bindings on
+        mount; reusing the tree across a switch is the kind of thing that works until it silently
+        does not.
+      */}
+      <div key={tab} className={styles.panelSlot}>
+        {renderTab(tab)}
+      </div>
+    </div>
+  );
+};
+
+export const Dashboard = (): JSX.Element => (
+  <ShellBoundary>
+    <DashboardInner />
+  </ShellBoundary>
+);

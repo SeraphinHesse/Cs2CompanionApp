@@ -1,0 +1,1092 @@
+using System;
+using System.Collections.Generic;
+using Agora.Core.Contracts;
+using Agora.Core.Engine.Affinity;
+using Agora.Core.Engine.Blocs;
+using Agora.Core.Engine.Elections.Fptp;
+using Agora.Core.Engine.Elections.Proportional;
+using Agora.Core.Engine.Factions;
+using Agora.Core.Engine.Government.Coalitions;
+using Agora.Core.Engine.Government.Mandates;
+using Agora.Core.Engine.Indices;
+using Agora.Core.Engine.Parties;
+using Agora.Core.Engine.Polling;
+using Agora.Core.Engine.Turnout;
+using Agora.Core.Events.Scheduler;
+using Agora.Core.Tuning;
+using Mandate = Agora.Core.Contracts.Mandate;
+
+namespace Agora.Core.Engine
+{
+    /// <summary>
+    /// The monthly political tick: the one place the fourteen engine packets are run in order.
+    ///
+    /// <para>
+    /// Every packet was written as a pure function taking frozen contract types, on the understanding
+    /// that something would eventually sequence them. This is that something, and it is deliberately
+    /// the <i>only</i> thing that knows the order. Each packet still knows nothing about its
+    /// neighbours, which is what keeps them independently testable — the cost is that the order lives
+    /// here and is therefore worth reading carefully.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Purity.</b> <see cref="Advance"/> is a pure function of <see cref="EngineTickInput"/> plus
+    /// tuning. It never mutates the input state, never touches a clock, never dispatches an effect and
+    /// never calls the flavor provider — it reports what should happen and the caller does it. That is
+    /// what makes a decade of politics replayable in milliseconds with no game installed, and it is
+    /// what makes non-negotiable #3 checkable rather than merely intended.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Stage order</b>, and why: blocs are rebuilt first because everything downstream is expressed
+    /// per bloc. Events fire before affinity so a disaster is already live when voters are scored
+    /// against it. Indices come before affinity because the incumbency penalty reads city discontent.
+    /// Turnout follows affinity because it needs the competitiveness of the race. Mandates are
+    /// monitored before an election so a promise resolved this month is counted in the vote that
+    /// judges it. Lifecycle runs last because a party that dies this cycle must still have contested
+    /// the election that killed it.
+    /// </para>
+    /// </summary>
+    public static class PoliticalEngine
+    {
+        private static readonly TimelineEvent[] NoEvents = new TimelineEvent[0];
+
+        // ------------------------------------------------------------------ save creation
+
+        /// <summary>
+        /// Builds the state a brand-new save starts from: the initial party registry, the first bloc
+        /// set, and factions where the theme calls for them. No election is scheduled yet — that
+        /// happens on the first tick past <c>scheduler.warmupMonths</c>, once there is enough metric
+        /// history for the politics to be about something.
+        /// </summary>
+        public static PoliticalState CreateInitialState(Guid saveGuid, SimDate startDate,
+                                                        AgoraSettings? settings, CitySnapshot? snapshot,
+                                                        EngineTuning? tuning)
+        {
+            EngineTuning t = tuning ?? EngineTuning.Default;
+            AgoraSettings s = settings ?? new AgoraSettings();
+
+            var state = new PoliticalState
+            {
+                SaveGuid = saveGuid,
+                Date = startDate,
+                Settings = s,
+                TermNumber = 1
+            };
+
+            state.Parties = PartyRegistry.GenerateInitial(saveGuid, startDate, s.Theme, t);
+
+            if (snapshot != null)
+            {
+                state.Blocs = BlocBuilder.Build(snapshot, t, null);
+            }
+
+            if (FactionModel.AppliesTo(s))
+            {
+                state.Factions = FactionModel.Generate(state.Parties, state.Blocs, saveGuid, startDate, t);
+                FactionModel.ApplyFactionIds(state.Parties, state.Factions);
+            }
+
+            state.Parties.Sort(PartyRegistry.CompareById);
+            return state;
+        }
+
+        // ------------------------------------------------------------------ the tick
+
+        /// <summary>
+        /// Advances the political state by one sim date.
+        /// </summary>
+        /// <remarks>
+        /// Safe to call on every date the caller sees: dates that fall between engine intervals return
+        /// <see cref="EngineTickResult.DidWork"/> false and a state that differs from the prior one
+        /// only in <see cref="PoliticalState.Date"/>.
+        /// </remarks>
+        public static EngineTickResult Advance(EngineTickInput input)
+        {
+            if (input == null) throw new ArgumentNullException(nameof(input));
+
+            EngineTuning tuning = input.Tuning ?? EngineTuning.Default;
+            PoliticalState prior = input.PriorState ?? new PoliticalState();
+            AgoraSettings settings = prior.Settings ?? new AgoraSettings();
+            SimDate date = input.Date;
+            Guid saveGuid = input.SaveGuid;
+
+            var result = new EngineTickResult();
+
+            // An election is due when the calendar says so, decided before the plan is built because
+            // TickPlanner needs to know in order to authorise the election LLM wake.
+            bool electionDue = prior.NextElectionDate.HasValue
+                            && date.TotalMonths >= prior.NextElectionDate.Value.TotalMonths;
+
+            TickPlan plan = TickPlanner.Plan(input.StartDate, date, settings, prior.NextElectionDate,
+                                             electionDue, input.ManualFlavorWakeRequested, tuning);
+
+            result.Plan = plan;
+            result.LlmWake = plan.LlmWake;
+
+            if (!plan.IsEngineTick)
+            {
+                // Not our month. Hand back a copy rather than the caller's object so nobody can come to
+                // depend on "the engine returns what I gave it when nothing happened".
+                result.State = CloneState(prior, date);
+                result.DidWork = false;
+                return result;
+            }
+
+            PoliticalState state = CloneState(prior, date);
+            result.DidWork = true;
+
+            // The first ballot is scheduled once warmup has passed, never at save creation: before
+            // there is metric history the politics would be about nothing, and a campaign fought over
+            // a city the sensors have not yet measured is the one thing §3 says must not happen. One
+            // full term from the political start date, so it does not land in the same tick.
+            if (!state.NextElectionDate.HasValue && plan.IsWarmupComplete)
+            {
+                int termMonths = TermMonths(settings.System, tuning);
+                SimDate first = input.StartDate.AddMonths(termMonths);
+                if (first <= date) first = date.AddMonths(termMonths);
+                state.NextElectionDate = first;
+            }
+
+            CitySnapshot? snapshot = input.Snapshot;
+
+            // --- 1. Blocs. Everything downstream is expressed per bloc, so this is first and is the
+            // only stage that reads the raw snapshot demographics.
+            if (snapshot != null)
+            {
+                state.Blocs = BlocBuilder.Build(snapshot, tuning, prior.Blocs);
+            }
+            else
+            {
+                result.Warnings.Add("No snapshot this tick; blocs, indices and mandates were carried " +
+                                    "forward unchanged.");
+            }
+
+            // --- 2. Parties. A save that somehow reached a tick with no registry gets one rather than
+            // an empty ballot for the rest of its life.
+            if (state.Parties.Count == 0)
+            {
+                state.Parties = PartyRegistry.GenerateInitial(saveGuid, date, settings.Theme, tuning);
+                result.Warnings.Add("Party registry was empty; generated the initial set at " + date + ".");
+            }
+
+            // --- 3. Events. Fired before voters are scored, so a disaster is already live in the
+            // affinity pass that reacts to it.
+            var eventSeverities = new List<int>();
+            if (plan.IsEventScan)
+            {
+                var context = new SchedulerContext
+                {
+                    SaveGuid = saveGuid,
+                    Date = date,
+                    StartDate = input.StartDate,
+                    Theme = settings.Theme,
+                    Catalog = input.Catalog ?? NoEvents,
+                    FiredEventIds = state.FiredEventIds,
+                    ActiveEvents = state.ActiveEvents,
+                    DistrictIds = DistrictIds(snapshot),
+                    Archetypes = input.Archetypes,
+                    EffectsEnabled = settings.EffectsEnabled
+                };
+
+                SchedulerTick events = EventScheduler.Run(context, tuning);
+
+                state.ActiveEvents = events.NextActiveEvents;
+                state.FiredEventIds = MergeIds(state.FiredEventIds, events.RecordedEventIds);
+
+                result.FiredEvents.AddRange(events.Fired);
+                result.EffectRequests.AddRange(events.EffectRequests);
+                result.Warnings.AddRange(events.Warnings);
+
+                for (int i = 0; i < events.Fired.Count; i++) eventSeverities.Add(events.Fired[i].Severity);
+            }
+
+            // --- 4. Derived indices. Before affinity: the incumbency penalty reads city discontent,
+            // and reading last month's would make the penalty lag the events that caused it.
+            if (plan.IsIndices && snapshot != null)
+            {
+                var indicesInput = new IndicesInput
+                {
+                    Snapshot = snapshot,
+                    History = input.SnapshotHistory ?? new CitySnapshot[0],
+                    Previous = prior.Indices,
+                    VoteShares = state.CurrentVoteShares,
+                    LastElectionTurnout = LastElectionTurnout(state),
+                    Mandates = state.Mandates,
+                    Government = state.Government
+                };
+
+                state.Indices = IndicesEngine.Compute(indicesInput, tuning);
+
+                // The snapshot's own Indices block is documented as "this is what fills it" — the
+                // sidecar and the flavor prompt both read it from there rather than from state.
+                snapshot.Indices = state.Indices;
+            }
+
+            // --- 5. Affinity. The voter model proper: how much each bloc likes each party today.
+            IReadOnlyList<Party> ballot = OnBallot(state.Parties);
+
+            var affinityRequest = new AffinityRequest
+            {
+                SaveGuid = saveGuid,
+                Date = date,
+                Blocs = state.Blocs,
+                Parties = ballot,
+                Mandates = state.Mandates,
+                ActiveEvents = state.ActiveEvents,
+                Government = state.Government,
+                Indices = state.Indices,
+                LastElectionDate = LastElectionDate(state)
+            };
+
+            AffinityResult affinity = AffinityEngine.Compute(affinityRequest, tuning);
+
+            // --- 6. Turnout. After affinity, because who bothers to vote depends on how close the
+            // race is, and how close the race is comes out of the affinity pass.
+            double campaignIntensity = CampaignIntensity(date, state.NextElectionDate, tuning);
+
+            var turnoutInputs = new TurnoutInputs
+            {
+                SaveGuid = saveGuid,
+                Date = date,
+                Blocs = state.Blocs,
+                DistrictStandings = state.CurrentDistrictStandings,
+                CityStandings = state.CurrentVoteShares,
+                CampaignIntensity = campaignIntensity,
+                IsSnapElection = false,
+                IncumbentConsecutiveTerms = IncumbentTerms(state)
+            };
+
+            TurnoutProjection projection = TurnoutModel.Project(turnoutInputs, tuning);
+
+            // --- 7. Current standings — "if the election were held today". Model truth, not a poll:
+            // the polling packet distorts these, it does not produce them.
+            List<DistrictResult> districtStandings;
+            List<PartyVoteShare> cityStandings = AggregateStandings(affinity, projection, out districtStandings);
+
+            state.CurrentVoteShares = cityStandings;
+            state.CurrentDistrictStandings = districtStandings;
+            state.IsCampaignSeason = plan.IsCampaignSeason;
+
+            // --- 8. Polls. Published only inside a campaign and only on a publication day — the two
+            // are ANDed here rather than baked into the calendar (see TickPlan.IsPollTick).
+            if (plan.IsPollTick && state.NextElectionDate.HasValue
+                && PollSchedule.IsPublishDay(date, state.NextElectionDate.Value, tuning))
+            {
+                PollResult? poll = RunPoll(saveGuid, date, state.NextElectionDate.Value, snapshot,
+                                            districtStandings, projection, tuning);
+                if (poll != null)
+                {
+                    state.RecentPolls.Add(poll);
+                    state.RecentPolls = PollSchedule.Trim(state.RecentPolls, tuning);
+                    result.Poll = poll;
+                }
+            }
+
+            // --- 9. Mandate monitoring. Before the election, so a promise resolved this month is
+            // already counted in the vote that judges it.
+            int fulfilled = 0;
+            int defied = 0;
+
+            if (plan.IsMandateMonitor && snapshot != null && state.Mandates.Count > 0)
+            {
+                MandateTickResult mandateTick =
+                    MandateMonitor.Tick(saveGuid, date, snapshot, state.Mandates, tuning);
+
+                state.Mandates = new List<Mandate>(mandateTick.Mandates);
+
+                // The kill switch is honoured here as well as in the scheduler, and on the same rule:
+                // the politics are computed and the resolution is recorded, only the request to the
+                // sink is withheld. Leaving this to the Mod would make a per-save switch depend on the
+                // caller remembering, and a switch that only works when someone remembers is not one.
+                if (settings.EffectsEnabled && tuning.Effects.Enabled)
+                {
+                    result.EffectRequests.AddRange(mandateTick.Effects);
+                }
+
+                for (int i = 0; i < mandateTick.Resolutions.Count; i++)
+                {
+                    MandateStatus status = mandateTick.Resolutions[i].Status;
+                    if (status == MandateStatus.Fulfilled) fulfilled++;
+                    else if (status == MandateStatus.Defied) defied++;
+                }
+            }
+
+            // --- 10. The election, or the government's monthly confidence check. Never both: an
+            // election ends the outgoing government by definition.
+            bool holdElection = electionDue && plan.IsWarmupComplete && ballot.Count > 0;
+
+            if (holdElection)
+            {
+                RunElection(state, result, saveGuid, date, snapshot, affinity, projection, tuning);
+            }
+            else
+            {
+                TickGovernment(state, result, saveGuid, date, fulfilled, defied, eventSeverities, tuning);
+            }
+
+            // --- 11. Mandate generation. After formation, so a government elected this month leaves
+            // with promises rather than waiting a term for them.
+            if (state.Government != null && snapshot != null)
+            {
+                IReadOnlyList<Mandate> issued = MandateGenerator.Generate(
+                    saveGuid, date, snapshot, state.Government, state.Blocs, state.Mandates, tuning);
+
+                if (issued.Count > 0)
+                {
+                    state.Mandates.AddRange(issued);
+                    for (int i = 0; i < issued.Count; i++)
+                    {
+                        if (!state.Government.MandateIds.Contains(issued[i].Id))
+                            state.Government.MandateIds.Add(issued[i].Id);
+                    }
+                    state.Government.MandateIds.Sort(CompareOrdinal);
+                }
+            }
+
+            // --- 12. Lifecycle. Last, because a party that dies this cycle must still have contested
+            // the election that killed it, and a faction that splits must split from the platform the
+            // voters actually saw.
+            if (plan.IsLifecycle)
+            {
+                RunLifecycle(state, result, saveGuid, date, settings, tuning);
+            }
+
+            // --- 13. Assemble. Every list leaves in its contractual order, every time: an unsorted
+            // list changes the state hash without anything actually being wrong (§2.3).
+            Normalize(state);
+
+            result.State = state;
+            result.KnownPartyIds = PartyIds(state.Parties);
+            return result;
+        }
+
+        // ------------------------------------------------------------------ election
+
+        private static void RunElection(PoliticalState state, EngineTickResult result, Guid saveGuid,
+                                        SimDate date, CitySnapshot? snapshot, AffinityResult affinity,
+                                        TurnoutProjection projection, EngineTuning tuning)
+        {
+            string electionId = "election-" + date.Year.ToString("D4") + "-" + date.Month.ToString("D2");
+            bool isSnap = IsSnapElection(state, date, tuning);
+            PollResult? finalPoll = LastPublishedPoll(state);
+
+            ElectionResult election = state.Settings.System == ElectoralSystem.FirstPastThePost
+                ? RunFptp(state, saveGuid, date, electionId, isSnap, affinity, projection, finalPoll, tuning)
+                : RunProportional(state, saveGuid, date, electionId, isSnap, snapshot, projection,
+                                  finalPoll, tuning);
+
+            int termMonths = TermMonths(state.Settings.System, tuning);
+            election.NextElectionDate = date.AddMonths(termMonths);
+
+            state.ElectionHistory.Add(election);
+            state.TermNumber = election.TermNumber;
+            state.NextElectionDate = election.NextElectionDate;
+            state.MayorPartyId = election.MayorPartyId;
+
+            // How each bloc actually voted, for next cycle's habitual loyalty. Taken from the affinity
+            // pass rather than from the district totals: loyalty is a bloc-level habit, and district
+            // totals would give every bloc in a district the same memory.
+            ApplyPreviousVote(state.Blocs, affinity);
+
+            ApplyElectionToParties(state.Parties, election);
+
+            // The outgoing government ends with the ballot, and its live promises die with it — they
+            // were that government's promises, and scoring them against its successor would punish
+            // the wrong party.
+            if (state.Government != null)
+            {
+                Coalition outgoing = state.Government;
+                if (!outgoing.EndedDate.HasValue) outgoing.EndedDate = date;
+                if (outgoing.Status != CoalitionStatus.Collapsed) outgoing.Status = CoalitionStatus.Expired;
+
+                state.CoalitionHistory.Add(outgoing);
+                state.Mandates = new List<Mandate>(
+                    MandateMonitor.AbandonAll(state.Mandates, outgoing.Id, date));
+                state.Government = null;
+            }
+
+            CoalitionFormationResult formation = CoalitionFormation.Form(
+                saveGuid, date, election.Id, state.Settings.System, election.Seats, state.Parties,
+                election.MayorPartyId, tuning);
+
+            if (formation.Succeeded)
+            {
+                state.Government = formation.Government;
+                ApplyGovernmentToParties(state.Parties, formation.Government!);
+            }
+            else
+            {
+                // Nobody could form a government. The calendar gets a fresh ballot rather than the
+                // save being left permanently ungoverned.
+                if (formation.SnapElectionDate.HasValue)
+                    state.NextElectionDate = formation.SnapElectionDate.Value;
+
+                result.Warnings.Add("No government could be formed after " + election.Id +
+                                    "; a fresh ballot is set for " + state.NextElectionDate + ".");
+            }
+
+            result.Election = election;
+            result.GovernmentChanged = true;
+        }
+
+        private static ElectionResult RunFptp(PoliticalState state, Guid saveGuid, SimDate date,
+                                              string electionId, bool isSnap, AffinityResult affinity,
+                                              TurnoutProjection projection, PollResult? finalPoll,
+                                              EngineTuning tuning)
+        {
+            var input = new FptpElectionInput
+            {
+                SaveGuid = saveGuid,
+                Date = date,
+                Id = electionId,
+                TermNumber = state.TermNumber + 1,
+                IsSnapElection = isSnap,
+                Parties = state.Parties,
+                Affinities = affinity.Affinities,
+                Turnouts = AllBlocTurnouts(projection),
+                IncumbentMayorPartyId = state.MayorPartyId,
+                FinalPoll = finalPoll
+            };
+
+            return FptpElection.Run(input, tuning);
+        }
+
+        private static ElectionResult RunProportional(PoliticalState state, Guid saveGuid, SimDate date,
+                                                      string electionId, bool isSnap, CitySnapshot? snapshot,
+                                                      TurnoutProjection projection, PollResult? finalPoll,
+                                                      EngineTuning tuning)
+        {
+            List<PartyVoteShare> shares = state.CurrentVoteShares;
+            int totalVotes = projection.TotalProjectedVotes;
+
+            int population = snapshot != null ? snapshot.Population : 0;
+            int chamber = ProportionalAllocator.ChamberSize(population, tuning.ElectionsPr);
+
+            // No district seats: electionsPr.districtSeatShare ships at 0, so the whole chamber is a
+            // single national list. Passing null rather than an empty list says "there were no
+            // district contests" rather than "every party won nothing in them".
+            SeatAllocationResult allocation = ProportionalAllocator.Allocate(
+                VoteCounts.FromShares(shares, totalVotes), chamber, null, tuning, saveGuid, date, electionId);
+
+            var election = new ElectionResult
+            {
+                Id = electionId,
+                Date = date,
+                System = ElectoralSystem.Proportional,
+                TermNumber = state.TermNumber + 1,
+                IsSnapElection = isSnap,
+                PartyIdsOnBallot = PartyIds(OnBallot(state.Parties)),
+                CityVoteShares = new List<PartyVoteShare>(shares),
+                Districts = CloneDistrictResults(state.CurrentDistrictStandings),
+                Seats = allocation.Seats,
+                TotalSeats = allocation.TotalSeats,
+                Turnout = projection.CityTurnout,
+                TotalVotesCast = totalVotes,
+                TotalEligibleVoters = projection.TotalEligibleVoters,
+                MayorPartyId = null,
+                FinalPollDeviation = finalPoll == null
+                    ? 0.0
+                    : PollingEngine.MeanAbsoluteDeviation(finalPoll.Shares, shares)
+            };
+
+            return election;
+        }
+
+        // ------------------------------------------------------------------ government between elections
+
+        private static void TickGovernment(PoliticalState state, EngineTickResult result, Guid saveGuid,
+                                           SimDate date, int fulfilled, int defied,
+                                           List<int> eventSeverities, EngineTuning tuning)
+        {
+            Coalition? government = state.Government;
+            if (government == null) return;
+            if (government.Status != CoalitionStatus.Governing && government.Status != CoalitionStatus.Minority)
+                return;
+
+            var inputs = new CoalitionTickInputs
+            {
+                MonthsElapsed = tuning.Scheduler.TickIntervalMonths <= 0 ? 1 : tuning.Scheduler.TickIntervalMonths,
+                FailedMandates = defied,
+                FulfilledMandates = fulfilled,
+                EventSeverities = eventSeverities,
+                Parties = new List<Party>(state.Parties),
+                Seats = LastElectionSeats(state),
+                TermExpired = false
+            };
+
+            CoalitionTickResult tick = CoalitionStability.Advance(government, inputs, saveGuid, date, tuning);
+            tick.ApplyTo(government);
+
+            if (!tick.Ended) return;
+
+            // The government fell. Its promises are abandoned rather than failed — they were never
+            // given the term they were measured over.
+            state.CoalitionHistory.Add(government);
+            state.Mandates = new List<Mandate>(MandateMonitor.AbandonAll(state.Mandates, government.Id, date));
+            state.Government = null;
+            ClearGovernmentFromParties(state.Parties);
+
+            if (tick.SnapElectionDate.HasValue) state.NextElectionDate = tick.SnapElectionDate.Value;
+
+            result.GovernmentChanged = true;
+            result.Warnings.Add("Government " + government.Id + " ended at " + date + " (" +
+                                tick.CollapseReason + "); next ballot " + state.NextElectionDate + ".");
+        }
+
+        // ------------------------------------------------------------------ lifecycle
+
+        private static void RunLifecycle(PoliticalState state, EngineTickResult result, Guid saveGuid,
+                                         SimDate date, AgoraSettings settings, EngineTuning tuning)
+        {
+            IssueClimate climate = IssueClimate.FromBlocs(state.Blocs);
+
+            var lifecycleInput = new PartyLifecycleInput
+            {
+                SaveGuid = saveGuid,
+                Date = date,
+                Theme = settings.Theme,
+                Parties = state.Parties,
+                Factions = state.Factions,
+                LastElection = result.Election,
+                CityGrievance = climate.Grievance
+            };
+
+            PartyLifecycleOutcome outcome = PartyLifecycle.Advance(lifecycleInput, tuning);
+            state.Parties = new List<Party>(outcome.Parties);
+
+            if (FactionModel.AppliesTo(settings))
+            {
+                FactionCycleResult factions = FactionModel.Advance(
+                    state.Parties, state.Factions, state.Blocs, saveGuid, date, tuning);
+
+                state.Factions = factions.Factions;
+                FactionModel.ApplyFactionIds(state.Parties, state.Factions);
+                FactionModel.ApplyPlatforms(state.Parties, factions);
+            }
+        }
+
+        // ------------------------------------------------------------------ standings
+
+        /// <summary>
+        /// Turns per-bloc preference into district and city vote shares, weighted by the votes each
+        /// bloc is projected to actually cast.
+        /// </summary>
+        /// <remarks>
+        /// Summation order is fixed: districts in the projection's own (sorted) order, then blocs in
+        /// <see cref="DistrictTurnout.Blocs"/> order, which is bloc-ordinal ascending. Floating-point
+        /// addition is not associative, so this is the difference between a reproducible state hash
+        /// and a desync that only shows up on someone else's machine.
+        /// </remarks>
+        private static List<PartyVoteShare> AggregateStandings(AffinityResult affinity,
+                                                               TurnoutProjection projection,
+                                                               out List<DistrictResult> districts)
+        {
+            districts = new List<DistrictResult>();
+
+            // Bloc shares indexed for lookup only — never enumerated, so its ordering cannot leak.
+            var byBloc = new Dictionary<string, BlocVoteShares>(StringComparer.Ordinal);
+            for (int i = 0; i < affinity.BlocShares.Count; i++)
+            {
+                BlocVoteShares b = affinity.BlocShares[i];
+                byBloc[b.DistrictId + "|" + b.Bloc.Ordinal.ToString()] = b;
+            }
+
+            var cityVotes = new Dictionary<string, double>(StringComparer.Ordinal);
+            double cityTotal = 0.0;
+
+            for (int d = 0; d < projection.Districts.Count; d++)
+            {
+                DistrictTurnout district = projection.Districts[d];
+
+                var districtVotes = new Dictionary<string, double>(StringComparer.Ordinal);
+                double districtTotal = 0.0;
+
+                for (int b = 0; b < district.Blocs.Count; b++)
+                {
+                    BlocTurnout bloc = district.Blocs[b];
+                    if (bloc.ProjectedVotes <= 0) continue;
+
+                    BlocVoteShares shares;
+                    if (!byBloc.TryGetValue(district.DistrictId + "|" + bloc.Bloc.Ordinal.ToString(), out shares))
+                        continue;
+
+                    for (int p = 0; p < shares.Shares.Count; p++)
+                    {
+                        PartyVoteShare share = shares.Shares[p];
+                        double votes = share.Share * bloc.ProjectedVotes;
+
+                        Accumulate(districtVotes, share.PartyId, votes);
+                        Accumulate(cityVotes, share.PartyId, votes);
+                        districtTotal += votes;
+                        cityTotal += votes;
+                    }
+                }
+
+                List<PartyVoteShare> districtShares = ToShares(districtVotes, districtTotal);
+
+                var districtResult = new DistrictResult
+                {
+                    DistrictId = district.DistrictId,
+                    Shares = districtShares,
+                    Turnout = district.Turnout,
+                    VotesCast = district.ProjectedVotes,
+                    EligibleVoters = district.EligibleVoters,
+                    Seats = 0
+                };
+
+                SetWinner(districtResult);
+                districts.Add(districtResult);
+            }
+
+            return ToShares(cityVotes, cityTotal);
+        }
+
+        private static void Accumulate(Dictionary<string, double> totals, string partyId, double votes)
+        {
+            double current;
+            totals[partyId] = totals.TryGetValue(partyId, out current) ? current + votes : votes;
+        }
+
+        /// <summary>
+        /// Normalises accumulated votes into shares sorted by party id — the contractual order for
+        /// every <see cref="PartyVoteShare"/> list.
+        /// </summary>
+        private static List<PartyVoteShare> ToShares(Dictionary<string, double> votes, double total)
+        {
+            var ids = new List<string>(votes.Count);
+            foreach (KeyValuePair<string, double> entry in votes) ids.Add(entry.Key);
+
+            // The dictionary was a scratch accumulator; sorting here is what makes the output order
+            // independent of the insertion order above.
+            ids.Sort(CompareOrdinal);
+
+            var shares = new List<PartyVoteShare>(ids.Count);
+            for (int i = 0; i < ids.Count; i++)
+            {
+                double share = total > 0.0 ? votes[ids[i]] / total : 0.0;
+                shares.Add(new PartyVoteShare(ids[i], share));
+            }
+
+            return shares;
+        }
+
+        private static void SetWinner(DistrictResult district)
+        {
+            double best = -1.0;
+            double second = -1.0;
+            string winner = "";
+
+            for (int i = 0; i < district.Shares.Count; i++)
+            {
+                double share = district.Shares[i].Share;
+                if (share > best)
+                {
+                    second = best;
+                    best = share;
+                    winner = district.Shares[i].PartyId;
+                }
+                else if (share > second)
+                {
+                    second = share;
+                }
+            }
+
+            district.WinningPartyId = winner;
+            district.Margin = best > 0.0 && second > 0.0 ? best - second : (best > 0.0 ? best : 0.0);
+        }
+
+        // ------------------------------------------------------------------ polling
+
+        private static PollResult? RunPoll(Guid saveGuid, SimDate date, SimDate electionDate,
+                                           CitySnapshot? snapshot, List<DistrictResult> standings,
+                                           TurnoutProjection projection, EngineTuning tuning)
+        {
+            if (snapshot == null || standings.Count == 0) return null;
+
+            string? pollsterId = PollSchedule.PollsterForDate(date, electionDate, tuning);
+            if (pollsterId == null) return null;
+
+            var request = new PollRequest
+            {
+                SaveGuid = saveGuid,
+                Date = date,
+                ElectionDate = electionDate,
+                PollsterId = pollsterId,
+                IsPublished = true
+            };
+
+            for (int i = 0; i < standings.Count; i++)
+            {
+                DistrictResult standing = standings[i];
+
+                DistrictSnapshot? district = MandateMetrics.FindDistrict(snapshot, standing.DistrictId);
+                if (district == null) continue;
+
+                request.Districts.Add(DistrictPollInput.FromSnapshot(
+                    district, standing.Shares, projection.TurnoutFor(standing.DistrictId),
+                    standing.EligibleVoters));
+            }
+
+            if (request.Districts.Count == 0) return null;
+
+            return PollingEngine.Run(request, tuning);
+        }
+
+        // ------------------------------------------------------------------ write-backs
+
+        private static void ApplyPreviousVote(List<Bloc> blocs, AffinityResult affinity)
+        {
+            var byBloc = new Dictionary<string, BlocVoteShares>(StringComparer.Ordinal);
+            for (int i = 0; i < affinity.BlocShares.Count; i++)
+            {
+                BlocVoteShares b = affinity.BlocShares[i];
+                byBloc[b.DistrictId + "|" + b.Bloc.Ordinal.ToString()] = b;
+            }
+
+            for (int i = 0; i < blocs.Count; i++)
+            {
+                Bloc bloc = blocs[i];
+
+                BlocVoteShares shares;
+                if (!byBloc.TryGetValue(bloc.DistrictId + "|" + bloc.Key.Ordinal.ToString(), out shares))
+                    continue;
+
+                bloc.PreviousVote = new List<PartyVoteShare>(shares.Shares);
+            }
+        }
+
+        private static void ApplyElectionToParties(List<Party> parties, ElectionResult election)
+        {
+            for (int i = 0; i < parties.Count; i++)
+            {
+                Party party = parties[i];
+
+                party.LastVoteShare = ShareFor(election.CityVoteShares, party.Id);
+                party.SeatsHeld = SeatsFor(election.Seats, party.Id);
+                party.LastManifesto = party.Platform;
+            }
+        }
+
+        private static void ApplyGovernmentToParties(List<Party> parties, Coalition government)
+        {
+            for (int i = 0; i < parties.Count; i++)
+            {
+                Party party = parties[i];
+                bool member = government.MemberPartyIds.Contains(party.Id);
+
+                party.IsInGovernment = member;
+                party.IsIncumbent = string.CompareOrdinal(party.Id, government.LeadPartyId) == 0;
+            }
+        }
+
+        private static void ClearGovernmentFromParties(List<Party> parties)
+        {
+            for (int i = 0; i < parties.Count; i++)
+            {
+                parties[i].IsInGovernment = false;
+                parties[i].IsIncumbent = false;
+            }
+        }
+
+        // ------------------------------------------------------------------ state plumbing
+
+        /// <summary>
+        /// A copy safe to mutate. History lists (<see cref="PoliticalState.ElectionHistory"/>,
+        /// <see cref="PoliticalState.RecentPolls"/>) share their element references deliberately: those
+        /// types are documented as immutable once written, and deep-copying a century of elections
+        /// every month would be the single most expensive thing the engine does.
+        /// </summary>
+        private static PoliticalState CloneState(PoliticalState source, SimDate date)
+        {
+            var clone = new PoliticalState
+            {
+                SchemaVersion = source.SchemaVersion,
+                SaveGuid = source.SaveGuid,
+                Date = date,
+                Settings = source.Settings ?? new AgoraSettings(),
+                Parties = PartyRegistry.CloneAll(source.Parties ?? new List<Party>()),
+                Factions = new List<Faction>(source.Factions ?? new List<Faction>()),
+                Blocs = new List<Bloc>(source.Blocs ?? new List<Bloc>()),
+                CurrentVoteShares = new List<PartyVoteShare>(source.CurrentVoteShares ?? new List<PartyVoteShare>()),
+                CurrentDistrictStandings = CloneDistrictResults(source.CurrentDistrictStandings),
+                RecentPolls = new List<PollResult>(source.RecentPolls ?? new List<PollResult>()),
+                ElectionHistory = new List<ElectionResult>(source.ElectionHistory ?? new List<ElectionResult>()),
+                Government = CloneCoalition(source.Government),
+                CoalitionHistory = new List<Coalition>(source.CoalitionHistory ?? new List<Coalition>()),
+                Mandates = CloneMandates(source.Mandates),
+                ActiveEvents = new List<TimelineEvent>(source.ActiveEvents ?? new List<TimelineEvent>()),
+                FiredEventIds = new List<string>(source.FiredEventIds ?? new List<string>()),
+                Indices = source.Indices,
+                TermNumber = source.TermNumber,
+                NextElectionDate = source.NextElectionDate,
+                IsCampaignSeason = source.IsCampaignSeason,
+                MayorPartyId = source.MayorPartyId,
+                LastFlavorDate = source.LastFlavorDate
+            };
+
+            return clone;
+        }
+
+        private static Coalition? CloneCoalition(Coalition? source)
+        {
+            if (source == null) return null;
+
+            return new Coalition
+            {
+                SchemaVersion = source.SchemaVersion,
+                Id = source.Id,
+                FormedDate = source.FormedDate,
+                EndedDate = source.EndedDate,
+                MemberPartyIds = new List<string>(source.MemberPartyIds),
+                LeadPartyId = source.LeadPartyId,
+                OppositionPartyIds = new List<string>(source.OppositionPartyIds),
+                Seats = source.Seats,
+                SeatShare = source.SeatShare,
+                HasMajority = source.HasMajority,
+                Cohesion = source.Cohesion,
+                Stability = source.Stability,
+                Status = source.Status,
+                CollapseReason = source.CollapseReason,
+                FormationAttempts = source.FormationAttempts,
+                ElectionId = source.ElectionId,
+                MandateIds = new List<string>(source.MandateIds)
+            };
+        }
+
+        private static List<Mandate> CloneMandates(List<Mandate>? source)
+        {
+            var clone = new List<Mandate>();
+            if (source == null) return clone;
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                if (source[i] != null) clone.Add(MandateMonitor.Clone(source[i]));
+            }
+            return clone;
+        }
+
+        private static List<DistrictResult> CloneDistrictResults(List<DistrictResult>? source)
+        {
+            var clone = new List<DistrictResult>();
+            if (source == null) return clone;
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                DistrictResult d = source[i];
+                if (d == null) continue;
+
+                clone.Add(new DistrictResult
+                {
+                    DistrictId = d.DistrictId,
+                    Shares = new List<PartyVoteShare>(d.Shares),
+                    Turnout = d.Turnout,
+                    VotesCast = d.VotesCast,
+                    EligibleVoters = d.EligibleVoters,
+                    WinningPartyId = d.WinningPartyId,
+                    Margin = d.Margin,
+                    Seats = d.Seats,
+                    DecidedByTieBreak = d.DecidedByTieBreak
+                });
+            }
+
+            return clone;
+        }
+
+        /// <summary>Puts every list back into its contractual order before the state leaves.</summary>
+        private static void Normalize(PoliticalState state)
+        {
+            state.Parties.Sort(PartyRegistry.CompareById);
+            state.Factions.Sort(CompareFactions);
+            state.Blocs.Sort(CompareBlocs);
+            state.Mandates.Sort(CompareMandates);
+            state.ActiveEvents.Sort(CompareEvents);
+            state.CurrentDistrictStandings.Sort(CompareDistrictResults);
+            state.FiredEventIds.Sort(CompareOrdinal);
+
+            if (state.Government != null)
+            {
+                state.Government.MemberPartyIds.Sort(CompareOrdinal);
+                state.Government.OppositionPartyIds.Sort(CompareOrdinal);
+                state.Government.MandateIds.Sort(CompareOrdinal);
+            }
+        }
+
+        // ------------------------------------------------------------------ small readers
+
+        private static IReadOnlyList<Party> OnBallot(IReadOnlyList<Party> parties)
+        {
+            var ballot = new List<Party>();
+            for (int i = 0; i < parties.Count; i++)
+            {
+                if (parties[i] != null && PartyRegistry.IsOnBallot(parties[i])) ballot.Add(parties[i]);
+            }
+            return ballot;
+        }
+
+        private static List<string> PartyIds(IReadOnlyList<Party> parties)
+        {
+            var ids = new List<string>(parties.Count);
+            for (int i = 0; i < parties.Count; i++) ids.Add(parties[i].Id);
+            ids.Sort(CompareOrdinal);
+            return ids;
+        }
+
+        private static List<string> DistrictIds(CitySnapshot? snapshot)
+        {
+            var ids = new List<string>();
+            if (snapshot == null) return ids;
+
+            for (int i = 0; i < snapshot.Districts.Count; i++)
+            {
+                string id = snapshot.Districts[i].Id;
+                if (!string.IsNullOrEmpty(id)) ids.Add(id);
+            }
+
+            ids.Sort(CompareOrdinal);
+            return ids;
+        }
+
+        private static List<BlocTurnout> AllBlocTurnouts(TurnoutProjection projection)
+        {
+            var turnouts = new List<BlocTurnout>();
+            for (int d = 0; d < projection.Districts.Count; d++)
+            {
+                DistrictTurnout district = projection.Districts[d];
+                for (int b = 0; b < district.Blocs.Count; b++) turnouts.Add(district.Blocs[b]);
+            }
+            return turnouts;
+        }
+
+        private static List<string> MergeIds(List<string> existing, List<string> added)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var merged = new List<string>();
+
+            for (int i = 0; i < existing.Count; i++)
+                if (!string.IsNullOrEmpty(existing[i]) && seen.Add(existing[i])) merged.Add(existing[i]);
+
+            for (int i = 0; i < added.Count; i++)
+                if (!string.IsNullOrEmpty(added[i]) && seen.Add(added[i])) merged.Add(added[i]);
+
+            merged.Sort(CompareOrdinal);
+            return merged;
+        }
+
+        private static SimDate? LastElectionDate(PoliticalState state) =>
+            state.ElectionHistory.Count == 0
+                ? (SimDate?)null
+                : state.ElectionHistory[state.ElectionHistory.Count - 1].Date;
+
+        private static double? LastElectionTurnout(PoliticalState state) =>
+            state.ElectionHistory.Count == 0
+                ? (double?)null
+                : state.ElectionHistory[state.ElectionHistory.Count - 1].Turnout;
+
+        private static List<SeatAllocation> LastElectionSeats(PoliticalState state) =>
+            state.ElectionHistory.Count == 0
+                ? new List<SeatAllocation>()
+                : new List<SeatAllocation>(state.ElectionHistory[state.ElectionHistory.Count - 1].Seats);
+
+        private static PollResult? LastPublishedPoll(PoliticalState state)
+        {
+            for (int i = state.RecentPolls.Count - 1; i >= 0; i--)
+            {
+                if (state.RecentPolls[i].IsPublished) return state.RecentPolls[i];
+            }
+            return null;
+        }
+
+        private static int IncumbentTerms(PoliticalState state)
+        {
+            if (state.Government == null) return 0;
+
+            int terms = 0;
+            for (int i = 0; i < state.CoalitionHistory.Count; i++)
+            {
+                if (string.CompareOrdinal(state.CoalitionHistory[i].LeadPartyId,
+                                          state.Government.LeadPartyId) == 0) terms++;
+            }
+            return terms;
+        }
+
+        /// <summary>
+        /// True when this ballot was forced rather than scheduled: the previous government ended before
+        /// its term ran out.
+        /// </summary>
+        private static bool IsSnapElection(PoliticalState state, SimDate date, EngineTuning tuning)
+        {
+            if (state.ElectionHistory.Count == 0) return false;
+
+            ElectionResult last = state.ElectionHistory[state.ElectionHistory.Count - 1];
+            int termMonths = TermMonths(state.Settings.System, tuning);
+            return last.Date.MonthsUntil(date) < termMonths;
+        }
+
+        private static int TermMonths(ElectoralSystem system, EngineTuning tuning)
+        {
+            int years = system == ElectoralSystem.FirstPastThePost
+                ? tuning.ElectionsFptp.TermYears
+                : tuning.ElectionsPr.TermYears;
+
+            return (years < 1 ? 1 : years) * 12;
+        }
+
+        /// <summary>
+        /// How hard the campaign is being fought, 0 outside campaign season rising to 1 on polling day.
+        /// </summary>
+        private static double CampaignIntensity(SimDate date, SimDate? electionDate, EngineTuning tuning)
+        {
+            if (!electionDate.HasValue) return 0.0;
+
+            int months = date.MonthsUntil(electionDate.Value);
+            if (months < 0) return 0.0;
+
+            int window = tuning.Scheduler.CampaignStartMonthsBeforeElection;
+            if (window <= 0) return months == 0 ? 1.0 : 0.0;
+            if (months > window) return 0.0;
+
+            return Clamp01(1.0 - ((double)months / window));
+        }
+
+        private static double ShareFor(List<PartyVoteShare> shares, string partyId)
+        {
+            for (int i = 0; i < shares.Count; i++)
+            {
+                if (string.CompareOrdinal(shares[i].PartyId, partyId) == 0) return shares[i].Share;
+            }
+            return 0.0;
+        }
+
+        private static int SeatsFor(List<SeatAllocation> seats, string partyId)
+        {
+            for (int i = 0; i < seats.Count; i++)
+            {
+                if (string.CompareOrdinal(seats[i].PartyId, partyId) == 0) return seats[i].Seats;
+            }
+            return 0;
+        }
+
+        // netstandard2.0 has no Math.Clamp.
+        private static double Clamp01(double v) => v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+
+        // ------------------------------------------------------------------ comparers
+
+        private static int CompareOrdinal(string a, string b) => string.CompareOrdinal(a, b);
+
+        private static int CompareFactions(Faction a, Faction b) => string.CompareOrdinal(a.Id, b.Id);
+
+        private static int CompareMandates(Mandate a, Mandate b) => string.CompareOrdinal(a.Id, b.Id);
+
+        private static int CompareEvents(TimelineEvent a, TimelineEvent b) => string.CompareOrdinal(a.Id, b.Id);
+
+        private static int CompareDistrictResults(DistrictResult a, DistrictResult b) =>
+            string.CompareOrdinal(a.DistrictId, b.DistrictId);
+
+        private static int CompareBlocs(Bloc a, Bloc b)
+        {
+            int byDistrict = string.CompareOrdinal(a.DistrictId, b.DistrictId);
+            return byDistrict != 0 ? byDistrict : a.Key.Ordinal.CompareTo(b.Key.Ordinal);
+        }
+    }
+}

@@ -123,5 +123,37 @@ namespace Agora.Core.Determinism
         public const string EventProcedural = "event.procedural";
         public const string MandateSelection = "mandate.selection";
         public const string NameSelection = "flavor.name.selection";
+
+        // Added at the M2 contract freeze. Each covers a draw that has no existing stream and that
+        // §2.2 requires be named: reusing a neighbouring stream would couple two unrelated systems'
+        // outcomes, so that adding a party would silently change every poll.
+
+        /// <summary>Initial party set and platform jitter at save creation. Distinct from lifecycle.</summary>
+        public const string PartyGeneration = "party.generation";
+
+        /// <summary>Initial faction set, platform jitter and leader assignment.</summary>
+        public const string FactionGeneration = "faction.generation";
+
+        /// <summary>Manifesto refresh against current grievances at the start of each campaign.</summary>
+        public const string CampaignManifesto = "campaign.manifesto";
+
+        /// <summary>Per-pollster constant offset, stable across one campaign.</summary>
+        public const string PollHouseEffect = "poll.houseeffect";
+
+        /// <summary>Sample-size variation for one published poll.</summary>
+        public const string PollSample = "poll.sample";
+
+        /// <summary>Breaks an exact seat or district tie. Never a coin flip in place.</summary>
+        public const string ElectionTieBreak = "election.tiebreak";
+
+        /// <summary>Per-district swing on top of the modelled shares (FPTP).</summary>
+        public const string ElectionDistrictSwing = "election.district.swing";
+
+        /// <summary>Which deficits become mandates. Distinct from <see cref="MandateSelection"/>,
+        /// which picks among already-generated candidates.</summary>
+        public const string MandateGeneration = "mandate.generation";
+
+        /// <summary>Unrest roll after a defied mandate.</summary>
+        public const string UnrestTrigger = "event.unrest";
     }
 }

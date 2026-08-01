@@ -1,4 +1,1191 @@
 {
   "schemaVersion": 1,
-  "events": []
+  "events": [
+    {
+      "id": "na-recession-1990",
+      "dateISO": "1990-07-01",
+      "region": "na",
+      "title": "Recession Opens the Decade",
+      "severity": 2,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "US downturn dated from July 1990: oil price spike after the invasion of Kuwait, a credit contraction, and defence and construction layoffs. Local angle: municipal revenue falls while service demand rises, and incumbents are blamed for a national cycle.",
+      "tags": [
+        "economy",
+        "recession",
+        "cost-of-living"
+      ]
+    },
+    {
+      "id": "na-clean-air-act-amendments",
+      "dateISO": "1990-11-15",
+      "region": "na",
+      "title": "Clean Air Act Amendments Signed",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.05,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Congress adds acid-rain emissions trading, urban smog deadlines and air-toxics rules. Cities gain enforceable air targets and compliance costs at once; industrial employers argue the schedule closes plants. Environment becomes a municipal budget line.",
+      "tags": [
+        "environment",
+        "regulation",
+        "industry"
+      ]
+    },
+    {
+      "id": "na-los-angeles-unrest",
+      "dateISO": "1992-04-29",
+      "region": "na",
+      "title": "Verdict Sets Off Days of Urban Unrest",
+      "severity": 4,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "district-crime-accumulation",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-building-fire-hazard",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Acquittals in the Rodney King beating trial trigger six days of rioting in Los Angeles; the guard is deployed and thousands of buildings burn or are looted. Policing practice, inner-city disinvestment and emergency response dominate municipal politics.",
+      "tags": [
+        "unrest",
+        "policing",
+        "cities"
+      ]
+    },
+    {
+      "id": "na-nafta-ratification-fight",
+      "dateISO": "1993-12-08",
+      "region": "na",
+      "title": "NAFTA Clears Congress After a Bruising Fight",
+      "severity": 2,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.05,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "The implementation act is signed after unions, Perot voters and rust-belt Democrats fight it on the floor. Trade splits both parties along regional rather than partisan lines, and manufacturing towns expect to absorb the losses.",
+      "tags": [
+        "trade",
+        "nafta",
+        "manufacturing"
+      ]
+    },
+    {
+      "id": "na-nafta-takes-effect",
+      "dateISO": "1994-01-01",
+      "region": "na",
+      "title": "NAFTA Takes Effect",
+      "severity": 4,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Tariffs begin phasing out across Canada, Mexico and the United States. Continental supply chains reorganise: cheaper imported inputs and export access set against plant relocation. Trade becomes a permanent local cleavage rather than a one-off vote.",
+      "tags": [
+        "trade",
+        "nafta",
+        "growth"
+      ]
+    },
+    {
+      "id": "na-federal-crime-bill",
+      "dateISO": "1994-09-13",
+      "region": "na",
+      "title": "Federal Crime Bill Funds Police and Prisons",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-crime-probability",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-prison-time",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The 1994 crime act funds 100,000 additional officers, prison construction and mandatory minimums. Cities take the federal money for patrol strength now; the incarceration bill and its neighbourhood effects arrive a decade later.",
+      "tags": [
+        "crime",
+        "policing",
+        "federal-funding"
+      ]
+    },
+    {
+      "id": "na-telecom-deregulation",
+      "dateISO": "1996-02-08",
+      "region": "na",
+      "title": "Telecommunications Act Rewrites the Wires",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The 1996 act opens local telephone markets, loosens broadcast ownership caps and sets terms for cable and internet build-out. Cities negotiate franchise and right-of-way deals; coverage gaps become a visible local grievance.",
+      "tags": [
+        "telecom",
+        "deregulation",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "na-welfare-reform",
+      "dateISO": "1996-08-22",
+      "region": "na",
+      "title": "Welfare Reform Ends the Federal Entitlement",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-wellbeing",
+          "scope": "district",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "PRWORA replaces AFDC with time-limited block grants and work requirements. Caseloads fall sharply; responsibility for whoever remains shifts to states, counties and city services. Poverty becomes a municipal service problem.",
+      "tags": [
+        "welfare",
+        "services",
+        "inequality"
+      ]
+    },
+    {
+      "id": "na-nasdaq-peak",
+      "dateISO": "2000-03-10",
+      "region": "na",
+      "title": "Nasdaq Peaks at the Top of the Dot-Com Boom",
+      "severity": 2,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-university-interest",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The Nasdaq composite closes at its record on 10 March 2000 after a five-year internet run. Office rents, capital-gains revenue and tech payrolls are all at highs, and city budgets have been written assuming they continue.",
+      "tags": [
+        "dot-com",
+        "boom",
+        "growth"
+      ]
+    },
+    {
+      "id": "na-dotcom-bust",
+      "dateISO": "2001-03-01",
+      "region": "na",
+      "title": "Dot-Com Bust Empties the New Offices",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The technology-led recession begins in March 2001: startup failures, telecom overbuild write-offs and vacant sublease space. Cities that leveraged boom revenue face structural deficits and a stalled office pipeline.",
+      "tags": [
+        "dot-com",
+        "recession",
+        "growth"
+      ]
+    },
+    {
+      "id": "na-september-11",
+      "dateISO": "2001-09-11",
+      "region": "na",
+      "title": "September 11 Attacks",
+      "severity": 5,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-criminal-monitor",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Coordinated attacks on New York and Washington kill nearly 3,000. Aviation halts, insurance and security costs reprice, and federal politics reorganises around homeland security. Local government inherits screening, surveillance and first-responder mandates.",
+      "tags": [
+        "security",
+        "terrorism",
+        "federal-mandate"
+      ]
+    },
+    {
+      "id": "na-patriot-act",
+      "dateISO": "2001-10-26",
+      "region": "na",
+      "title": "PATRIOT Act Expands Surveillance Powers",
+      "severity": 3,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "city-criminal-monitor",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-crime-probability",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Signed six weeks after the attacks, the act widens wiretap, records and information-sharing authority and pushes federal-local intelligence fusion. Civil-liberties objections are marginal in 2001 and grow steadily through the decade.",
+      "tags": [
+        "security",
+        "civil-liberties",
+        "policing"
+      ]
+    },
+    {
+      "id": "na-energy-policy-act",
+      "dateISO": "2005-08-08",
+      "region": "na",
+      "title": "Energy Act Clears the Way for Fracking",
+      "severity": 3,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "city-oil-resource-amount",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 60
+        }
+      ],
+      "headlineBrief": "The 2005 energy act exempts hydraulic fracturing fluids from Safe Drinking Water Act review and subsidises unconventional drilling. Barely noticed at signature, it underwrites the shale expansion and the water-quality fights that follow it.",
+      "tags": [
+        "energy",
+        "shale",
+        "regulation"
+      ]
+    },
+    {
+      "id": "na-hurricane-katrina",
+      "dateISO": "2005-08-29",
+      "region": "na",
+      "title": "Hurricane Katrina Breaks the Levees",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-disaster-warning-time",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-disaster-damage-rate",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Storm surge overwhelms New Orleans flood defences; more than 1,800 die and the federal response fails in public. Emergency management, evacuation planning and infrastructure maintenance move from technical questions to electoral ones.",
+      "tags": [
+        "disaster",
+        "emergency-management",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "na-immigration-marches",
+      "dateISO": "2006-05-01",
+      "region": "na",
+      "title": "Immigration Marches Fill Downtown Streets",
+      "severity": 3,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 6
+        }
+      ],
+      "headlineBrief": "Millions march against the Sensenbrenner enforcement bill; the 1 May walkout stops construction, meatpacking and restaurant work in several cities. Immigration becomes an open municipal cleavage rather than a federal abstraction.",
+      "tags": [
+        "immigration",
+        "labour",
+        "protest"
+      ]
+    },
+    {
+      "id": "na-great-recession-begins",
+      "dateISO": "2007-12-01",
+      "region": "na",
+      "title": "Housing Bust Tips into Recession",
+      "severity": 4,
+      "durationMonths": 18,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The recession dates from December 2007: subprime defaults, falling house prices, construction layoffs and foreclosure clusters. Property-tax bases fall with a lag, so the municipal fiscal crisis arrives after the national one has been declared over.",
+      "tags": [
+        "recession",
+        "housing",
+        "cost-of-living"
+      ]
+    },
+    {
+      "id": "na-bank-rescue",
+      "dateISO": "2008-10-03",
+      "region": "na",
+      "title": "Congress Passes the Bank Rescue",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "The rescue package is signed on 3 October 2008 after Lehman's failure and an initial House rejection. It stabilises credit and detonates a legitimacy problem: support for banks, foreclosure for households. Both later populisms start here.",
+      "tags": [
+        "finance",
+        "bailout",
+        "legitimacy"
+      ]
+    },
+    {
+      "id": "na-recovery-act",
+      "dateISO": "2009-02-17",
+      "region": "na",
+      "title": "Stimulus Act Funds Shovel-Ready Projects",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-street-traffic-safety",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The Recovery Act directs roughly $800bn to tax cuts, state budget relief and infrastructure. Cities receive transport, water and weatherisation money on federal timelines, and delivery speed becomes the local test of competence.",
+      "tags": [
+        "stimulus",
+        "infrastructure",
+        "federal-funding"
+      ]
+    },
+    {
+      "id": "na-tea-party-revolt",
+      "dateISO": "2009-02-19",
+      "region": "na",
+      "title": "Anti-Bailout Revolt Names Itself the Tea Party",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "A televised trading-floor rant against mortgage relief seeds a mass anti-tax, anti-bailout movement that is winning primaries by 2010. Fiscal grievance detaches from the incumbent right and organises against it.",
+      "tags": [
+        "populism",
+        "taxes",
+        "party-system"
+      ]
+    },
+    {
+      "id": "na-health-reform",
+      "dateISO": "2010-03-23",
+      "region": "na",
+      "title": "Affordable Care Act Signed",
+      "severity": 4,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.05,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Coverage expansion through exchanges, subsidies and optional Medicaid expansion. Hospitals see uncompensated-care loads fall where states expand, and health coverage becomes an explicit partisan marker at every level of government.",
+      "tags": [
+        "healthcare",
+        "services",
+        "partisanship"
+      ]
+    },
+    {
+      "id": "na-occupy-wall-street",
+      "dateISO": "2011-09-17",
+      "region": "na",
+      "title": "Occupy Encampments Spread from Zuccotti Park",
+      "severity": 3,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-crime-accumulation",
+          "scope": "district",
+          "magnitude": 0.05,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Protest camps in dozens of downtowns put inequality and post-crisis impunity on the agenda and force cities into visible eviction decisions. Public-space policing and the 99-percent frame both outlive the camps themselves.",
+      "tags": [
+        "protest",
+        "inequality",
+        "public-space"
+      ]
+    },
+    {
+      "id": "na-hurricane-sandy",
+      "dateISO": "2012-10-29",
+      "region": "na",
+      "title": "Sandy Floods the Northeast Corridor",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-disaster-damage-rate",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-disaster-warning-time",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Storm surge floods subway tunnels, substations and coastal neighbourhoods days before a national election. Climate adaptation shifts from a coastal-planning topic to a capital-budget argument in every exposed city.",
+      "tags": [
+        "disaster",
+        "climate-adaptation",
+        "transit"
+      ]
+    },
+    {
+      "id": "na-shale-boom",
+      "dateISO": "2012-11-12",
+      "region": "na",
+      "title": "Shale Puts North America Back on Top of Oil",
+      "severity": 3,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "city-oil-resource-amount",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "The IEA projects the United States overtaking Saudi Arabia as the largest oil producer by 2020. Fracking counties boom on wages, truck traffic and housing shortages, while water and air complaints organise the opposition.",
+      "tags": [
+        "shale",
+        "energy",
+        "growth"
+      ]
+    },
+    {
+      "id": "na-flint-water-crisis",
+      "dateISO": "2014-04-25",
+      "region": "na",
+      "title": "Flint Switches Its Water Source",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "A cost-driven switch to the Flint River without corrosion control leaches lead into household taps, and officials deny the problem for eighteen months. Emergency financial management and the credibility of technical assurances both collapse.",
+      "tags": [
+        "water",
+        "infrastructure",
+        "trust"
+      ]
+    },
+    {
+      "id": "na-ferguson-unrest",
+      "dateISO": "2014-08-09",
+      "region": "na",
+      "title": "Ferguson Puts Policing on the National Agenda",
+      "severity": 3,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "district-crime-accumulation",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-criminal-monitor",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "A police shooting in Ferguson, Missouri triggers weeks of protest and a militarised response. Body cameras, consent decrees and municipal fines-and-fees practice enter mainstream local politics.",
+      "tags": [
+        "policing",
+        "protest",
+        "accountability"
+      ]
+    },
+    {
+      "id": "na-oil-price-collapse",
+      "dateISO": "2014-11-27",
+      "region": "na",
+      "title": "OPEC Declines to Cut and Oil Collapses",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-oil-resource-amount",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "OPEC holds output on 27 November 2014 and crude falls from over $100 to under $50 within months. Shale counties shed rigs and jobs while commuters and freight budgets gain. The energy boom's political coalition splits.",
+      "tags": [
+        "energy",
+        "shale",
+        "boom-bust"
+      ]
+    },
+    {
+      "id": "na-populist-realignment",
+      "dateISO": "2016-11-08",
+      "region": "na",
+      "title": "Populist Realignment at the 2016 Election",
+      "severity": 4,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.04,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "An anti-trade, anti-establishment campaign takes the industrial Midwest on turnout and defection in long-safe counties. Education replaces income as the sharpest voting cleavage, and trade and immigration become the governing agenda.",
+      "tags": [
+        "populism",
+        "realignment",
+        "trade"
+      ]
+    },
+    {
+      "id": "na-paris-withdrawal",
+      "dateISO": "2017-06-01",
+      "region": "na",
+      "title": "Federal Government Exits the Paris Agreement",
+      "severity": 2,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Washington announces withdrawal from the Paris climate accord and mayors and governors answer with a parallel commitment network. Climate policy devolves to city and state level while the money stays federal.",
+      "tags": [
+        "climate",
+        "federalism",
+        "environment"
+      ]
+    },
+    {
+      "id": "na-tax-cuts",
+      "dateISO": "2017-12-22",
+      "region": "na",
+      "title": "Tax Overhaul Cuts Corporate and Personal Rates",
+      "severity": 3,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": 0.09,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "district-low-commercial-tax",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The 2017 act cuts the corporate rate to 21 percent and caps the state and local tax deduction. High-tax metros take a direct hit to their revenue politics, and business investment claims dominate the local argument.",
+      "tags": [
+        "taxes",
+        "business",
+        "federalism"
+      ]
+    },
+    {
+      "id": "na-steel-tariffs",
+      "dateISO": "2018-03-23",
+      "region": "na",
+      "title": "Steel and Aluminium Tariffs Take Effect",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Twenty-five percent steel and ten percent aluminium tariffs take effect on national-security grounds, hitting allies as well as rivals. Metal producers gain; fabricators, builders and equipment makers pay. Retaliation targets farm exports.",
+      "tags": [
+        "tariffs",
+        "trade",
+        "manufacturing"
+      ]
+    },
+    {
+      "id": "na-china-trade-war",
+      "dateISO": "2018-07-06",
+      "region": "na",
+      "title": "Tariffs on Chinese Goods Open the Trade War",
+      "severity": 4,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "The first Section 301 tariffs hit $34bn of Chinese goods on 6 July 2018 and are matched within hours. Supply chains reroute, farm exports fall, and prices for imported consumer goods rise through the following year.",
+      "tags": [
+        "tariffs",
+        "trade",
+        "china"
+      ]
+    },
+    {
+      "id": "na-usmca-signed",
+      "dateISO": "2018-11-30",
+      "region": "na",
+      "title": "USMCA Replaces NAFTA",
+      "severity": 2,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "The renegotiated agreement is signed on 30 November 2018 with stricter auto content rules and labour provisions, and takes effect in July 2020. Continental trade survives, on terms written by the coalition that fought NAFTA.",
+      "tags": [
+        "trade",
+        "nafta",
+        "usmca"
+      ]
+    },
+    {
+      "id": "na-pandemic-relief",
+      "dateISO": "2020-03-27",
+      "region": "na",
+      "title": "Emergency Relief Act Backstops Households and Payrolls",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Direct payments, expanded unemployment benefits and payroll loans land as the economy shuts down. Transfers exceed lost wages for many households, while municipal revenue collapses on transit fares and sales tax.",
+      "tags": [
+        "pandemic",
+        "relief",
+        "cost-of-living"
+      ]
+    },
+    {
+      "id": "na-policing-protests",
+      "dateISO": "2020-05-25",
+      "region": "na",
+      "title": "Nationwide Protests Follow the Killing of George Floyd",
+      "severity": 3,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-crime-accumulation",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "The largest protest wave in decades reaches small cities as well as large ones, with property damage and curfews in some downtowns. Police budgets, use-of-force rules and civilian oversight become ballot-level questions.",
+      "tags": [
+        "protest",
+        "policing",
+        "accountability"
+      ]
+    },
+    {
+      "id": "na-capitol-riot",
+      "dateISO": "2021-01-06",
+      "region": "na",
+      "title": "Crowd Storms the Capitol on Certification Day",
+      "severity": 3,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-crime-probability",
+          "scope": "city",
+          "magnitude": 0.05,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "A crowd breaks into the Capitol to stop certification of the presidential result. Election administration, until now clerical work, becomes a contested partisan office, and local election officials face threats and turnover.",
+      "tags": [
+        "legitimacy",
+        "elections",
+        "unrest"
+      ]
+    },
+    {
+      "id": "na-infrastructure-act",
+      "dateISO": "2021-11-15",
+      "region": "na",
+      "title": "Infrastructure Act Funds a Decade of Works",
+      "severity": 3,
+      "durationMonths": 96,
+      "effects": [
+        {
+          "effectId": "district-street-traffic-safety",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-bike-probability",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Roughly $1.2tn over five years for roads, bridges, transit, water mains and broadband, distributed largely by competitive grant. Cities with grant-writing capacity capture disproportionate shares and the rest fall further behind.",
+      "tags": [
+        "infrastructure",
+        "transit",
+        "federal-funding"
+      ]
+    },
+    {
+      "id": "na-inflation-peak",
+      "dateISO": "2022-07-13",
+      "region": "na",
+      "title": "Inflation Hits a Forty-Year High",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.09,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "June consumer prices are reported at 9.1 percent year on year, led by rent, fuel and groceries. Real wages fall for two years and cost of living displaces every other issue in polling, whatever a city government actually controls.",
+      "tags": [
+        "inflation",
+        "cost-of-living",
+        "incumbency"
+      ]
+    },
+    {
+      "id": "na-industrial-policy",
+      "dateISO": "2022-08-16",
+      "region": "na",
+      "title": "Chips and Climate Acts Revive Industrial Policy",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-university-interest",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 60
+        }
+      ],
+      "headlineBrief": "Semiconductor subsidies in August 2022 are followed within a week by clean-energy tax credits. Site selection, grid connections and training pipelines become the substance of state and municipal competition for plants.",
+      "tags": [
+        "industrial-policy",
+        "energy",
+        "growth"
+      ]
+    },
+    {
+      "id": "na-wildfire-smoke",
+      "dateISO": "2023-06-07",
+      "region": "na",
+      "title": "Canadian Wildfire Smoke Blankets Eastern Cities",
+      "severity": 3,
+      "durationMonths": 3,
+      "effects": [
+        {
+          "effectId": "city-pollution-health-affect",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 6
+        }
+      ],
+      "headlineBrief": "Smoke from record Quebec fires pushes eastern US air quality to the worst on record on 7 June 2023; schools close and outdoor work stops. Air quality becomes a lived urban experience rather than a regulatory abstraction.",
+      "tags": [
+        "wildfire",
+        "air-quality",
+        "climate"
+      ]
+    },
+    {
+      "id": "na-tariff-shock-2025",
+      "dateISO": "2025-04-02",
+      "region": "na",
+      "title": "Across-the-Board Tariffs Reset Trade Terms",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.15,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "A universal baseline tariff plus higher country-specific rates is announced on 2 April 2025, followed by partial suspensions and retaliation. Import-dependent retail and construction costs jump and sourcing decisions freeze.",
+      "tags": [
+        "tariffs",
+        "trade",
+        "cost-of-living"
+      ]
+    }
+  ]
 }

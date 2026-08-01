@@ -1,0 +1,341 @@
+// Flex only - Gameface has no CSS grid, so this 3 x 5 matrix is a column of flex rows.
+// No `gap`: spacing is margins, which Gameface lays out reliably.
+
+$fallback-tint: rgba(255, 196, 96, 0.9);
+$cell-height: 38rem;
+$axis-width: 42rem;
+
+@mixin base-crosstab {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+
+.crosstab {
+  @include base-crosstab;
+}
+
+.crosstabStandIn {
+  @include base-crosstab;
+  padding: 5rem;
+  border: 1rem dashed rgba(255, 196, 96, 0.55);
+  border-radius: 3rem;
+  background-color: rgba(255, 196, 96, 0.06);
+}
+
+.standInNotice {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 6rem;
+}
+
+.standInBadge {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: 6rem;
+  padding: 1rem 4rem;
+  border-radius: 2rem;
+  background-color: $fallback-tint;
+  color: #201603;
+  font-size: 9rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+}
+
+.standInText {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11rem;
+  line-height: 1.35;
+  color: $fallback-tint;
+}
+
+// -- metric toolbar -----------------------------------------------------------------------------
+
+.toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-bottom: 6rem;
+}
+
+@mixin toggle-base {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 4rem 3rem 0;
+  padding: 2rem 7rem;
+  border: 1rem solid rgba(255, 255, 255, 0.18);
+  border-radius: 10rem;
+  font-size: 10rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.toggle {
+  @include toggle-base;
+  opacity: 0.62;
+
+  &:hover {
+    opacity: 0.9;
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.toggleOn {
+  @include toggle-base;
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.55);
+  background-color: rgba(255, 255, 255, 0.16);
+  font-weight: bold;
+}
+
+// -- matrix -------------------------------------------------------------------------------------
+
+.matrix {
+  display: flex;
+  flex-direction: column;
+}
+
+.headRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  margin-bottom: 3rem;
+}
+
+.corner {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 $axis-width;
+  width: $axis-width;
+  min-width: 0;
+  font-size: 8rem;
+  line-height: 10rem;
+  opacity: 0.5;
+  overflow: hidden;
+}
+
+.cornerWealth {
+  display: flex;
+}
+
+.cornerEdu {
+  display: flex;
+}
+
+.headCell {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 2rem;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.68;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-bottom: 2rem;
+}
+
+.rowLabel {
+  display: flex;
+  flex: 0 0 $axis-width;
+  width: $axis-width;
+  min-width: 0;
+  align-items: center;
+  font-size: 10rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.68;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@mixin cell-base {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  height: $cell-height;
+  margin-left: 2rem;
+  padding: 2rem 3rem;
+  border-radius: 2rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1rem solid rgba(255, 255, 255, 0.06);
+}
+
+.cell {
+  @include cell-base;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+}
+
+.cellSelected {
+  @include cell-base;
+  border-color: #ffffff;
+}
+
+.cellEmpty {
+  @include cell-base;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.cellEmptySelected {
+  @include cell-base;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-style: dashed;
+  border-color: #ffffff;
+}
+
+.cellParty {
+  display: flex;
+  max-width: 100%;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cellValue {
+  display: flex;
+  font-size: 13rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cellValueMuted {
+  display: flex;
+  font-size: 13rem;
+  opacity: 0.3;
+}
+
+.cellBarTrack {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 3rem;
+  margin-top: 3rem;
+  border-radius: 2rem;
+  background-color: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.cellBar {
+  display: flex;
+  height: 100%;
+}
+
+// -- readout ------------------------------------------------------------------------------------
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6rem;
+  padding: 5rem 6rem;
+  min-height: 34rem;
+  border-radius: 3rem;
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.readoutBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.readoutTitle {
+  display: flex;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.9;
+  margin-bottom: 3rem;
+}
+
+.readoutFacts {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  margin: 0 12rem 2rem 0;
+  min-width: 0;
+}
+
+.factLabel {
+  display: flex;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.factValue {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  font-size: 12rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.factSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 2rem;
+  margin-right: 4rem;
+}
+
+.readoutHint {
+  display: flex;
+  font-size: 10rem;
+  line-height: 1.35;
+  opacity: 0.6;
+}
+
+.footnote {
+  display: flex;
+  margin-top: 5rem;
+  font-size: 9rem;
+  line-height: 1.35;
+  opacity: 0.45;
+}
+
+.empty {
+  display: flex;
+  padding: 10rem;
+  font-size: 11rem;
+  line-height: 1.4;
+  opacity: 0.6;
+}
+
+.tip {
+  display: flex;
+  max-width: 200rem;
+}

@@ -1,0 +1,610 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/engine_tuning.schema.json",
+  "title": "engine_tuning.json — every coefficient the engine uses",
+
+  "$comment": "One top-level section per engine packet. additionalProperties is false everywhere so a typo'd key fails the schema suite instead of silently falling back to a built-in default at runtime. Keys beginning with an underscore are documentation and are always allowed. This schema and Agora.Core.Tuning.EngineTuning are two halves of one contract — change both, and bump schemaVersion (non-negotiable #9).",
+
+  "type": "object",
+  "required": [
+    "schemaVersion", "blocs", "parties", "factions", "affinity", "turnout", "polling",
+    "electionsPr", "electionsFptp", "coalitions", "mandates", "catalog", "scheduler",
+    "indices", "effects"
+  ],
+  "patternProperties": { "^_": true },
+  "additionalProperties": false,
+
+  "$defs": {
+    "issueMap": {
+      "type": "object",
+      "required": ["services", "costOfLiving", "environment", "transit", "growth", "heritageOrder"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "properties": {
+        "services": { "type": "number" },
+        "costOfLiving": { "type": "number" },
+        "environment": { "type": "number" },
+        "transit": { "type": "number" },
+        "growth": { "type": "number" },
+        "heritageOrder": { "type": "number" }
+      }
+    },
+
+    "serviceMap": {
+      "type": "object",
+      "required": ["health", "education", "police", "fire", "garbage", "transit", "water", "electricity", "parks"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "properties": {
+        "health": { "type": "number" },
+        "education": { "type": "number" },
+        "police": { "type": "number" },
+        "fire": { "type": "number" },
+        "garbage": { "type": "number" },
+        "transit": { "type": "number" },
+        "water": { "type": "number" },
+        "electricity": { "type": "number" },
+        "parks": { "type": "number" }
+      }
+    },
+
+    "ageBandMap": {
+      "type": "object",
+      "required": ["child", "teen", "adult", "elderly"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "properties": {
+        "child": { "type": "number", "minimum": 0 },
+        "teen": { "type": "number", "minimum": 0 },
+        "adult": { "type": "number", "minimum": 0 },
+        "elderly": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "unitInterval": { "type": "number", "minimum": 0, "maximum": 1 },
+    "positiveInt": { "type": "integer", "minimum": 1 },
+    "nonNegativeInt": { "type": "integer", "minimum": 0 }
+  },
+
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 2 },
+
+    "blocs": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "wealthTierThresholds", "minBlocPopulation", "minBlocShare", "compositionSmoothingAlpha",
+        "issueWeightPriors", "wealthWeightSensitivity", "educationWeightSensitivity",
+        "ageWeightSensitivity", "idealBase", "wealthIdealSensitivity", "educationIdealSensitivity",
+        "ageIdealSensitivity", "livedMetricWeightGain", "livedMetricMaxShift",
+        "livedMetricSmoothingAlpha", "weightFloor", "weightCeiling", "normalizeWeights",
+        "discontentHappinessWeight", "discontentServiceWeight", "discontentCostWeight",
+        "referenceHappiness"
+      ],
+      "properties": {
+        "wealthTierThresholds": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/unitInterval" },
+          "$comment": "Ascending quantile cuts of the household wealth distribution. Two cuts, three tiers — WealthTier is a fixed three-member enum in Core."
+        },
+        "minBlocPopulation": { "$ref": "#/$defs/nonNegativeInt" },
+        "minBlocShare": { "$ref": "#/$defs/unitInterval" },
+        "compositionSmoothingAlpha": { "$ref": "#/$defs/unitInterval" },
+        "issueWeightPriors": { "$ref": "#/$defs/issueMap" },
+        "wealthWeightSensitivity": { "$ref": "#/$defs/issueMap" },
+        "educationWeightSensitivity": { "$ref": "#/$defs/issueMap" },
+        "ageWeightSensitivity": { "$ref": "#/$defs/issueMap" },
+        "idealBase": { "$ref": "#/$defs/issueMap" },
+        "wealthIdealSensitivity": { "$ref": "#/$defs/issueMap" },
+        "educationIdealSensitivity": { "$ref": "#/$defs/issueMap" },
+        "ageIdealSensitivity": { "$ref": "#/$defs/issueMap" },
+        "livedMetricWeightGain": { "type": "number" },
+        "livedMetricMaxShift": { "type": "number", "minimum": 0 },
+        "livedMetricSmoothingAlpha": { "$ref": "#/$defs/unitInterval" },
+        "weightFloor": { "type": "number", "minimum": 0 },
+        "weightCeiling": { "type": "number", "minimum": 0 },
+        "normalizeWeights": { "type": "boolean" },
+        "discontentHappinessWeight": { "type": "number" },
+        "discontentServiceWeight": { "type": "number" },
+        "discontentCostWeight": { "type": "number" },
+        "referenceHappiness": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+
+    "parties": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "targetCountEu", "minCountEu", "maxCountEu", "targetCountNa", "minorPartyCountNa",
+        "maxPartiesTotal", "archetypeSpreadSigma", "minPlatformDistance", "platformDriftPerCycle",
+        "platformDriftCapPerCycle", "platformGrievanceResponsiveness", "incumbencyBonus",
+        "incumbencyDecayPerTerm", "deathVoteShareThreshold", "deathConsecutiveElections",
+        "endangeredVoteShareThreshold", "revivalGrievanceThreshold", "revivalCooldownMonths",
+        "splitTensionThreshold", "splitMinVoteShare", "splitProbabilityPerCycle",
+        "mergeAffinityThreshold", "mergeMaxCombinedVoteShare", "mergeProbabilityPerCycle",
+        "newPartyEntryProbability", "lifecycleCheckIntervalMonths", "colorPalette"
+      ],
+      "properties": {
+        "targetCountEu": { "$ref": "#/$defs/positiveInt" },
+        "minCountEu": { "$ref": "#/$defs/positiveInt" },
+        "maxCountEu": { "$ref": "#/$defs/positiveInt" },
+        "targetCountNa": { "$ref": "#/$defs/positiveInt" },
+        "minorPartyCountNa": { "$ref": "#/$defs/nonNegativeInt" },
+        "maxPartiesTotal": { "$ref": "#/$defs/positiveInt" },
+        "archetypeSpreadSigma": { "type": "number", "minimum": 0 },
+        "minPlatformDistance": { "$ref": "#/$defs/unitInterval" },
+        "platformDriftPerCycle": { "type": "number", "minimum": 0 },
+        "platformDriftCapPerCycle": { "type": "number", "minimum": 0 },
+        "platformGrievanceResponsiveness": { "$ref": "#/$defs/unitInterval" },
+        "incumbencyBonus": { "type": "number" },
+        "incumbencyDecayPerTerm": { "$ref": "#/$defs/unitInterval" },
+        "deathVoteShareThreshold": { "$ref": "#/$defs/unitInterval" },
+        "deathConsecutiveElections": { "$ref": "#/$defs/positiveInt" },
+        "endangeredVoteShareThreshold": { "$ref": "#/$defs/unitInterval" },
+        "revivalGrievanceThreshold": { "$ref": "#/$defs/unitInterval" },
+        "revivalCooldownMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "splitTensionThreshold": { "$ref": "#/$defs/unitInterval" },
+        "splitMinVoteShare": { "$ref": "#/$defs/unitInterval" },
+        "splitProbabilityPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "mergeAffinityThreshold": { "$ref": "#/$defs/unitInterval" },
+        "mergeMaxCombinedVoteShare": { "$ref": "#/$defs/unitInterval" },
+        "mergeProbabilityPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "newPartyEntryProbability": { "$ref": "#/$defs/unitInterval" },
+        "lifecycleCheckIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "colorPalette": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        }
+      }
+    },
+
+    "factions": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "minPerParty", "maxPerParty", "targetPerParty", "dominanceThreshold", "dominanceHysteresis",
+        "platformWeightDominant", "platformWeightOthers", "internalTensionThreshold",
+        "supportDriftPerCycle", "supportDriftCapPerCycle", "splitProbabilityPerCycle",
+        "mergeAffinityThreshold", "mergeProbabilityPerCycle", "deathSupportThreshold",
+        "deathConsecutiveCycles", "revivalGrievanceThreshold", "leaderChangeProbabilityPerCycle",
+        "demandCountPerFaction", "lifecycleCheckIntervalMonths", "naPartyLifecycleProbability",
+        "archetypeSpreadSigma"
+      ],
+      "properties": {
+        "minPerParty": { "$ref": "#/$defs/positiveInt" },
+        "maxPerParty": { "$ref": "#/$defs/positiveInt" },
+        "targetPerParty": { "$ref": "#/$defs/positiveInt" },
+        "dominanceThreshold": { "$ref": "#/$defs/unitInterval" },
+        "dominanceHysteresis": { "$ref": "#/$defs/unitInterval" },
+        "platformWeightDominant": { "$ref": "#/$defs/unitInterval" },
+        "platformWeightOthers": { "$ref": "#/$defs/unitInterval" },
+        "internalTensionThreshold": { "$ref": "#/$defs/unitInterval" },
+        "supportDriftPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "supportDriftCapPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "splitProbabilityPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "mergeAffinityThreshold": { "$ref": "#/$defs/unitInterval" },
+        "mergeProbabilityPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "deathSupportThreshold": { "$ref": "#/$defs/unitInterval" },
+        "deathConsecutiveCycles": { "$ref": "#/$defs/positiveInt" },
+        "revivalGrievanceThreshold": { "$ref": "#/$defs/unitInterval" },
+        "leaderChangeProbabilityPerCycle": { "$ref": "#/$defs/unitInterval" },
+        "demandCountPerFaction": { "$ref": "#/$defs/nonNegativeInt" },
+        "lifecycleCheckIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "naPartyLifecycleProbability": { "$ref": "#/$defs/unitInterval" },
+        "archetypeSpreadSigma": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "affinity": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "distanceKernel", "distanceKernelSigma", "issueWeight", "baseAffinity", "incumbencyBonus",
+        "incumbencyDiscontentPenalty", "mandatePerformanceWeight", "mandateFailurePenalty",
+        "eventModifierWeight", "eventModifierDecayHalfLifeMonths", "localGrievanceWeight",
+        "nationalMoodWeight", "habitualLoyalty", "loyaltyDecayPerMonth", "noiseSigma", "noiseClamp",
+        "softmaxTemperature", "minPartyShare", "tacticalVotingThresholdFptp"
+      ],
+      "properties": {
+        "distanceKernel": { "type": "string", "enum": ["linear", "quadratic", "gaussian"] },
+        "distanceKernelSigma": { "type": "number", "exclusiveMinimum": 0 },
+        "issueWeight": { "type": "number", "minimum": 0 },
+        "baseAffinity": { "type": "number" },
+        "incumbencyBonus": { "type": "number" },
+        "incumbencyDiscontentPenalty": { "type": "number" },
+        "mandatePerformanceWeight": { "type": "number" },
+        "mandateFailurePenalty": { "type": "number" },
+        "eventModifierWeight": { "type": "number" },
+        "eventModifierDecayHalfLifeMonths": { "$ref": "#/$defs/positiveInt" },
+        "localGrievanceWeight": { "type": "number" },
+        "nationalMoodWeight": { "type": "number" },
+        "habitualLoyalty": { "$ref": "#/$defs/unitInterval" },
+        "loyaltyDecayPerMonth": { "$ref": "#/$defs/unitInterval" },
+        "noiseSigma": { "type": "number", "minimum": 0 },
+        "noiseClamp": {
+          "type": "number",
+          "minimum": 0,
+          "$comment": "Non-negotiable #2 in practice: an unclamped noise term lets one tail draw decide an election, which reads as non-determinism to a player even though it is reproducible."
+        },
+        "softmaxTemperature": { "type": "number", "exclusiveMinimum": 0 },
+        "minPartyShare": { "$ref": "#/$defs/unitInterval" },
+        "tacticalVotingThresholdFptp": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "turnout": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "base", "happinessCoefficient", "educationCoefficient", "wealthCoefficient",
+        "discontentCoefficient", "competitivenessCoefficient", "campaignIntensityCoefficient",
+        "incumbentTermFatigue", "ageBandMultipliers", "noiseSigma", "floor", "ceiling",
+        "referenceHappiness", "referenceEducationIndex", "snapElectionPenalty"
+      ],
+      "properties": {
+        "base": { "$ref": "#/$defs/unitInterval" },
+        "happinessCoefficient": { "type": "number" },
+        "educationCoefficient": { "type": "number" },
+        "wealthCoefficient": { "type": "number" },
+        "discontentCoefficient": { "type": "number" },
+        "competitivenessCoefficient": { "type": "number" },
+        "campaignIntensityCoefficient": { "type": "number" },
+        "incumbentTermFatigue": { "type": "number" },
+        "ageBandMultipliers": { "$ref": "#/$defs/ageBandMap" },
+        "noiseSigma": { "type": "number", "minimum": 0 },
+        "floor": { "$ref": "#/$defs/unitInterval" },
+        "ceiling": { "$ref": "#/$defs/unitInterval" },
+        "referenceHappiness": { "type": "number", "minimum": 0, "maximum": 100 },
+        "referenceEducationIndex": { "$ref": "#/$defs/unitInterval" },
+        "snapElectionPenalty": { "type": "number" }
+      }
+    },
+
+    "polling": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "errorSigma", "educationUnderSampleBias", "turnoutUnderSampleBias", "houseEffectSigma",
+        "sampleSizeBase", "sampleSizeVariance", "marginOfErrorMultiplier", "publishIntervalDays",
+        "campaignWeeks", "weeksBeforeElection", "herdingFactor", "errorDecayTowardElection",
+        "undecidedShareBase", "undecidedDecayPerWeek", "minPublishedShare", "roundingDecimals",
+        "maxStoredPolls", "pollsterCount"
+      ],
+      "properties": {
+        "errorSigma": { "type": "number", "minimum": 0 },
+        "educationUnderSampleBias": {
+          "type": "number",
+          "minimum": 0,
+          "$comment": "Must stay non-negative: the M4a gate asserts polls under-sample low-education districts. A negative value would invert the finding the gate exists to prove."
+        },
+        "turnoutUnderSampleBias": { "type": "number", "minimum": 0 },
+        "houseEffectSigma": { "type": "number", "minimum": 0 },
+        "sampleSizeBase": { "$ref": "#/$defs/positiveInt" },
+        "sampleSizeVariance": { "type": "number", "minimum": 0 },
+        "marginOfErrorMultiplier": { "type": "number", "exclusiveMinimum": 0 },
+        "publishIntervalDays": { "$ref": "#/$defs/positiveInt" },
+        "campaignWeeks": { "$ref": "#/$defs/positiveInt" },
+        "weeksBeforeElection": { "$ref": "#/$defs/positiveInt" },
+        "herdingFactor": { "$ref": "#/$defs/unitInterval" },
+        "errorDecayTowardElection": { "$ref": "#/$defs/unitInterval" },
+        "undecidedShareBase": { "$ref": "#/$defs/unitInterval" },
+        "undecidedDecayPerWeek": { "$ref": "#/$defs/unitInterval" },
+        "minPublishedShare": { "$ref": "#/$defs/unitInterval" },
+        "roundingDecimals": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "maxStoredPolls": { "$ref": "#/$defs/positiveInt" },
+        "pollsterCount": { "$ref": "#/$defs/positiveInt" }
+      }
+    },
+
+    "electionsPr": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "termYears", "totalSeats", "seatsPerPopulation", "minSeats", "maxSeats", "thresholdShare",
+        "method", "firstDivisor", "districtSeatShare", "campaignMonths",
+        "snapElectionMinMonthsSinceLast", "snapElectionDelayMonths", "minSeatsForRepresentation"
+      ],
+      "properties": {
+        "termYears": { "$ref": "#/$defs/positiveInt" },
+        "totalSeats": { "$ref": "#/$defs/positiveInt" },
+        "seatsPerPopulation": { "type": "number", "minimum": 0 },
+        "minSeats": { "$ref": "#/$defs/positiveInt" },
+        "maxSeats": { "$ref": "#/$defs/positiveInt" },
+        "thresholdShare": { "$ref": "#/$defs/unitInterval" },
+        "method": { "type": "string", "enum": ["sainte-lague", "d-hondt", "largest-remainder"] },
+        "firstDivisor": { "type": "number", "exclusiveMinimum": 0 },
+        "districtSeatShare": { "$ref": "#/$defs/unitInterval" },
+        "campaignMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "snapElectionMinMonthsSinceLast": { "$ref": "#/$defs/nonNegativeInt" },
+        "snapElectionDelayMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "minSeatsForRepresentation": { "$ref": "#/$defs/nonNegativeInt" }
+      }
+    },
+
+    "electionsFptp": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "termYears", "mayorTermYears", "councilSeatsPerDistrict", "minCouncilSeats",
+        "maxCouncilSeats", "campaignMonths", "thirdPartyPenalty", "incumbentMayorBonus",
+        "districtSwingSigma", "straightTicketFactor", "mayorRunoffThreshold", "tieMarginEpsilon",
+        "primariesEnabled"
+      ],
+      "properties": {
+        "termYears": { "$ref": "#/$defs/positiveInt" },
+        "mayorTermYears": { "$ref": "#/$defs/positiveInt" },
+        "councilSeatsPerDistrict": { "$ref": "#/$defs/positiveInt" },
+        "minCouncilSeats": { "$ref": "#/$defs/positiveInt" },
+        "maxCouncilSeats": { "$ref": "#/$defs/positiveInt" },
+        "campaignMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "thirdPartyPenalty": { "$ref": "#/$defs/unitInterval" },
+        "incumbentMayorBonus": { "type": "number" },
+        "districtSwingSigma": { "type": "number", "minimum": 0 },
+        "straightTicketFactor": { "$ref": "#/$defs/unitInterval" },
+        "mayorRunoffThreshold": { "$ref": "#/$defs/unitInterval" },
+        "tieMarginEpsilon": { "type": "number", "minimum": 0 },
+        "primariesEnabled": {
+          "type": "boolean",
+          "const": false,
+          "$comment": "AGORA-SEAM(§14.1). NA primaries as full elections is an open decision. Pinned false until it closes; flipping it is a plan change, not a tuning change."
+        }
+      }
+    },
+
+    "coalitions": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "minSeatShareToGovern", "formationMaxPartners", "formationAttemptsMax",
+        "formationWindowMonths", "ideologicalDistanceCap", "distanceWeight", "sizeWeight",
+        "grandCoalitionDistanceBonus", "leadPartyMinSeatShare", "minorityGovernmentAllowed",
+        "minorityGovernmentPenalty", "cohesionBase", "cohesionDistancePenalty", "stabilityInitial",
+        "stabilityDecayPerMonth", "stabilityShockPerFailedMandate", "stabilityShockPerSeverityPoint",
+        "stabilityRecoveryPerFulfilledMandate", "collapseThreshold", "collapseCheckIntervalMonths",
+        "snapElectionDelayMonths"
+      ],
+      "properties": {
+        "minSeatShareToGovern": { "$ref": "#/$defs/unitInterval" },
+        "formationMaxPartners": { "$ref": "#/$defs/positiveInt" },
+        "formationAttemptsMax": { "$ref": "#/$defs/positiveInt" },
+        "formationWindowMonths": { "$ref": "#/$defs/positiveInt" },
+        "ideologicalDistanceCap": { "$ref": "#/$defs/unitInterval" },
+        "distanceWeight": { "type": "number", "minimum": 0 },
+        "sizeWeight": { "type": "number", "minimum": 0 },
+        "grandCoalitionDistanceBonus": { "type": "number", "minimum": 0 },
+        "leadPartyMinSeatShare": { "$ref": "#/$defs/unitInterval" },
+        "minorityGovernmentAllowed": { "type": "boolean" },
+        "minorityGovernmentPenalty": { "$ref": "#/$defs/unitInterval" },
+        "cohesionBase": { "$ref": "#/$defs/unitInterval" },
+        "cohesionDistancePenalty": { "type": "number", "minimum": 0 },
+        "stabilityInitial": { "$ref": "#/$defs/unitInterval" },
+        "stabilityDecayPerMonth": { "$ref": "#/$defs/unitInterval" },
+        "stabilityShockPerFailedMandate": { "$ref": "#/$defs/unitInterval" },
+        "stabilityShockPerSeverityPoint": { "$ref": "#/$defs/unitInterval" },
+        "stabilityRecoveryPerFulfilledMandate": { "$ref": "#/$defs/unitInterval" },
+        "collapseThreshold": { "$ref": "#/$defs/unitInterval" },
+        "collapseCheckIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "snapElectionDelayMonths": { "$ref": "#/$defs/nonNegativeInt" }
+      }
+    },
+
+    "mandates": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "countPerTerm", "maxActive", "minDeficitToGenerate", "targetImprovementFraction",
+        "horizonMonths", "graceMonths", "monitoringIntervalMonths", "partialCreditThreshold",
+        "districtMandateShare", "fulfilledHappinessBonus", "defiedHappinessPenalty",
+        "partialHappinessBonus", "fulfilledLegitimacyBonus", "defiedLegitimacyPenalty",
+        "oppositionSurgeOnDefiance", "unrestEventProbabilityOnDefiance",
+        "resolutionEffectDurationMonths", "salienceFloor", "stalledMetricGraceMonths"
+      ],
+      "properties": {
+        "countPerTerm": { "$ref": "#/$defs/nonNegativeInt" },
+        "maxActive": { "$ref": "#/$defs/positiveInt" },
+        "minDeficitToGenerate": { "$ref": "#/$defs/unitInterval" },
+        "targetImprovementFraction": { "$ref": "#/$defs/unitInterval" },
+        "horizonMonths": { "$ref": "#/$defs/positiveInt" },
+        "graceMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "monitoringIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "partialCreditThreshold": { "$ref": "#/$defs/unitInterval" },
+        "districtMandateShare": { "$ref": "#/$defs/unitInterval" },
+        "fulfilledHappinessBonus": { "type": "number", "minimum": 0 },
+        "defiedHappinessPenalty": { "type": "number", "minimum": 0 },
+        "partialHappinessBonus": { "type": "number", "minimum": 0 },
+        "fulfilledLegitimacyBonus": { "$ref": "#/$defs/unitInterval" },
+        "defiedLegitimacyPenalty": { "$ref": "#/$defs/unitInterval" },
+        "oppositionSurgeOnDefiance": { "$ref": "#/$defs/unitInterval" },
+        "unrestEventProbabilityOnDefiance": { "$ref": "#/$defs/unitInterval" },
+        "resolutionEffectDurationMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "salienceFloor": { "$ref": "#/$defs/unitInterval" },
+        "stalledMetricGraceMonths": { "$ref": "#/$defs/nonNegativeInt" }
+      }
+    },
+
+    "catalog": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "startYear", "catalogEndYear", "jitterEnabled", "jitterMonths", "severityEffectScale",
+        "severityMax", "majorSeverityThreshold", "minMonthsBetweenMajorEvents",
+        "maxConcurrentEvents", "includeGlobal", "globalEventWeight", "regionalEventWeight",
+        "effectMagnitudeGlobalCap", "effectDurationCapMonths", "proceduralEnabled",
+        "proceduralStartYear", "proceduralEventsPerYear", "proceduralArchetypeCount",
+        "proceduralSeverityMean", "proceduralSeveritySigma"
+      ],
+      "properties": {
+        "startYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
+        "catalogEndYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
+        "jitterEnabled": {
+          "type": "boolean",
+          "const": false,
+          "$comment": "AGORA-SEAM(§14.2). Fixed real dates vs seeded ±6 months is an open decision. Pinned false; the event.jitter stream exists but must not be drawn from."
+        },
+        "jitterMonths": { "type": "integer", "minimum": 0, "maximum": 0 },
+        "severityEffectScale": { "type": "number", "minimum": 0 },
+        "severityMax": { "type": "integer", "const": 5 },
+        "majorSeverityThreshold": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "minMonthsBetweenMajorEvents": { "$ref": "#/$defs/nonNegativeInt" },
+        "maxConcurrentEvents": { "$ref": "#/$defs/positiveInt" },
+        "includeGlobal": { "type": "boolean" },
+        "globalEventWeight": { "type": "number", "minimum": 0 },
+        "regionalEventWeight": { "type": "number", "minimum": 0 },
+        "effectMagnitudeGlobalCap": { "type": "number", "exclusiveMinimum": 0 },
+        "effectDurationCapMonths": { "type": "integer", "minimum": 0, "maximum": 240 },
+        "proceduralEnabled": { "type": "boolean" },
+        "proceduralStartYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
+        "proceduralEventsPerYear": { "type": "number", "minimum": 0 },
+        "proceduralArchetypeCount": { "$ref": "#/$defs/positiveInt" },
+        "proceduralSeverityMean": { "type": "number", "minimum": 1, "maximum": 5 },
+        "proceduralSeveritySigma": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "scheduler": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "tickIntervalMonths", "snapshotIntervalMonths", "snapshotRetention",
+        "eventScanIntervalMonths", "maxEventsPerTick", "lifecycleTickMonths", "indicesTickMonths",
+        "mandateMonitorIntervalMonths", "pollTickIntervalDays", "campaignStartMonthsBeforeElection",
+        "llmWakeYearly", "llmWakeOnElection", "llmWakeManualEnabled", "llmWakeMonth",
+        "catchUpMaxMonths", "warmupMonths"
+      ],
+      "properties": {
+        "tickIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "snapshotIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "snapshotRetention": {
+          "$ref": "#/$defs/positiveInt",
+          "$comment": "AGORA-SEAM(§14.3). Retention default is proposed (25), not ratified. Keep the newest N; no cleverer policy until it closes."
+        },
+        "eventScanIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "maxEventsPerTick": { "$ref": "#/$defs/positiveInt" },
+        "lifecycleTickMonths": { "$ref": "#/$defs/positiveInt" },
+        "indicesTickMonths": { "$ref": "#/$defs/positiveInt" },
+        "mandateMonitorIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "pollTickIntervalDays": { "$ref": "#/$defs/positiveInt" },
+        "campaignStartMonthsBeforeElection": { "$ref": "#/$defs/nonNegativeInt" },
+        "llmWakeYearly": { "type": "boolean" },
+        "llmWakeOnElection": { "type": "boolean" },
+        "llmWakeManualEnabled": { "type": "boolean" },
+        "llmWakeMonth": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "catchUpMaxMonths": { "$ref": "#/$defs/positiveInt" },
+        "warmupMonths": { "$ref": "#/$defs/nonNegativeInt" }
+      }
+    },
+
+    "indices": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "smoothingAlpha", "giniSampleBuckets", "gentrificationRentWeight",
+        "gentrificationEducationWeight", "gentrificationTurnoverWeight",
+        "gentrificationWindowMonths", "brainDrainEducationWeight", "brainDrainOutflowWeight",
+        "brainDrainWindowMonths", "commuteMiseryTimeWeight", "commuteMiseryCongestionWeight",
+        "commuteMiseryReferenceMinutes", "serviceInequalityWeights", "polarizationDispersionWeight",
+        "discontentHappinessWeight", "discontentUnemploymentWeight", "discontentServiceWeight",
+        "legitimacyTurnoutWeight", "legitimacyMandateWeight", "legitimacyStabilityWeight",
+        "clampMin", "clampMax"
+      ],
+      "properties": {
+        "smoothingAlpha": { "$ref": "#/$defs/unitInterval" },
+        "giniSampleBuckets": { "$ref": "#/$defs/positiveInt" },
+        "gentrificationRentWeight": { "type": "number", "minimum": 0 },
+        "gentrificationEducationWeight": { "type": "number", "minimum": 0 },
+        "gentrificationTurnoverWeight": { "type": "number", "minimum": 0 },
+        "gentrificationWindowMonths": { "$ref": "#/$defs/positiveInt" },
+        "brainDrainEducationWeight": { "type": "number", "minimum": 0 },
+        "brainDrainOutflowWeight": { "type": "number", "minimum": 0 },
+        "brainDrainWindowMonths": { "$ref": "#/$defs/positiveInt" },
+        "commuteMiseryTimeWeight": { "type": "number", "minimum": 0 },
+        "commuteMiseryCongestionWeight": { "type": "number", "minimum": 0 },
+        "commuteMiseryReferenceMinutes": { "type": "number", "exclusiveMinimum": 0 },
+        "serviceInequalityWeights": { "$ref": "#/$defs/serviceMap" },
+        "polarizationDispersionWeight": { "type": "number", "minimum": 0 },
+        "discontentHappinessWeight": { "type": "number", "minimum": 0 },
+        "discontentUnemploymentWeight": { "type": "number", "minimum": 0 },
+        "discontentServiceWeight": { "type": "number", "minimum": 0 },
+        "legitimacyTurnoutWeight": { "type": "number", "minimum": 0 },
+        "legitimacyMandateWeight": { "type": "number", "minimum": 0 },
+        "legitimacyStabilityWeight": { "type": "number", "minimum": 0 },
+        "clampMin": { "type": "number" },
+        "clampMax": { "type": "number" }
+      }
+    },
+
+    "effects": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "required": [
+        "enabled", "globalMagnitudeCap", "globalDurationCapMonths", "severityMagnitudeScale",
+        "decayCurve", "decayHalfLifeMonths", "minEffectiveMagnitude", "reapplyIntervalMonths",
+        "stackingMode", "maxStackedPerModifier", "defaultFallbackCityEffectId",
+        "defaultFallbackDistrictEffectId", "perEffect"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "globalMagnitudeCap": { "type": "number", "exclusiveMinimum": 0 },
+        "globalDurationCapMonths": { "type": "integer", "minimum": 1, "maximum": 240 },
+        "severityMagnitudeScale": { "type": "number", "minimum": 0 },
+        "decayCurve": { "type": "string", "enum": ["linear", "exponential", "step"] },
+        "decayHalfLifeMonths": { "$ref": "#/$defs/positiveInt" },
+        "minEffectiveMagnitude": { "type": "number", "minimum": 0 },
+        "reapplyIntervalMonths": { "$ref": "#/$defs/positiveInt" },
+        "stackingMode": { "type": "string", "enum": ["sum", "max"] },
+        "maxStackedPerModifier": { "$ref": "#/$defs/positiveInt" },
+        "defaultFallbackCityEffectId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "defaultFallbackDistrictEffectId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+
+        "perEffect": {
+          "type": "object",
+          "minProperties": 1,
+          "$comment": "The closed registry (non-negotiable #4). An effectId absent from here does not exist, and the timeline validator rejects any catalog entry referencing one.",
+          "propertyNames": { "pattern": "^(city|district)-[a-z0-9-]+$" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["scope", "modifier", "magnitudeCap", "durationCapMonths", "fallbackEffectId"],
+            "additionalProperties": false,
+            "properties": {
+              "scope": { "type": "string", "enum": ["city", "district"] },
+              "modifier": {
+                "type": "string",
+                "pattern": "^[A-Za-z]+$",
+                "$comment": "A member name of Game.Areas.DistrictModifierType or Game.City.CityModifierType. Agora.Core never resolves it — the enum lookup happens in Agora.Mod, which is what keeps the palette declarable in data without Core referencing the game."
+              },
+              "magnitudeCap": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "$comment": "Non-negotiable #5: there is no way to express 'uncapped' here, on purpose."
+              },
+              "durationCapMonths": { "type": "integer", "minimum": 1, "maximum": 240 },
+              "fallbackEffectId": {
+                "type": "string",
+                "pattern": "^([a-z0-9-]+)?$",
+                "$comment": "Empty marks a terminal fallback. Every non-terminal chain must reach one, or the sink loops."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

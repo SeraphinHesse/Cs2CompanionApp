@@ -1,0 +1,182 @@
+// Shared by DistrictDetail.tsx and CityView.tsx. Flex only - Gameface has no CSS grid.
+
+$fallback-tint: rgba(255, 196, 96, 0.9);
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 4rem;
+}
+
+.paneHead {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 6rem;
+}
+
+.paneTitleBlock {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.paneName {
+  display: flex;
+  font-size: 17rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.paneId {
+  display: flex;
+  margin-top: 1rem;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  opacity: 0.45;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.notice {
+  display: flex;
+  margin-bottom: 6rem;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: rgba(255, 255, 255, 0.06);
+  font-size: 10rem;
+  line-height: 1.4;
+  opacity: 0.78;
+}
+
+.warnNotice {
+  display: flex;
+  margin-bottom: 6rem;
+  padding: 5rem 6rem;
+  border-left: 3rem solid $fallback-tint;
+  border-radius: 2rem;
+  background-color: rgba(255, 196, 96, 0.12);
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.statRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+// -- vote split ---------------------------------------------------------------------------------
+
+.winnerRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 5rem;
+}
+
+.winnerSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 9rem;
+  height: 9rem;
+  border-radius: 2rem;
+  margin-right: 5rem;
+}
+
+.winnerName {
+  display: flex;
+  font-size: 13rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.winnerSep {
+  display: flex;
+  margin: 0 5rem;
+  font-size: 11rem;
+  opacity: 0.55;
+}
+
+.winnerMargin {
+  display: flex;
+  font-size: 13rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tieBadge {
+  display: flex;
+  margin-left: 8rem;
+  padding: 1rem 4rem;
+  border: 1rem solid rgba(200, 210, 255, 0.6);
+  border-radius: 2rem;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  opacity: 0.85;
+}
+
+.seatBadge {
+  display: flex;
+  margin-left: 8rem;
+  padding: 1rem 4rem;
+  border-radius: 2rem;
+  background-color: rgba(255, 255, 255, 0.14);
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+// -- blocks -------------------------------------------------------------------------------------
+
+@mixin block-base {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6rem;
+  min-width: 0;
+}
+
+.block {
+  @include block-base;
+}
+
+// A whole block whose input fell back to a city number: dimmed as a group, so it cannot be read
+// as a district measurement even at a glance.
+.dimmedBlock {
+  @include block-base;
+  opacity: 0.55;
+  font-style: italic;
+  padding-left: 5rem;
+  border-left: 2rem dashed $fallback-tint;
+}
+
+.splitLabel {
+  display: flex;
+  margin-bottom: 3rem;
+  font-size: 10rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.meterRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.meterSpacer {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-right: 6rem;
+}

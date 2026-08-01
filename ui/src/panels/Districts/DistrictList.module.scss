@@ -1,0 +1,196 @@
+// Flex only - no CSS grid in Gameface. The list is a fixed-width column beside a flexible detail
+// pane; min-height: 0 on the scroll child is what lets it actually scroll inside a flex column.
+
+$fallback-tint: rgba(255, 196, 96, 0.9);
+
+.list {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 168rem;
+  width: 168rem;
+  min-height: 0;
+  margin-right: 10rem;
+  border-right: 1rem solid rgba(255, 255, 255, 0.12);
+  padding-right: 8rem;
+}
+
+.listHead {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5rem;
+  flex: 0 0 auto;
+}
+
+.listTitle {
+  display: flex;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.listCount {
+  display: flex;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+
+.scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@mixin row-base {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-bottom: 3rem;
+  padding: 4rem 5rem;
+  border-radius: 3rem;
+  border: 1rem solid transparent;
+  flex: 0 0 auto;
+}
+
+.row {
+  @include row-base;
+  background-color: rgba(255, 255, 255, 0.04);
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.rowSelected {
+  @include row-base;
+  background-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.cityRow {
+  @include row-base;
+  background-color: rgba(120, 170, 220, 0.1);
+
+  &:hover {
+    background-color: rgba(120, 170, 220, 0.2);
+  }
+}
+
+.cityRowSelected {
+  @include row-base;
+  background-color: rgba(120, 170, 220, 0.28);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.rowStripe {
+  display: flex;
+  flex: 0 0 3rem;
+  width: 3rem;
+  border-radius: 2rem;
+  margin-right: 5rem;
+}
+
+.rowBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rowTop {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rowName {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowBadge {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: 4rem;
+  padding: 0 3rem;
+  border: 1rem solid $fallback-tint;
+  border-radius: 2rem;
+  color: $fallback-tint;
+  font-size: 8rem;
+  letter-spacing: 1rem;
+  line-height: 12rem;
+}
+
+@mixin meta-base {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 2rem;
+  font-size: 10rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.rowMeta {
+  @include meta-base;
+  opacity: 0.78;
+}
+
+.rowMetaFallback {
+  @include meta-base;
+  opacity: 0.45;
+  font-style: italic;
+}
+
+.rowLead {
+  display: flex;
+  overflow: hidden;
+}
+
+.rowSep {
+  display: flex;
+  margin: 0 3rem;
+  opacity: 0.4;
+}
+
+.rowMargin {
+  display: flex;
+}
+
+.rowTurnout {
+  display: flex;
+}
+
+.rowPop {
+  display: flex;
+  margin-top: 1rem;
+  font-size: 9rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
+}
+
+.emptyRow {
+  display: flex;
+  padding: 6rem 4rem;
+  font-size: 10rem;
+  line-height: 1.4;
+  opacity: 0.6;
+}
+
+.tip {
+  display: flex;
+  max-width: 220rem;
+  line-height: 1.35;
+}

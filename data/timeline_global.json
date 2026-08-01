@@ -1,4 +1,1506 @@
 {
   "schemaVersion": 1,
-  "events": []
+  "events": [
+    {
+      "id": "gulf-crisis-1990",
+      "dateISO": "1990-08-02",
+      "region": "global",
+      "title": "Iraq invades Kuwait and oil prices double",
+      "severity": 3,
+      "durationMonths": 8,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-taxi-starting-fee",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Iraq occupies Kuwait; crude roughly doubles by October. Fuel, freight and heating bills rise within weeks. Governments open strategic reserves and debate fuel duty. Contested locally: whether to shield households or hold the budget line.",
+      "tags": [
+        "oil",
+        "energy",
+        "war",
+        "cost-of-living",
+        "economy"
+      ]
+    },
+    {
+      "id": "gulf-war-1991",
+      "dateISO": "1991-01-17",
+      "region": "global",
+      "title": "Coalition air campaign opens the Gulf War",
+      "severity": 3,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 9
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 9
+        }
+      ],
+      "headlineBrief": "Coalition forces begin Operation Desert Storm; ground war ends 28 February. Defence spending crowds out civil budgets, oil falls back after the initial spike. Local fault line: war levies and deferred infrastructure.",
+      "tags": [
+        "war",
+        "oil",
+        "budget",
+        "defence"
+      ]
+    },
+    {
+      "id": "soviet-union-dissolved-1991",
+      "dateISO": "1991-12-26",
+      "region": "global",
+      "title": "The Soviet Union is dissolved",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-university-interest",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "The USSR formally dissolves on 26 December 1991. Fifteen successor states open to trade and migration; defence industries retrench. Political angle: a peace dividend that is claimed by everyone and spent once.",
+      "tags": [
+        "geopolitics",
+        "trade",
+        "migration",
+        "economy"
+      ]
+    },
+    {
+      "id": "rio-earth-summit-1992",
+      "dateISO": "1992-06-03",
+      "region": "global",
+      "title": "Rio Earth Summit adopts Agenda 21",
+      "severity": 2,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The UN Conference on Environment and Development produces the climate and biodiversity conventions plus Agenda 21, an explicitly local action programme. Cities are asked to write their own plans; the argument is over cost and enforcement.",
+      "tags": [
+        "environment",
+        "climate",
+        "treaty",
+        "local-government"
+      ]
+    },
+    {
+      "id": "wto-founded-1995",
+      "dateISO": "1995-01-01",
+      "region": "global",
+      "title": "The World Trade Organization begins operating",
+      "severity": 2,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The WTO replaces the GATT with binding dispute settlement. Tariffs fall, imports cheapen, and exposed manufacturing loses cover. Splits voters between cheaper goods and lost industrial employment.",
+      "tags": [
+        "trade",
+        "globalisation",
+        "industry",
+        "economy"
+      ]
+    },
+    {
+      "id": "asian-financial-crisis-1997",
+      "dateISO": "1997-07-02",
+      "region": "global",
+      "title": "Asian financial crisis begins with the baht float",
+      "severity": 3,
+      "durationMonths": 18,
+      "effects": [
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Thailand floats the baht; currency and banking crises spread across East Asia and into Russia and Brazil. Export demand contracts, credit tightens, IMF conditionality becomes a political word. Capital mobility moves onto the ballot.",
+      "tags": [
+        "finance",
+        "recession",
+        "trade",
+        "economy"
+      ]
+    },
+    {
+      "id": "kyoto-protocol-1997",
+      "dateISO": "1997-12-11",
+      "region": "global",
+      "title": "Kyoto Protocol sets binding emissions targets",
+      "severity": 2,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Industrialised parties accept quantified emissions cuts against a 1990 baseline. Ratification is contested and the treaty does not enter force until 2005. Local dispute: who absorbs the compliance cost, industry or households.",
+      "tags": [
+        "climate",
+        "environment",
+        "treaty",
+        "industry"
+      ]
+    },
+    {
+      "id": "telecom-investment-boom-1999",
+      "dateISO": "1999-06-01",
+      "region": "global",
+      "title": "Telecom and internet investment boom",
+      "severity": 2,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-university-interest",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Capital floods into fibre, mobile licences and internet firms. Office demand and graduate hiring surge; cities compete on connectivity and incentives. The bet is whether the buildout is infrastructure or speculation.",
+      "tags": [
+        "technology",
+        "investment",
+        "telecom",
+        "economy"
+      ]
+    },
+    {
+      "id": "dotcom-crash-2000",
+      "dateISO": "2000-03-10",
+      "region": "global",
+      "title": "The dot-com bubble peaks and breaks",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-university-interest",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The Nasdaq peaks on 10 March 2000 and loses most of its value over two years. Technology employers cut staff, speculative office and fibre projects stall. Cities that granted incentives face empty buildings and a public accounting.",
+      "tags": [
+        "technology",
+        "recession",
+        "investment",
+        "economy"
+      ]
+    },
+    {
+      "id": "september-11-attacks-2001",
+      "dateISO": "2001-09-11",
+      "region": "global",
+      "title": "September 11 attacks reshape security policy",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-criminal-monitor",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-disaster-warning-time",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Coordinated attacks kill nearly 3,000 people; aviation, freight and public buildings are resecured worldwide. Surveillance powers expand quickly and permanently. Local argument: policing budgets and civil liberties in the same vote.",
+      "tags": [
+        "security",
+        "terrorism",
+        "civil-liberties",
+        "policing"
+      ]
+    },
+    {
+      "id": "sars-outbreak-2003",
+      "dateISO": "2003-03-12",
+      "region": "global",
+      "title": "WHO issues a global alert on SARS",
+      "severity": 2,
+      "durationMonths": 9,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-entertainment",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "SARS spreads from Guangdong through Hong Kong, Toronto and Singapore; roughly 8,000 cases and 774 deaths. Travel and hospitality contract sharply for two quarters. First real test of quarantine powers in a modern city.",
+      "tags": [
+        "health",
+        "epidemic",
+        "travel",
+        "public-services"
+      ]
+    },
+    {
+      "id": "iraq-war-2003",
+      "dateISO": "2003-03-20",
+      "region": "global",
+      "title": "Invasion of Iraq splits public opinion",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The invasion begins on 20 March 2003 after the largest coordinated anti-war demonstrations on record. Occupation costs run for years and oil stays elevated. Splits governing parties as much as it splits electorates.",
+      "tags": [
+        "war",
+        "oil",
+        "protest",
+        "geopolitics"
+      ]
+    },
+    {
+      "id": "indian-ocean-tsunami-2004",
+      "dateISO": "2004-12-26",
+      "region": "global",
+      "title": "Indian Ocean tsunami kills over 200,000",
+      "severity": 3,
+      "durationMonths": 18,
+      "effects": [
+        {
+          "effectId": "city-disaster-warning-time",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-disaster-damage-rate",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.05,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "A magnitude 9.1 earthquake off Sumatra generates a tsunami across fourteen countries. Warning systems and civil protection are funded worldwide afterwards. Preparedness spending competes with everything visible on a four-year cycle.",
+      "tags": [
+        "disaster",
+        "emergency-services",
+        "resilience",
+        "public-services"
+      ]
+    },
+    {
+      "id": "credit-crunch-2007",
+      "dateISO": "2007-08-09",
+      "region": "global",
+      "title": "Interbank lending freezes as the credit crunch starts",
+      "severity": 3,
+      "durationMonths": 14,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "BNP Paribas suspends three funds on 9 August 2007 and central banks inject emergency liquidity. Mortgage credit tightens and construction pipelines stall. Councils discover how much of their capital plan depended on cheap debt.",
+      "tags": [
+        "finance",
+        "credit",
+        "housing",
+        "economy"
+      ]
+    },
+    {
+      "id": "oil-price-record-2008",
+      "dateISO": "2008-07-11",
+      "region": "global",
+      "title": "Crude oil reaches a record price",
+      "severity": 3,
+      "durationMonths": 8,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-taxi-starting-fee",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "district-bike-probability",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-car-reserve-probability",
+          "scope": "district",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Brent and WTI peak above $145 a barrel on 11 July 2008. Fuel protests, haulage disputes and a measurable shift to transit and cycling follow. Fuel duty becomes the most sensitive line in the budget.",
+      "tags": [
+        "oil",
+        "energy",
+        "transit",
+        "cost-of-living"
+      ]
+    },
+    {
+      "id": "global-financial-crisis-2008",
+      "dateISO": "2008-09-15",
+      "region": "global",
+      "title": "Lehman Brothers fails and credit markets seize",
+      "severity": 5,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.16,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.14,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.14,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Lehman Brothers files for bankruptcy on 15 September 2008; interbank lending stops and bank rescues follow within weeks. Output, tax receipts and construction fall together. Bailouts versus services becomes the defining local argument for a decade.",
+      "tags": [
+        "finance",
+        "recession",
+        "banking",
+        "austerity",
+        "economy"
+      ]
+    },
+    {
+      "id": "g20-stimulus-2009",
+      "dateISO": "2009-04-02",
+      "region": "global",
+      "title": "G20 London summit commits to coordinated stimulus",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "The G20 pledges roughly $1.1 trillion of support and coordinated fiscal expansion. Rates go to the floor and infrastructure money is released fast. The stimulus-versus-consolidation split opens and does not close.",
+      "tags": [
+        "stimulus",
+        "public-works",
+        "finance",
+        "economy"
+      ]
+    },
+    {
+      "id": "h1n1-pandemic-2009",
+      "dateISO": "2009-06-11",
+      "region": "global",
+      "title": "WHO declares an H1N1 influenza pandemic",
+      "severity": 2,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 18
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 18
+        }
+      ],
+      "headlineBrief": "The first influenza pandemic since 1968 is declared on 11 June 2009. Mass vaccination is procured at speed and severity proves lower than planned for. Leaves a durable dispute about over-reaction and stockpile cost.",
+      "tags": [
+        "health",
+        "pandemic",
+        "public-services",
+        "procurement"
+      ]
+    },
+    {
+      "id": "arab-spring-oil-2011",
+      "dateISO": "2011-02-24",
+      "region": "global",
+      "title": "Arab Spring unrest pushes oil past $100",
+      "severity": 3,
+      "durationMonths": 18,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-taxi-starting-fee",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Uprisings across North Africa and the Middle East halt Libyan output; Brent passes $100 in February 2011. Fuel and food prices rise together. Energy security returns as an argument for domestic supply and for demand reduction at once.",
+      "tags": [
+        "oil",
+        "energy",
+        "geopolitics",
+        "cost-of-living"
+      ]
+    },
+    {
+      "id": "tohoku-fukushima-2011",
+      "dateISO": "2011-03-11",
+      "region": "global",
+      "title": "Tohoku earthquake and Fukushima nuclear accident",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-disaster-warning-time",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "A magnitude 9.0 earthquake and tsunami kill about 18,000 people and cause meltdowns at Fukushima Daiichi. Several countries reverse nuclear policy; component supply chains break for months. Nuclear power becomes a live local question again.",
+      "tags": [
+        "disaster",
+        "nuclear",
+        "energy",
+        "supply-chain"
+      ]
+    },
+    {
+      "id": "ebola-epidemic-2014",
+      "dateISO": "2014-08-08",
+      "region": "global",
+      "title": "West African Ebola epidemic declared an emergency",
+      "severity": 2,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 18
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 18
+        }
+      ],
+      "headlineBrief": "WHO declares a public health emergency on 8 August 2014; over 11,000 die. Screening at ports and airports is introduced and isolation capacity is audited everywhere. Exposes how thin standing public health capacity has become.",
+      "tags": [
+        "health",
+        "epidemic",
+        "public-services",
+        "preparedness"
+      ]
+    },
+    {
+      "id": "oil-price-collapse-2014",
+      "dateISO": "2014-11-27",
+      "region": "global",
+      "title": "OPEC holds output and oil prices collapse",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.14,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-car-reserve-probability",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "OPEC declines to cut production on 27 November 2014; crude falls from about $110 to under $30 by early 2016. Fuel is cheap, transit ridership softens, oil-linked budgets crack. Cheap petrol undercuts the case for modal shift.",
+      "tags": [
+        "oil",
+        "energy",
+        "transit",
+        "economy"
+      ]
+    },
+    {
+      "id": "diesel-emissions-scandal-2015",
+      "dateISO": "2015-09-18",
+      "region": "global",
+      "title": "Diesel emissions cheating exposed",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-car-reserve-probability",
+          "scope": "district",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-bike-probability",
+          "scope": "district",
+          "magnitude": 0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Regulators find defeat devices in diesel cars on 18 September 2015. Real-world nitrogen oxide emissions turn out far above test figures; low-emission zones and diesel bans follow. Air quality becomes an enforcement question, not an aspiration.",
+      "tags": [
+        "environment",
+        "air-quality",
+        "regulation",
+        "transport"
+      ]
+    },
+    {
+      "id": "paris-agreement-2015",
+      "dateISO": "2015-12-12",
+      "region": "global",
+      "title": "Paris Agreement adopted at COP21",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-ground-pollution",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "196 parties adopt a well-below-2C target with nationally determined contributions on 12 December 2015. Commitments are non-binding, so delivery lands on subnational government. Cities are handed targets without matching revenue.",
+      "tags": [
+        "climate",
+        "treaty",
+        "environment",
+        "local-government"
+      ]
+    },
+    {
+      "id": "wannacry-cyberattack-2017",
+      "dateISO": "2017-05-12",
+      "region": "global",
+      "title": "WannaCry ransomware disables public services",
+      "severity": 2,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Ransomware spreads to roughly 200,000 machines across 150 countries on 12 May 2017, cancelling hospital appointments and halting factories. Unpatched public systems are the common factor. Deferred IT maintenance becomes visible as a service failure.",
+      "tags": [
+        "technology",
+        "cyberattack",
+        "public-services",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "us-china-trade-war-2018",
+      "dateISO": "2018-07-06",
+      "region": "global",
+      "title": "US and China impose reciprocal tariffs",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Tariffs take effect on 6 July 2018 and escalate through 2019. Input costs rise, supply chains start relocating, and export-facing employers hedge. Protection versus prices returns as a mainstream economic argument.",
+      "tags": [
+        "trade",
+        "tariffs",
+        "industry",
+        "geopolitics"
+      ]
+    },
+    {
+      "id": "climate-strikes-2019",
+      "dateISO": "2019-09-20",
+      "region": "global",
+      "title": "Global climate strikes draw millions",
+      "severity": 2,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-bike-probability",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-car-reserve-probability",
+          "scope": "district",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Coordinated strikes on 20 September 2019 bring an estimated four million people onto the streets, mostly under 25. Councils declare climate emergencies with varying substance behind them. Opens a generational split inside existing parties.",
+      "tags": [
+        "climate",
+        "protest",
+        "youth",
+        "local-government"
+      ]
+    },
+    {
+      "id": "black-summer-bushfires-2019",
+      "dateISO": "2019-11-01",
+      "region": "global",
+      "title": "Record bushfire season and smoke emergency",
+      "severity": 3,
+      "durationMonths": 9,
+      "effects": [
+        {
+          "effectId": "city-pollution-health-affect",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-disaster-damage-rate",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-park-entertainment",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "An extreme fire season burns tens of millions of acres and blankets major cities in hazardous smoke for weeks. Air quality indices go off scale and schools close. Climate adaptation stops being abstract for urban voters.",
+      "tags": [
+        "climate",
+        "disaster",
+        "air-quality",
+        "health"
+      ]
+    },
+    {
+      "id": "covid-pandemic-declared-2020",
+      "dateISO": "2020-03-11",
+      "region": "global",
+      "title": "WHO declares COVID-19 a pandemic",
+      "severity": 5,
+      "durationMonths": 30,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.11,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.11,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-entertainment",
+          "scope": "city",
+          "magnitude": -0.11,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.14,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "COVID-19 is declared a pandemic on 11 March 2020; most of the world enters lockdown within a fortnight. Hospitals, transit and hospitality are hit at once and emergency powers are used at scale. Restrictions, compliance and compensation dominate every other issue.",
+      "tags": [
+        "health",
+        "pandemic",
+        "lockdown",
+        "public-services",
+        "economy"
+      ]
+    },
+    {
+      "id": "remote-work-shift-2020",
+      "dateISO": "2020-06-01",
+      "region": "global",
+      "title": "Remote work becomes structural",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-car-reserve-probability",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-bike-probability",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Office attendance stays far below 2019 levels after the first lockdowns end. Central business districts lose weekday footfall, transit fare revenue collapses, and outer districts gain daytime population. Where offices sit is now a fiscal question.",
+      "tags": [
+        "work",
+        "transit",
+        "commercial",
+        "urbanism"
+      ]
+    },
+    {
+      "id": "suez-canal-blockage-2021",
+      "dateISO": "2021-03-23",
+      "region": "global",
+      "title": "Container ship blocks the Suez Canal",
+      "severity": 2,
+      "durationMonths": 3,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": -0.05,
+          "durationMonths": 6
+        }
+      ],
+      "headlineBrief": "The Ever Given grounds on 23 March 2021 and halts roughly 12 percent of world trade for six days. Backlogs take months to clear. Demonstrates how few chokepoints stand between a city and empty shelves.",
+      "tags": [
+        "supply-chain",
+        "trade",
+        "shipping",
+        "logistics"
+      ]
+    },
+    {
+      "id": "supply-chain-crunch-2021",
+      "dateISO": "2021-09-01",
+      "region": "global",
+      "title": "Global supply chains and semiconductors seize up",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.16,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.14,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Container rates rise roughly tenfold, ports queue for weeks and chip shortages idle factories and vehicle lines through 2021 and 2022. Delivery times stretch across every sector. Reshoring and stockpiling move from theory to procurement policy.",
+      "tags": [
+        "supply-chain",
+        "industry",
+        "trade",
+        "shortage"
+      ]
+    },
+    {
+      "id": "inflation-surge-2021",
+      "dateISO": "2021-11-01",
+      "region": "global",
+      "title": "Consumer inflation reaches multi-decade highs",
+      "severity": 3,
+      "durationMonths": 30,
+      "effects": [
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Headline inflation reaches 5 to 7 percent across major economies late in 2021 and keeps rising. Wages lag, service contracts reprice, and municipal running costs jump mid-budget. Indexation of pay, rents and fares becomes the central distributive fight.",
+      "tags": [
+        "inflation",
+        "cost-of-living",
+        "budget",
+        "wages"
+      ]
+    },
+    {
+      "id": "russia-invades-ukraine-2022",
+      "dateISO": "2022-02-24",
+      "region": "global",
+      "title": "Russia's full-scale invasion of Ukraine",
+      "severity": 5,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.16,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-service-import-cost",
+          "scope": "city",
+          "magnitude": 0.13,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.07,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "The invasion begins on 24 February 2022. Sanctions, an energy and grain shock and the largest European refugee movement since 1945 follow within weeks. Defence, energy sourcing and refugee reception all land on local government at once.",
+      "tags": [
+        "war",
+        "geopolitics",
+        "energy",
+        "refugees",
+        "sanctions"
+      ]
+    },
+    {
+      "id": "rate-tightening-2022",
+      "dateISO": "2022-06-15",
+      "region": "global",
+      "title": "Central banks raise rates at the fastest pace in decades",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.18,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Policy rates rise from near zero through 2022 and 2023 in the sharpest tightening since the early 1980s. Mortgage costs, municipal borrowing and development finance all reprice. Capital programmes are rescheduled or cancelled outright.",
+      "tags": [
+        "interest-rates",
+        "finance",
+        "housing",
+        "budget"
+      ]
+    },
+    {
+      "id": "energy-price-shock-2022",
+      "dateISO": "2022-08-26",
+      "region": "global",
+      "title": "European gas cut drives a global energy price shock",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Pipeline gas to Europe is cut and benchmark prices peak in late August 2022, pulling LNG and power prices up worldwide. Energy-intensive plants curtail output; households face doubled bills. Subsidy, rationing and insulation compete for the same money.",
+      "tags": [
+        "energy",
+        "cost-of-living",
+        "industry",
+        "subsidy"
+      ]
+    },
+    {
+      "id": "generative-ai-boom-2022",
+      "dateISO": "2022-11-30",
+      "region": "global",
+      "title": "Generative AI enters mass use",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-university-interest",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-college-graduation",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "A public chat interface to a large language model reaches a hundred million users within two months; enterprise adoption follows through 2023. Clerical and creative work is automated unevenly. Displacement and retraining arrive before any regulation does.",
+      "tags": [
+        "technology",
+        "automation",
+        "employment",
+        "education"
+      ]
+    },
+    {
+      "id": "record-heat-2023",
+      "dateISO": "2023-07-06",
+      "region": "global",
+      "title": "Hottest year on record brings extreme heat",
+      "severity": 3,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-disaster-damage-rate",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-pollution-health-affect",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-park-entertainment",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Global mean temperature sets successive daily records from early July 2023; heatwaves, wildfire smoke and flooding hit populated regions in the same season. Cooling demand strains grids. Shade, water and cooled public buildings become council obligations.",
+      "tags": [
+        "climate",
+        "heat",
+        "health",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "ai-datacentre-buildout-2024",
+      "dateISO": "2024-09-01",
+      "region": "global",
+      "title": "Data centre buildout strains power grids",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Computing demand drives record data centre construction and multi-year grid connection queues; several utilities defer retirements to meet load. Cities weigh rateable value and jobs against power, water and land taken out of other uses.",
+      "tags": [
+        "technology",
+        "energy",
+        "infrastructure",
+        "planning"
+      ]
+    },
+    {
+      "id": "iran-oil-shock-2025",
+      "dateISO": "2025-06-13",
+      "region": "global",
+      "title": "Strikes on Iran and Hormuz risk spike oil prices",
+      "severity": 4,
+      "durationMonths": 9,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.16,
+          "durationMonths": 18
+        },
+        {
+          "effectId": "city-service-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 18
+        },
+        {
+          "effectId": "city-taxi-starting-fee",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 18
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Direct strikes on Iran from 13 June 2025 and threats to the Strait of Hormuz lift crude and freight insurance sharply before a ceasefire unwinds most of the spike. Roughly a fifth of world oil transits the strait. Fuel relief and strategic reserves return within days.",
+      "tags": [
+        "oil",
+        "energy",
+        "geopolitics",
+        "cost-of-living",
+        "shipping"
+      ]
+    }
+  ]
 }

@@ -1,56 +1,440 @@
 {
-  "schemaVersion": 1,
-  "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. Values below are M0 placeholders — M2 tunes them against real simulation runs.",
+  "schemaVersion": 2,
+  "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
-  "voter": {
-    "_comment": "Issue weights are per-bloc and derived from composition; these are the base priors before lived metrics adjust them.",
+  "blocs": {
+    "_comment": "Packet 1. Blocs are wealth x education x age (3 x 5 x 4 = 60 per district). Weights say how much a bloc cares; ideals say what it wants. Both are derived from composition, then nudged by lived metrics.",
+    "wealthTierThresholds": [0.33, 0.66],
+    "minBlocPopulation": 25,
+    "minBlocShare": 0.005,
+    "compositionSmoothingAlpha": 0.25,
+
     "issueWeightPriors": {
-      "services": 1.0,
-      "costOfLiving": 1.0,
-      "environment": 1.0,
-      "transit": 1.0,
-      "growth": 1.0,
-      "heritageOrder": 1.0
+      "services": 1.0, "costOfLiving": 1.0, "environment": 1.0,
+      "transit": 1.0, "growth": 1.0, "heritageOrder": 1.0
     },
+    "wealthWeightSensitivity": {
+      "services": -0.35, "costOfLiving": -0.50, "environment": 0.30,
+      "transit": -0.25, "growth": 0.20, "heritageOrder": 0.15
+    },
+    "educationWeightSensitivity": {
+      "services": 0.10, "costOfLiving": -0.20, "environment": 0.35,
+      "transit": 0.25, "growth": 0.10, "heritageOrder": -0.30
+    },
+    "ageWeightSensitivity": {
+      "services": 0.25, "costOfLiving": 0.15, "environment": -0.10,
+      "transit": -0.15, "growth": -0.25, "heritageOrder": 0.35
+    },
+
+    "idealBase": {
+      "services": 0.20, "costOfLiving": 0.20, "environment": 0.10,
+      "transit": 0.10, "growth": 0.00, "heritageOrder": 0.10
+    },
+    "wealthIdealSensitivity": {
+      "services": -0.30, "costOfLiving": -0.45, "environment": 0.15,
+      "transit": -0.20, "growth": 0.30, "heritageOrder": 0.20
+    },
+    "educationIdealSensitivity": {
+      "services": 0.15, "costOfLiving": -0.05, "environment": 0.40,
+      "transit": 0.30, "growth": 0.10, "heritageOrder": -0.35
+    },
+    "ageIdealSensitivity": {
+      "services": 0.20, "costOfLiving": 0.10, "environment": -0.05,
+      "transit": -0.10, "growth": -0.30, "heritageOrder": 0.40
+    },
+
+    "livedMetricWeightGain": 0.35,
+    "livedMetricMaxShift": 0.50,
+    "livedMetricSmoothingAlpha": 0.20,
+    "weightFloor": 0.05,
+    "weightCeiling": 3.00,
+    "normalizeWeights": true,
+
+    "discontentHappinessWeight": 0.50,
+    "discontentServiceWeight": 0.30,
+    "discontentCostWeight": 0.20,
+    "referenceHappiness": 50.0
+  },
+
+  "parties": {
+    "_comment": "Packet 2. EU parties split, merge, die below 3% across two consecutive elections, and revive if their core grievance resurges (plan section 3). NA party-level lifecycle is handled in `factions`.",
+    "targetCountEu": 6,
+    "minCountEu": 4,
+    "maxCountEu": 7,
+    "targetCountNa": 2,
+    "minorPartyCountNa": 2,
+    "maxPartiesTotal": 9,
+
+    "archetypeSpreadSigma": 0.35,
+    "minPlatformDistance": 0.15,
+    "platformDriftPerCycle": 0.08,
+    "platformDriftCapPerCycle": 0.20,
+    "platformGrievanceResponsiveness": 0.30,
+
     "incumbencyBonus": 0.05,
+    "incumbencyDecayPerTerm": 0.30,
+
+    "deathVoteShareThreshold": 0.03,
+    "deathConsecutiveElections": 2,
+    "endangeredVoteShareThreshold": 0.05,
+    "revivalGrievanceThreshold": 0.35,
+    "revivalCooldownMonths": 36,
+
+    "splitTensionThreshold": 0.45,
+    "splitMinVoteShare": 0.08,
+    "splitProbabilityPerCycle": 0.10,
+    "mergeAffinityThreshold": 0.85,
+    "mergeMaxCombinedVoteShare": 0.55,
+    "mergeProbabilityPerCycle": 0.10,
+    "newPartyEntryProbability": 0.05,
+
+    "lifecycleCheckIntervalMonths": 12,
+
+    "colorPalette": [
+      "#C0392B", "#2E86C1", "#27AE60", "#F1C40F", "#8E44AD",
+      "#E67E22", "#16A085", "#7F8C8D", "#D35400"
+    ]
+  },
+
+  "factions": {
+    "_comment": "Packet 3. NA theme: each party holds 2-4 factions with their own demographic support, demands and leader. The dominant faction writes the party platform each cycle.",
+    "minPerParty": 2,
+    "maxPerParty": 4,
+    "targetPerParty": 3,
+
+    "dominanceThreshold": 0.45,
+    "dominanceHysteresis": 0.05,
+    "platformWeightDominant": 0.60,
+    "platformWeightOthers": 0.40,
+
+    "internalTensionThreshold": 0.55,
+    "supportDriftPerCycle": 0.10,
+    "supportDriftCapPerCycle": 0.25,
+
+    "splitProbabilityPerCycle": 0.12,
+    "mergeAffinityThreshold": 0.88,
+    "mergeProbabilityPerCycle": 0.10,
+    "deathSupportThreshold": 0.08,
+    "deathConsecutiveCycles": 2,
+    "revivalGrievanceThreshold": 0.40,
+
+    "leaderChangeProbabilityPerCycle": 0.15,
+    "demandCountPerFaction": 2,
+    "lifecycleCheckIntervalMonths": 12,
+    "naPartyLifecycleProbability": 0.01,
+    "archetypeSpreadSigma": 0.30
+  },
+
+  "affinity": {
+    "_comment": "Packet 4. Affinity = issue proximity + incumbency + mandate performance + event modifiers + habitual loyalty + seeded noise. Noise is clamped so one tail draw cannot decide an election.",
+    "distanceKernel": "linear",
+    "distanceKernelSigma": 0.60,
+    "issueWeight": 1.00,
+    "baseAffinity": 0.50,
+
+    "incumbencyBonus": 0.05,
+    "incumbencyDiscontentPenalty": 0.10,
     "mandatePerformanceWeight": 0.15,
-    "affinityNoiseSigma": 0.03
+    "mandateFailurePenalty": 0.20,
+    "eventModifierWeight": 0.25,
+    "eventModifierDecayHalfLifeMonths": 9,
+    "localGrievanceWeight": 0.20,
+    "nationalMoodWeight": 0.10,
+    "habitualLoyalty": 0.35,
+    "loyaltyDecayPerMonth": 0.02,
+
+    "noiseSigma": 0.03,
+    "noiseClamp": 0.10,
+    "softmaxTemperature": 0.35,
+    "minPartyShare": 0.001,
+    "tacticalVotingThresholdFptp": 0.05
   },
 
   "turnout": {
-    "_comment": "Turnout scales with happiness and education and can flip close races (§3 Campaigns).",
+    "_comment": "Packet 5. Turnout scales with happiness and education and can flip close races. Child and teen multipliers are 0 — that is how minors are disenfranchised; the blocs still exist.",
     "base": 0.55,
     "happinessCoefficient": 0.20,
     "educationCoefficient": 0.15,
-    "noiseSigma": 0.02
+    "wealthCoefficient": 0.08,
+    "discontentCoefficient": -0.10,
+    "competitivenessCoefficient": 0.12,
+    "campaignIntensityCoefficient": 0.05,
+    "incumbentTermFatigue": 0.03,
+
+    "ageBandMultipliers": { "child": 0.0, "teen": 0.0, "adult": 1.0, "elderly": 1.10 },
+
+    "noiseSigma": 0.02,
+    "floor": 0.10,
+    "ceiling": 0.95,
+    "referenceHappiness": 50.0,
+    "referenceEducationIndex": 0.50,
+    "snapElectionPenalty": 0.03
   },
 
-  "polls": {
-    "_comment": "Published polls under-sample low-education, low-turnout districts. Error direction is asserted in the simulation harness, not the magnitude.",
+  "polling": {
+    "_comment": "Packet 6. Published polls under-sample low-education, low-turnout districts. The harness asserts the DIRECTION of that error, never the magnitude, so these two bias values must stay positive.",
     "errorSigma": 0.030,
     "educationUnderSampleBias": 0.040,
     "turnoutUnderSampleBias": 0.025,
-    "weeksBeforeElection": 26
+    "houseEffectSigma": 0.015,
+
+    "sampleSizeBase": 1000,
+    "sampleSizeVariance": 0.20,
+    "marginOfErrorMultiplier": 1.96,
+
+    "publishIntervalDays": 7,
+    "campaignWeeks": 26,
+    "weeksBeforeElection": 26,
+
+    "herdingFactor": 0.20,
+    "errorDecayTowardElection": 0.60,
+    "undecidedShareBase": 0.15,
+    "undecidedDecayPerWeek": 0.08,
+
+    "minPublishedShare": 0.005,
+    "roundingDecimals": 3,
+    "maxStoredPolls": 60,
+    "pollsterCount": 3
   },
 
-  "lifecycle": {
-    "_comment": "EU parties die below the threshold across two consecutive elections; a dead brand may revive if its core grievance resurges.",
-    "deathVoteShareThreshold": 0.03,
-    "deathConsecutiveElections": 2,
-    "revivalGrievanceThreshold": 0.35,
-    "splitTensionThreshold": 0.45,
-    "mergeAffinityThreshold": 0.85
+  "electionsPr": {
+    "_comment": "Packet 7. EU theme: proportional list seats, 3-year terms, 5% threshold, modified Sainte-Lague with a 1.4 first divisor.",
+    "termYears": 3,
+    "totalSeats": 60,
+    "seatsPerPopulation": 0.0,
+    "minSeats": 21,
+    "maxSeats": 120,
+    "thresholdShare": 0.05,
+    "method": "sainte-lague",
+    "firstDivisor": 1.40,
+    "districtSeatShare": 0.0,
+    "campaignMonths": 6,
+    "snapElectionMinMonthsSinceLast": 12,
+    "snapElectionDelayMonths": 3,
+    "minSeatsForRepresentation": 1
   },
 
-  "terms": {
-    "euTermYears": 3,
-    "naTermYears": 4,
-    "campaignMonths": 6
+  "electionsFptp": {
+    "_comment": "Packet 8. NA theme: one seat per district plus a directly elected mayor, 4-year terms. primariesEnabled is an open decision (plan section 14) — leave it false.",
+    "termYears": 4,
+    "mayorTermYears": 4,
+    "councilSeatsPerDistrict": 1,
+    "minCouncilSeats": 9,
+    "maxCouncilSeats": 45,
+    "campaignMonths": 6,
+    "thirdPartyPenalty": 0.35,
+    "incumbentMayorBonus": 0.04,
+    "districtSwingSigma": 0.02,
+    "straightTicketFactor": 0.70,
+    "mayorRunoffThreshold": 0.0,
+    "tieMarginEpsilon": 1e-9,
+    "primariesEnabled": false
+  },
+
+  "coalitions": {
+    "_comment": "Packet 9. Formation ranks candidate coalitions by ideological closeness and size; stability decays monthly and takes shocks from failed mandates and severe events. Falling below collapseThreshold triggers a snap election.",
+    "minSeatShareToGovern": 0.50,
+    "formationMaxPartners": 4,
+    "formationAttemptsMax": 3,
+    "formationWindowMonths": 3,
+
+    "ideologicalDistanceCap": 0.55,
+    "distanceWeight": 0.60,
+    "sizeWeight": 0.40,
+    "grandCoalitionDistanceBonus": 0.10,
+    "leadPartyMinSeatShare": 0.20,
+
+    "minorityGovernmentAllowed": true,
+    "minorityGovernmentPenalty": 0.25,
+
+    "cohesionBase": 0.75,
+    "cohesionDistancePenalty": 0.50,
+
+    "stabilityInitial": 0.80,
+    "stabilityDecayPerMonth": 0.01,
+    "stabilityShockPerFailedMandate": 0.08,
+    "stabilityShockPerSeverityPoint": 0.03,
+    "stabilityRecoveryPerFulfilledMandate": 0.05,
+
+    "collapseThreshold": 0.30,
+    "collapseCheckIntervalMonths": 1,
+    "snapElectionDelayMonths": 3
   },
 
   "mandates": {
+    "_comment": "Packet 10. Mandates come from real measured deficits and are scored monthly against the live snapshot. Fulfilled raises happiness and legitimacy; defied lowers both and can trigger unrest. The player is never punished beyond a sanctioned effect.",
+    "countPerTerm": 3,
+    "maxActive": 6,
+    "minDeficitToGenerate": 0.15,
+    "targetImprovementFraction": 0.20,
+    "horizonMonths": 24,
+    "graceMonths": 3,
+    "monitoringIntervalMonths": 1,
+    "partialCreditThreshold": 0.60,
+    "districtMandateShare": 0.50,
+
     "fulfilledHappinessBonus": 2.0,
     "defiedHappinessPenalty": 3.0,
-    "monitoringIntervalMonths": 1
+    "partialHappinessBonus": 0.5,
+    "fulfilledLegitimacyBonus": 0.05,
+    "defiedLegitimacyPenalty": 0.08,
+    "oppositionSurgeOnDefiance": 0.04,
+    "unrestEventProbabilityOnDefiance": 0.25,
+    "resolutionEffectDurationMonths": 12,
+    "salienceFloor": 0.10,
+    "stalledMetricGraceMonths": 3
+  },
+
+  "catalog": {
+    "_comment": "Packet 11. Curated real history 1990 onward, then procedural mode. jitterEnabled and the procedural block are open decisions (plan section 14) — the keys exist so nothing hardcodes them, but do not build past the ratified shape.",
+    "startYear": 1990,
+    "catalogEndYear": 2026,
+
+    "jitterEnabled": false,
+    "jitterMonths": 0,
+
+    "severityEffectScale": 0.20,
+    "severityMax": 5,
+    "majorSeverityThreshold": 4,
+    "minMonthsBetweenMajorEvents": 3,
+    "maxConcurrentEvents": 6,
+
+    "includeGlobal": true,
+    "globalEventWeight": 1.0,
+    "regionalEventWeight": 1.0,
+
+    "effectMagnitudeGlobalCap": 1.0,
+    "effectDurationCapMonths": 240,
+
+    "proceduralEnabled": true,
+    "proceduralStartYear": 2027,
+    "proceduralEventsPerYear": 2.0,
+    "proceduralArchetypeCount": 12,
+    "proceduralSeverityMean": 2.5,
+    "proceduralSeveritySigma": 0.8
+  },
+
+  "scheduler": {
+    "_comment": "Packet 12. The monthly tick and everything hung off it. snapshotRetention is an open decision (proposed 25) — keep the newest N and nothing cleverer.",
+    "tickIntervalMonths": 1,
+    "snapshotIntervalMonths": 1,
+    "snapshotRetention": 25,
+
+    "eventScanIntervalMonths": 1,
+    "maxEventsPerTick": 3,
+    "lifecycleTickMonths": 12,
+    "indicesTickMonths": 1,
+    "mandateMonitorIntervalMonths": 1,
+
+    "pollTickIntervalDays": 7,
+    "campaignStartMonthsBeforeElection": 6,
+
+    "llmWakeYearly": true,
+    "llmWakeOnElection": true,
+    "llmWakeManualEnabled": true,
+    "llmWakeMonth": 1,
+
+    "catchUpMaxMonths": 120,
+    "warmupMonths": 6
+  },
+
+  "indices": {
+    "_comment": "Packet 13. Derived indices, all normalised to [0,1] so the dashboard can render them on one scale.",
+    "smoothingAlpha": 0.30,
+    "giniSampleBuckets": 20,
+
+    "gentrificationRentWeight": 0.50,
+    "gentrificationEducationWeight": 0.30,
+    "gentrificationTurnoverWeight": 0.20,
+    "gentrificationWindowMonths": 24,
+
+    "brainDrainEducationWeight": 0.60,
+    "brainDrainOutflowWeight": 0.40,
+    "brainDrainWindowMonths": 12,
+
+    "commuteMiseryTimeWeight": 0.60,
+    "commuteMiseryCongestionWeight": 0.40,
+    "commuteMiseryReferenceMinutes": 25.0,
+
+    "serviceInequalityWeights": {
+      "health": 1.0, "education": 1.0, "police": 1.0, "fire": 0.8, "garbage": 0.8,
+      "transit": 1.0, "water": 0.6, "electricity": 0.6, "parks": 0.5
+    },
+
+    "polarizationDispersionWeight": 1.0,
+
+    "discontentHappinessWeight": 0.50,
+    "discontentUnemploymentWeight": 0.30,
+    "discontentServiceWeight": 0.20,
+
+    "legitimacyTurnoutWeight": 0.40,
+    "legitimacyMandateWeight": 0.35,
+    "legitimacyStabilityWeight": 0.25,
+
+    "clampMin": 0.0,
+    "clampMax": 1.0
+  },
+
+  "effects": {
+    "_comment": "Packet 14. The closed effect registry. Every entry names a real member of Game.Areas.DistrictModifierType or Game.City.CityModifierType (Scout 0001 section 3) and declares scope, magnitude cap, duration cap and a fallback. An effectId not listed here does not exist. The two terminal fallbacks carry an empty fallbackEffectId so the sink cannot loop.",
+    "enabled": true,
+    "globalMagnitudeCap": 1.0,
+    "globalDurationCapMonths": 120,
+    "severityMagnitudeScale": 0.20,
+    "decayCurve": "linear",
+    "decayHalfLifeMonths": 6,
+    "minEffectiveMagnitude": 0.001,
+    "reapplyIntervalMonths": 1,
+    "stackingMode": "sum",
+    "maxStackedPerModifier": 4,
+    "defaultFallbackCityEffectId": "city-tax-happiness",
+    "defaultFallbackDistrictEffectId": "district-wellbeing",
+
+    "perEffect": {
+      "district-wellbeing":               { "scope": "district", "modifier": "Wellbeing",                  "magnitudeCap": 0.15, "durationCapMonths": 60, "fallbackEffectId": "" },
+      "district-crime-accumulation":      { "scope": "district", "modifier": "CrimeAccumulation",          "magnitudeCap": 0.25, "durationCapMonths": 48, "fallbackEffectId": "district-wellbeing" },
+      "district-garbage-production":      { "scope": "district", "modifier": "GarbageProduction",          "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-building-upkeep":         { "scope": "district", "modifier": "BuildingUpkeep",             "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-parking-fee":             { "scope": "district", "modifier": "ParkingFee",                 "magnitudeCap": 0.30, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-low-commercial-tax":      { "scope": "district", "modifier": "LowCommercialTax",           "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-energy-awareness":        { "scope": "district", "modifier": "EnergyConsumptionAwareness", "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-product-consumption":     { "scope": "district", "modifier": "ProductConsumption",         "magnitudeCap": 0.15, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-street-traffic-safety":   { "scope": "district", "modifier": "StreetTrafficSafety",        "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-building-fire-hazard":    { "scope": "district", "modifier": "BuildingFireHazard",         "magnitudeCap": 0.20, "durationCapMonths": 24, "fallbackEffectId": "district-wellbeing" },
+      "district-bike-probability":        { "scope": "district", "modifier": "BikeProbability",            "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-car-reserve-probability": { "scope": "district", "modifier": "CarReserveProbability",      "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+
+      "city-tax-happiness":               { "scope": "city", "modifier": "TaxHappiness",                        "magnitudeCap": 0.15, "durationCapMonths": 60, "fallbackEffectId": "" },
+      "city-attractiveness":              { "scope": "city", "modifier": "Attractiveness",                      "magnitudeCap": 0.25, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-entertainment":               { "scope": "city", "modifier": "Entertainment",                       "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-park-entertainment":          { "scope": "city", "modifier": "ParkEntertainment",                   "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-crime-accumulation":          { "scope": "city", "modifier": "CrimeAccumulation",                   "magnitudeCap": 0.25, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-crime-probability":           { "scope": "city", "modifier": "CrimeProbability",                    "magnitudeCap": 0.25, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-crime-response-time":         { "scope": "city", "modifier": "CrimeResponseTime",                   "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-criminal-monitor":            { "scope": "city", "modifier": "CriminalMonitorProbability",          "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-prison-time":                 { "scope": "city", "modifier": "PrisonTime",                          "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-disease-probability":         { "scope": "city", "modifier": "DiseaseProbability",                  "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-pollution-health-affect":     { "scope": "city", "modifier": "PollutionHealthAffect",               "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-hospital-efficiency":         { "scope": "city", "modifier": "HospitalEfficiency",                  "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-college-graduation":          { "scope": "city", "modifier": "CollegeGraduation",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-university-graduation":       { "scope": "city", "modifier": "UniversityGraduation",                "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-university-interest":         { "scope": "city", "modifier": "UniversityInterest",                  "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-industrial-garbage":          { "scope": "city", "modifier": "IndustrialGarbage",                   "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-industrial-air-pollution":    { "scope": "city", "modifier": "IndustrialAirPollution",              "magnitudeCap": 0.25, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-industrial-ground-pollution": { "scope": "city", "modifier": "IndustrialGroundPollution",           "magnitudeCap": 0.25, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-service-building-upkeep":     { "scope": "city", "modifier": "CityServiceBuildingBaseUpkeepCost",   "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-loan-interest":               { "scope": "city", "modifier": "LoanInterest",                        "magnitudeCap": 0.30, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-import-cost":                 { "scope": "city", "modifier": "ImportCost",                          "magnitudeCap": 0.30, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-export-cost":                 { "scope": "city", "modifier": "ExportCost",                          "magnitudeCap": 0.30, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-service-import-cost":         { "scope": "city", "modifier": "CityServiceImportCost",               "magnitudeCap": 0.25, "durationCapMonths": 48, "fallbackEffectId": "city-tax-happiness" },
+      "city-industrial-efficiency":       { "scope": "city", "modifier": "IndustrialEfficiency",                "magnitudeCap": 0.30, "durationCapMonths": 24, "fallbackEffectId": "city-tax-happiness" },
+      "city-office-efficiency":           { "scope": "city", "modifier": "OfficeEfficiency",                    "magnitudeCap": 0.30, "durationCapMonths": 24, "fallbackEffectId": "city-tax-happiness" },
+      "city-telecom-capacity":            { "scope": "city", "modifier": "TelecomCapacity",                     "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-disaster-warning-time":       { "scope": "city", "modifier": "DisasterWarningTime",                 "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-disaster-damage-rate":        { "scope": "city", "modifier": "DisasterDamageRate",                  "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-taxi-starting-fee":           { "scope": "city", "modifier": "TaxiStartingFee",                     "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
+      "city-oil-resource-amount":         { "scope": "city", "modifier": "OilResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-ore-resource-amount":         { "scope": "city", "modifier": "OreResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" }
+    }
   }
 }

@@ -1,4 +1,1299 @@
 {
   "schemaVersion": 1,
-  "events": []
+  "events": [
+    {
+      "id": "eu-german-reunification-1990",
+      "dateISO": "1990-10-03",
+      "region": "eu",
+      "title": "German reunification",
+      "severity": 4,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "East and West Germany unite. Large fiscal transfers east, rapid industrial restructuring and internal migration follow; a solidarity surcharge is levied on taxpayers. Parties split over who pays and for how long.",
+      "tags": [
+        "germany",
+        "reunification",
+        "fiscal",
+        "migration",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-yugoslav-wars-begin-1991",
+      "dateISO": "1991-06-25",
+      "region": "eu",
+      "title": "Yugoslavia breaks up; war begins in the Balkans",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Slovenia and Croatia declare independence and fighting spreads. Western European states receive large numbers of asylum seekers and argue over quotas, recognition and intervention.",
+      "tags": [
+        "balkans",
+        "war",
+        "asylum",
+        "security"
+      ]
+    },
+    {
+      "id": "eu-maastricht-treaty-1992",
+      "dateISO": "1992-02-07",
+      "region": "eu",
+      "title": "Maastricht Treaty signed",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 60
+        }
+      ],
+      "headlineBrief": "The treaty creating the European Union and committing members to a single currency is signed. Convergence criteria cap deficits and debt, forcing budget discipline on national and municipal spending. Ratification is contested in several states.",
+      "tags": [
+        "eu",
+        "treaty",
+        "fiscal",
+        "austerity",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-black-wednesday-1992",
+      "dateISO": "1992-09-16",
+      "region": "eu",
+      "title": "Currency crisis breaks the Exchange Rate Mechanism",
+      "severity": 3,
+      "durationMonths": 18,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.18,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 18
+        }
+      ],
+      "headlineBrief": "Speculative pressure forces sterling and the lira out of the Exchange Rate Mechanism after emergency interest-rate rises. Mortgage and municipal borrowing costs spike; monetary-union credibility is questioned.",
+      "tags": [
+        "currency",
+        "finance",
+        "interest-rates",
+        "eu"
+      ]
+    },
+    {
+      "id": "eu-single-market-1993",
+      "dateISO": "1993-01-01",
+      "region": "eu",
+      "title": "European single market takes effect",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Customs checks and most internal trade barriers end across the Community. Goods, capital and labour move freely; exposed local industries face competition while exporters gain, and services regulation moves to Brussels.",
+      "tags": [
+        "single-market",
+        "trade",
+        "economy",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-schengen-implemented-1995",
+      "dateISO": "1995-03-26",
+      "region": "eu",
+      "title": "Schengen border checks abolished",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-crime-probability",
+          "scope": "city",
+          "magnitude": 0.05,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Seven states drop passport checks at internal borders and shift control to the external frontier. Cross-border commuting and tourism rise; opponents campaign on policing and smuggling.",
+      "tags": [
+        "schengen",
+        "borders",
+        "mobility",
+        "security"
+      ]
+    },
+    {
+      "id": "eu-bse-crisis-1996",
+      "dateISO": "1996-03-20",
+      "region": "eu",
+      "title": "BSE crisis and the European beef ban",
+      "severity": 2,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "A link between BSE in cattle and a fatal human disease is announced; the Community bans British beef exports within a week. Food-safety regulation is centralised and public trust in official assurances falls.",
+      "tags": [
+        "public-health",
+        "food-safety",
+        "regulation",
+        "trade"
+      ]
+    },
+    {
+      "id": "eu-ecb-established-1998",
+      "dateISO": "1998-06-01",
+      "region": "eu",
+      "title": "European Central Bank established",
+      "severity": 2,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The ECB takes over preparation of a single monetary policy from national central banks. Interest-rate setting leaves national control, removing a lever governments used to answer local downturns.",
+      "tags": [
+        "ecb",
+        "monetary-policy",
+        "eu",
+        "institutions"
+      ]
+    },
+    {
+      "id": "eu-euro-launched-1999",
+      "dateISO": "1999-01-01",
+      "region": "eu",
+      "title": "Euro launched as an accounting currency",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.15,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Eleven states lock exchange rates and adopt the euro for electronic payments; notes and coins are three years away. Borrowing costs converge sharply downward in the periphery, encouraging construction and household credit.",
+      "tags": [
+        "euro",
+        "monetary-policy",
+        "credit",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-fuel-protests-2000",
+      "dateISO": "2000-09-08",
+      "region": "eu",
+      "title": "Fuel-tax protests and refinery blockades",
+      "severity": 2,
+      "durationMonths": 3,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-taxi-starting-fee",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 6
+        }
+      ],
+      "headlineBrief": "Hauliers and farmers blockade refineries and depots across several member states over fuel duty as crude prices climb. Deliveries and public transport are disrupted; governments concede duty freezes.",
+      "tags": [
+        "cost-of-living",
+        "fuel",
+        "protest",
+        "transport"
+      ]
+    },
+    {
+      "id": "eu-euro-cash-changeover-2002",
+      "dateISO": "2002-01-01",
+      "region": "eu",
+      "title": "Euro notes and coins enter circulation",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "district-product-consumption",
+          "scope": "district",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Twelve national currencies are withdrawn and replaced with euro cash. Official inflation stays low but consumers report rounded-up prices for everyday goods; the gap between measured and perceived inflation becomes a standing political grievance.",
+      "tags": [
+        "euro",
+        "cost-of-living",
+        "prices",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-heatwave-2003",
+      "dateISO": "2003-08-01",
+      "region": "eu",
+      "title": "European heatwave",
+      "severity": 4,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "city-disease-probability",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-pollution-health-affect",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 6
+        }
+      ],
+      "headlineBrief": "Weeks of record temperatures cause tens of thousands of excess deaths, concentrated among elderly people living alone. Hospitals and mortuaries are overwhelmed; inquiries target emergency planning, heat warnings and elderly care.",
+      "tags": [
+        "climate",
+        "heatwave",
+        "public-health",
+        "elderly",
+        "services"
+      ]
+    },
+    {
+      "id": "eu-eastern-enlargement-2004",
+      "dateISO": "2004-05-01",
+      "region": "eu",
+      "title": "Eastern enlargement: ten states join the EU",
+      "severity": 4,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Poland, Hungary, the Czech Republic, Slovakia, Slovenia, the Baltic states, Malta and Cyprus accede. Some members open their labour markets immediately, others impose transition periods; wage competition and worker mobility become election issues.",
+      "tags": [
+        "enlargement",
+        "labour",
+        "migration",
+        "economy",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-constitution-rejected-2005",
+      "dateISO": "2005-05-29",
+      "region": "eu",
+      "title": "French and Dutch voters reject the EU constitution",
+      "severity": 2,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Referendums in France and days later the Netherlands reject the constitutional treaty, halting ratification. Campaigns run on services, enlargement and jobs rather than the text; mainstream parties lose control of the European argument.",
+      "tags": [
+        "referendum",
+        "eu",
+        "legitimacy",
+        "politics"
+      ]
+    },
+    {
+      "id": "eu-suburban-riots-2005",
+      "dateISO": "2005-10-27",
+      "region": "eu",
+      "title": "Suburban riots and state of emergency in France",
+      "severity": 3,
+      "durationMonths": 6,
+      "effects": [
+        {
+          "effectId": "district-crime-accumulation",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "district-building-fire-hazard",
+          "scope": "district",
+          "magnitude": 0.1,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-crime-response-time",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Three weeks of nightly unrest spread from Paris estates to towns across the country after two teenagers die fleeing police. A state of emergency is declared. Debate centres on policing, unemployment and segregated social housing.",
+      "tags": [
+        "unrest",
+        "policing",
+        "housing",
+        "inequality",
+        "banlieue"
+      ]
+    },
+    {
+      "id": "eu-enlargement-2007",
+      "dateISO": "2007-01-01",
+      "region": "eu",
+      "title": "Bulgaria and Romania join; Slovenia adopts the euro",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The EU reaches 27 members and the eurozone 13. Several western states restrict labour-market access for the new members; posted-worker rules and wage undercutting move to the centre of national campaigns.",
+      "tags": [
+        "enlargement",
+        "labour",
+        "migration",
+        "euro",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-bank-rescue-2008",
+      "dateISO": "2008-10-12",
+      "region": "eu",
+      "title": "European governments guarantee the banks",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.18,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.15,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Euro-area leaders agree coordinated recapitalisations and interbank guarantees as credit markets freeze. Bank losses move onto public balance sheets; construction stalls and tax receipts fall, setting up the fight over who bears the cost.",
+      "tags": [
+        "finance",
+        "banking",
+        "recession",
+        "credit",
+        "fiscal"
+      ]
+    },
+    {
+      "id": "eu-gas-cutoff-2009",
+      "dateISO": "2009-01-07",
+      "region": "eu",
+      "title": "Russian gas supplies to Europe cut off",
+      "severity": 3,
+      "durationMonths": 3,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.15,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "A pricing dispute with Ukraine halts transit gas for two weeks in mid-winter; south-eastern member states lose heating and industry is curtailed. Supply diversification and storage become permanent items on the energy agenda.",
+      "tags": [
+        "energy",
+        "gas",
+        "russia",
+        "security",
+        "heating"
+      ]
+    },
+    {
+      "id": "eu-ash-cloud-2010",
+      "dateISO": "2010-04-15",
+      "region": "eu",
+      "title": "Volcanic ash closes European airspace",
+      "severity": 2,
+      "durationMonths": 2,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 3
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 3
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 3
+        }
+      ],
+      "headlineBrief": "Ash from the Eyjafjallajokull eruption grounds most flights over northern Europe for six days. Air freight, tourism and business travel stop; regulators are criticised for both closing and reopening the airspace.",
+      "tags": [
+        "disaster",
+        "aviation",
+        "tourism",
+        "logistics"
+      ]
+    },
+    {
+      "id": "eu-sovereign-debt-crisis-2010",
+      "dateISO": "2010-05-02",
+      "region": "eu",
+      "title": "Greek bailout opens the eurozone debt crisis",
+      "severity": 4,
+      "durationMonths": 72,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.18,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.09,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "Euro-area states and the IMF agree a rescue loan for Greece against a programme of pay cuts, pension cuts and privatisation; Ireland and Portugal follow within a year. Spreads widen, national budgets are supervised from Brussels, and austerity becomes the dominant domestic issue.",
+      "tags": [
+        "eurozone",
+        "debt",
+        "austerity",
+        "bailout",
+        "fiscal"
+      ]
+    },
+    {
+      "id": "eu-austerity-protests-2011",
+      "dateISO": "2011-05-15",
+      "region": "eu",
+      "title": "Square occupations and anti-austerity protests",
+      "severity": 3,
+      "durationMonths": 18,
+      "effects": [
+        {
+          "effectId": "district-wellbeing",
+          "scope": "district",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-crime-response-time",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Occupations of central squares in Spain and Greece spread into a wider protest wave against budget cuts and youth unemployment. Turnout collapses for governing parties and new movements form outside the established party system.",
+      "tags": [
+        "austerity",
+        "protest",
+        "unemployment",
+        "youth",
+        "party-system"
+      ]
+    },
+    {
+      "id": "eu-nuclear-phaseout-2011",
+      "dateISO": "2011-05-30",
+      "region": "eu",
+      "title": "Germany commits to a nuclear phase-out",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "After Fukushima, Germany sets a legal end date for nuclear power and other states review their programmes. Renewables levies raise electricity bills while coal covers the gap; energy prices and grid build-out enter local politics.",
+      "tags": [
+        "energy",
+        "nuclear",
+        "environment",
+        "electricity",
+        "industry"
+      ]
+    },
+    {
+      "id": "eu-whatever-it-takes-2012",
+      "dateISO": "2012-07-26",
+      "region": "eu",
+      "title": "ECB pledges to do whatever it takes to save the euro",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.2,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.06,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The ECB president commits to unlimited conditional bond purchases and spreads fall sharply without a single bond being bought. Break-up risk recedes; the austerity conditions attached to support stay in force.",
+      "tags": [
+        "ecb",
+        "eurozone",
+        "debt",
+        "credit",
+        "monetary-policy"
+      ]
+    },
+    {
+      "id": "eu-croatia-accession-2013",
+      "dateISO": "2013-07-01",
+      "region": "eu",
+      "title": "Croatia becomes the 28th member state",
+      "severity": 1,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": 0.04,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Croatia accedes after a decade of negotiations, the first enlargement since 2007 and the last for the foreseeable future. Enlargement fatigue is openly stated by several governments.",
+      "tags": [
+        "enlargement",
+        "balkans",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-crimea-sanctions-2014",
+      "dateISO": "2014-03-18",
+      "region": "eu",
+      "title": "Russia annexes Crimea; EU imposes sanctions",
+      "severity": 3,
+      "durationMonths": 72,
+      "effects": [
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Russia annexes Crimea after an unrecognised referendum and the EU adopts asset freezes and sectoral sanctions; Russia counter-bans European food imports. Exporters and farmers lose a market and defence spending returns to the agenda.",
+      "tags": [
+        "russia",
+        "sanctions",
+        "security",
+        "trade",
+        "agriculture"
+      ]
+    },
+    {
+      "id": "eu-migration-wave-2015",
+      "dateISO": "2015-09-04",
+      "region": "eu",
+      "title": "Migration wave reaches western Europe",
+      "severity": 5,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Austria and Germany admit people stranded in Hungary and over a million asylum seekers arrive in the EU during the year. Emergency accommodation, school places and relocation quotas are contested; several states reimpose internal border checks and new parties gain on the issue.",
+      "tags": [
+        "migration",
+        "asylum",
+        "housing",
+        "services",
+        "schengen",
+        "party-system"
+      ]
+    },
+    {
+      "id": "eu-paris-attacks-2015",
+      "dateISO": "2015-11-13",
+      "region": "eu",
+      "title": "Paris attacks and the European security response",
+      "severity": 3,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-criminal-monitor",
+          "scope": "city",
+          "magnitude": 0.15,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-crime-response-time",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-entertainment",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Coordinated attacks in Paris kill 130 people and a state of emergency follows. Surveillance powers, armed policing of public spaces and border checks expand across member states; civil-liberties groups contest the permanence of the measures.",
+      "tags": [
+        "security",
+        "terrorism",
+        "policing",
+        "civil-liberties",
+        "surveillance"
+      ]
+    },
+    {
+      "id": "eu-brexit-referendum-2016",
+      "dateISO": "2016-06-23",
+      "region": "eu",
+      "title": "United Kingdom votes to leave the EU",
+      "severity": 4,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-office-efficiency",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "A 52-48 vote to leave triggers the prime minister's resignation and a sterling slump. Firms delay investment while relocation of finance and regulatory functions begins; every member state's Eurosceptic parties test the exit argument at home.",
+      "tags": [
+        "brexit",
+        "referendum",
+        "trade",
+        "uncertainty",
+        "party-system"
+      ]
+    },
+    {
+      "id": "eu-diesel-bans-2018",
+      "dateISO": "2018-02-27",
+      "region": "eu",
+      "title": "Courts clear the way for urban diesel bans",
+      "severity": 2,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "district-car-reserve-probability",
+          "scope": "district",
+          "magnitude": -0.14,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-bike-probability",
+          "scope": "district",
+          "magnitude": 0.18,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Germany's federal administrative court rules cities may ban older diesel vehicles to meet EU nitrogen-dioxide limits, following infringement action and the emissions-test scandal. Low-emission zones spread; drivers with older cars organise against them.",
+      "tags": [
+        "air-quality",
+        "transport",
+        "diesel",
+        "regulation",
+        "cars"
+      ]
+    },
+    {
+      "id": "eu-gilets-jaunes-2018",
+      "dateISO": "2018-11-17",
+      "region": "eu",
+      "title": "Fuel-tax revolt spreads from the roundabouts",
+      "severity": 3,
+      "durationMonths": 12,
+      "effects": [
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.1,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "district-street-traffic-safety",
+          "scope": "district",
+          "magnitude": -0.1,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-crime-response-time",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "A planned carbon-linked fuel duty rise sets off months of blockades and Saturday demonstrations, strongest outside the big cities. The rise is cancelled. Climate policy is now argued in terms of who pays for it and where they live.",
+      "tags": [
+        "protest",
+        "fuel",
+        "carbon-tax",
+        "cost-of-living",
+        "periphery"
+      ]
+    },
+    {
+      "id": "eu-green-deal-2019",
+      "dateISO": "2019-12-11",
+      "region": "eu",
+      "title": "European Green Deal presented",
+      "severity": 3,
+      "durationMonths": 120,
+      "effects": [
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.14,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-air-pollution",
+          "scope": "city",
+          "magnitude": -0.12,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The Commission sets a 2050 climate-neutrality target with binding interim cuts, building renovation and transport rules attached. Compliance costs land on municipalities and industry; a just-transition fund is created for coal regions.",
+      "tags": [
+        "climate",
+        "green-deal",
+        "regulation",
+        "energy",
+        "industry"
+      ]
+    },
+    {
+      "id": "eu-recovery-fund-2020",
+      "dateISO": "2020-07-21",
+      "region": "eu",
+      "title": "EU agrees a joint borrowing recovery fund",
+      "severity": 3,
+      "durationMonths": 72,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": -0.15,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-telecom-capacity",
+          "scope": "city",
+          "magnitude": 0.14,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "After four days of negotiation, leaders agree 750 billion euro of common borrowing for grants and loans, tied to national plans for digital and green investment. Common debt is a precedent; disbursement is conditioned on reform milestones.",
+      "tags": [
+        "fiscal",
+        "recovery",
+        "investment",
+        "digital",
+        "integration"
+      ]
+    },
+    {
+      "id": "eu-brexit-trade-rules-2021",
+      "dateISO": "2021-01-01",
+      "region": "eu",
+      "title": "Brexit transition ends; new trade rules bite",
+      "severity": 3,
+      "durationMonths": 48,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.15,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "city-export-cost",
+          "scope": "city",
+          "magnitude": 0.15,
+          "durationMonths": 48
+        }
+      ],
+      "headlineBrief": "Customs declarations, rules of origin and sanitary checks return between the UK and the EU under a zero-tariff deal. Freight queues, paperwork costs and lost small-exporter trade follow; services access is not covered.",
+      "tags": [
+        "brexit",
+        "trade",
+        "customs",
+        "logistics",
+        "business"
+      ]
+    },
+    {
+      "id": "eu-western-europe-floods-2021",
+      "dateISO": "2021-07-14",
+      "region": "eu",
+      "title": "Flash floods devastate western Germany and Belgium",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-disaster-damage-rate",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "district-building-upkeep",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Extreme rainfall destroys valley towns and kills more than 200 people weeks before a federal election. Warning chains and evacuation orders failed at local level; flood defence, building in floodplains and climate adaptation dominate the campaign.",
+      "tags": [
+        "disaster",
+        "flooding",
+        "climate",
+        "emergency-services",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "eu-ukraine-refugee-protection-2022",
+      "dateISO": "2022-03-04",
+      "region": "eu",
+      "title": "EU opens temporary protection to Ukrainian refugees",
+      "severity": 4,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-hospital-efficiency",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-attractiveness",
+          "scope": "city",
+          "magnitude": -0.05,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "Days after the invasion the EU activates the temporary protection directive, granting residence, work and schooling without asylum procedures; millions arrive within months. Housing, school places and language provision are the binding constraints at municipal level.",
+      "tags": [
+        "ukraine",
+        "refugees",
+        "housing",
+        "schools",
+        "services"
+      ]
+    },
+    {
+      "id": "eu-ecb-rate-hikes-2022",
+      "dateISO": "2022-07-21",
+      "region": "eu",
+      "title": "ECB raises rates for the first time in eleven years",
+      "severity": 3,
+      "durationMonths": 36,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.2,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "With euro-area inflation heading to double digits the ECB ends negative rates and begins the fastest tightening cycle in its history. Mortgages, municipal borrowing and construction finance reprice; real wages fall.",
+      "tags": [
+        "inflation",
+        "ecb",
+        "interest-rates",
+        "cost-of-living",
+        "housing"
+      ]
+    },
+    {
+      "id": "eu-gas-savings-regulation-2022",
+      "dateISO": "2022-08-09",
+      "region": "eu",
+      "title": "EU orders emergency gas demand cuts for the winter",
+      "severity": 4,
+      "durationMonths": 24,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.18,
+          "durationMonths": 48
+        },
+        {
+          "effectId": "district-energy-awareness",
+          "scope": "district",
+          "magnitude": 0.12,
+          "durationMonths": 36
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": -0.15,
+          "durationMonths": 24
+        }
+      ],
+      "headlineBrief": "With Russian pipeline flows cut and storage short, the EU regulation obliging member states to cut gas use by 15 per cent takes effect. Heating and lighting limits apply to public buildings, industry is paid to curtail output, and bill support is capped by national budgets.",
+      "tags": [
+        "energy",
+        "gas",
+        "rationing",
+        "industry",
+        "subsidies"
+      ]
+    },
+    {
+      "id": "eu-farmer-protests-2024",
+      "dateISO": "2024-01-24",
+      "region": "eu",
+      "title": "Farmer protests blockade European capitals",
+      "severity": 3,
+      "durationMonths": 9,
+      "effects": [
+        {
+          "effectId": "city-import-cost",
+          "scope": "city",
+          "magnitude": 0.08,
+          "durationMonths": 12
+        },
+        {
+          "effectId": "district-street-traffic-safety",
+          "scope": "district",
+          "magnitude": -0.1,
+          "durationMonths": 6
+        },
+        {
+          "effectId": "city-tax-happiness",
+          "scope": "city",
+          "magnitude": -0.06,
+          "durationMonths": 12
+        }
+      ],
+      "headlineBrief": "Tractor blockades in Germany, France, Poland and Belgium target diesel subsidy cuts, environmental conditions on subsidies and Ukrainian grain imports. The Commission withdraws a pesticide bill and softens fallow-land rules.",
+      "tags": [
+        "agriculture",
+        "protest",
+        "green-deal",
+        "subsidies",
+        "ukraine"
+      ]
+    },
+    {
+      "id": "eu-parliament-election-2024",
+      "dateISO": "2024-06-09",
+      "region": "eu",
+      "title": "European Parliament election shifts right",
+      "severity": 2,
+      "durationMonths": 12,
+      "headlineBrief": "Nationalist and hard-right groups gain seats while green parties lose heavily; the French president calls a snap national election the same night. Climate legislation is slowed and migration and farm rules are reopened.",
+      "tags": [
+        "election",
+        "party-system",
+        "right",
+        "climate",
+        "migration"
+      ]
+    },
+    {
+      "id": "eu-german-fiscal-turn-2025",
+      "dateISO": "2025-03-18",
+      "region": "eu",
+      "title": "Germany loosens its debt brake for defence and infrastructure",
+      "severity": 3,
+      "durationMonths": 60,
+      "effects": [
+        {
+          "effectId": "city-loan-interest",
+          "scope": "city",
+          "magnitude": 0.1,
+          "durationMonths": 60
+        },
+        {
+          "effectId": "city-industrial-efficiency",
+          "scope": "city",
+          "magnitude": 0.12,
+          "durationMonths": 24
+        },
+        {
+          "effectId": "city-service-building-upkeep",
+          "scope": "city",
+          "magnitude": -0.08,
+          "durationMonths": 36
+        }
+      ],
+      "headlineBrief": "The Bundestag amends the constitution to exempt defence spending from the debt brake and create a 500 billion euro infrastructure fund, part of it earmarked for states and municipalities. European yields rise; other capitals face the same guns-and-roads choice.",
+      "tags": [
+        "fiscal",
+        "defence",
+        "infrastructure",
+        "germany",
+        "borrowing"
+      ]
+    }
+  ]
 }

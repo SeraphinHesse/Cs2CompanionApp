@@ -22,4 +22,30 @@
     <ProjectReference Include="..\..\src\Agora.Core\Agora.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    Four Agora.Mod files compiled in BY LINK, not by project reference.
+
+    politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
+    this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
+    Agora.Mod, which cannot be project-referenced: it needs the game installed and this suite must
+    not.
+
+    All four files are deliberately free of every Game.*, Colossal.* and Unity.* type (they use only
+    System.* and Agora.Core), so linking them keeps the property this suite exists to protect: it
+    still builds and passes on a machine with no copy of Cities: Skylines II. Adding a file here that
+    does reference the game will fail this project's build immediately, which is the guard — and if a
+    game type is ever added to one of these four, that is the alarm we want, because it means logic
+    the tests cover has drifted out of their reach.
+
+    Everything is in THIS project rather than in a sibling test project so that the one gate command
+    in CLAUDE.md — dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj — runs all of it. A
+    second suite that the gate command does not run is a suite that rots.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Agora.Mod\Effects\ModifierDelta.cs" Link="ModEffects\ModifierDelta.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Effects\EffectLedger.cs" Link="ModEffects\EffectLedger.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Time\SimClockMath.cs" Link="ModTime\SimClockMath.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Time\StartYearDelivery.cs" Link="ModTime\StartYearDelivery.cs" />
+  </ItemGroup>
+
 </Project>

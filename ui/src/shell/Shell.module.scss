@@ -1,0 +1,172 @@
+// Dashboard shell — the toggle button and the tab bar that frames the panels.
+//
+// Coherent Gameface supports the flex layout model only. `display: grid` fails silently: no build
+// error, no runtime error, just a broken pile of boxes. There is none here and none may be added.
+//
+// `rem` is the CS2 UI's scaling unit — the game scales it with the interface size setting, so a
+// rem-based control tracks the rest of the HUD instead of shrinking on a 4K screen.
+
+$text: #ffffff;
+$text-dim: rgba(255, 255, 255, 0.62);
+$surface: rgba(8, 10, 14, 0.86);
+$line: rgba(255, 255, 255, 0.12);
+$accent: #4ea3ff;
+$good: #4fbf7a;
+
+// ---- the toggle (GameTopLeft) -----------------------------------------------------------------
+//
+// Both states are written out in full rather than as a base class plus a modifier: the two are
+// applied exclusively (see AgoraButton.tsx), which keeps the markup free of a class-name joiner
+// and makes each state readable in one place.
+
+@mixin toggle-base {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 8rem;
+  padding: 5rem 10rem;
+  border-radius: 4rem;
+  color: $text;
+  font-size: 12rem;
+}
+
+.toggle {
+  @include toggle-base;
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.toggleOpen {
+  @include toggle-base;
+  background-color: rgba(78, 163, 255, 0.28);
+}
+
+// Liveness dot. `agora.state.ready` — solid once the engine has published a political state.
+@mixin toggle-dot {
+  display: flex;
+  flex: 0 0 auto;
+  width: 6rem;
+  height: 6rem;
+  border-radius: 6rem;
+  margin-right: 8rem;
+}
+
+.toggleDot {
+  @include toggle-dot;
+  background-color: $good;
+}
+
+.toggleDotWaiting {
+  @include toggle-dot;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.toggleLabel {
+  display: flex;
+  font-weight: bold;
+  letter-spacing: 2rem;
+}
+
+.toggleDate {
+  display: flex;
+  margin-left: 8rem;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+// ---- the dashboard (GameTopRight) -------------------------------------------------------------
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  // The hook point is wider than the dashboard. Pin both the bar and the panel to the same right
+  // edge so they read as one unit instead of two cards that happen to be near each other.
+  align-items: flex-end;
+}
+
+.bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 0 0 auto;
+  // No bottom margin: the panel below brings its own 8rem, which is the gap between them.
+  margin: 8rem 8rem 0 8rem;
+  padding: 4rem 6rem 4rem 12rem;
+  background-color: $surface;
+  border-radius: 4rem;
+  color: $text;
+  font-size: 12rem;
+}
+
+.barTitle {
+  display: flex;
+  flex: 0 0 auto;
+  font-weight: bold;
+  letter-spacing: 2rem;
+  opacity: 0.8;
+  margin-right: 14rem;
+}
+
+.tabs {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+}
+
+@mixin tab-base {
+  margin-right: 4rem;
+  font-size: 11rem;
+}
+
+.tab {
+  @include tab-base;
+  color: $text-dim;
+}
+
+.tabSelected {
+  @include tab-base;
+  color: $text;
+  border-bottom: 2rem solid $accent;
+}
+
+.close {
+  flex: 0 0 auto;
+  margin-left: 10rem;
+  padding: 0 8rem;
+  font-size: 15rem;
+  color: $text-dim;
+}
+
+.panelSlot {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+
+// ---- ShellBoundary fallback -------------------------------------------------------------------
+
+.failure {
+  display: flex;
+  flex-direction: column;
+  width: 360rem;
+  margin: 8rem;
+  padding: 10rem 12rem;
+  background-color: $surface;
+  border-radius: 4rem;
+  border-left: 2rem solid $line;
+  color: $text-dim;
+  font-size: 12rem;
+  // Prose of unpredictable length: an exception message must break rather than widen the card.
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.failureDetail {
+  display: block;
+  min-width: 0;
+  margin-top: 6rem;
+  opacity: 0.7;
+  font-size: 11rem;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
