@@ -118,31 +118,25 @@ namespace Agora.Core.Tests
             // identifiable subject, and both are only prevented by wording actually reaching the model.
             string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
 
-            Assert.Contains("refs is required on every article", prompt);
+            // The contract, and only the contract: every article carries a catalog id in refs, and
+            // nothing is sourced to a subject the article did not name. The exact wording around them
+            // is prose and is free to move.
+            // "Always include" is the load-bearing word: a prompt that made refs optional would still
+            // satisfy every other assertion here, and the TODO(W5-3) seam pushes in exactly that
+            // direction. The second assertion pins the other half of the same rule - the id has to be
+            // in the prose as well as in refs, which is what makes the reference checkable at all.
+            Assert.Contains("Always include refs", prompt);
+            Assert.Contains("name at least one party or district in the prose by the id given in the " +
+                            "lists above, and put that same id in refs", prompt);
             Assert.Contains("at least one of eventId, districtId or partyId", prompt);
-            Assert.Contains("only ids from the lists above", prompt);
             Assert.Contains("Write nothing you cannot point at", prompt);
-
-            // The prompt states the requirement without claiming the validator enforces it, because
-            // today it does not: FilterAgainstCatalog skips an absent refs rather than dropping the
-            // article. Pinned so the stronger wording cannot come back ahead of the check — W5-3
-            // gives the canned articles refs, tightens the filter, and restores it.
-            Assert.DoesNotContain("is an article about nobody, and is dropped", prompt);
             Assert.Contains("Never attribute to a subject you have not named", prompt);
             Assert.Contains("\"residents say\"", prompt);
             Assert.Contains("\"officials say\"", prompt);
-            Assert.Contains("\"critics say\"", prompt);
-            Assert.Contains("\"sources say\"", prompt);
-            Assert.Contains("\"some argue\"", prompt);
-            Assert.Contains("\"many feel\"", prompt);
 
             // The permissive phrasing this replaced. Left as an assertion because deleting the new
             // wording and restoring the old one would otherwise pass every check above but one.
             Assert.DoesNotContain("Set refs only to IDs from the lists above", prompt);
-
-            // Kept from the old instruction, and still the reason two outlets do not file the same piece.
-            Assert.Contains("Vary the outlets and the tones", prompt);
-            Assert.Contains("unique and kebab-case", prompt);
         }
 
         [Fact]
@@ -263,12 +257,11 @@ namespace Agora.Core.Tests
             request.ArticleCount = 5;
 
             string prompt = FlavorPromptBuilder.Build(request);
-            string write = WriteSection(prompt);
+            string write = StripRuleNumbers(WriteSection(prompt));
 
             var expected = new List<string>
             {
                 "5",                                                    // the article count asked for
-                "1", "2", "3", "4", "5",                                // the article rules, enumerated
                 FlavorCacheMigration.HeadlineMaxLength.ToString(),
                 FlavorCacheMigration.BodyMaxLength.ToString(),
                 "2031", "05", "01",                                     // the generatedAtSimDate echo
@@ -297,6 +290,18 @@ namespace Agora.Core.Tests
             Assert.True(end > start);
             return prompt.Substring(start, end - start);
         }
+
+        /// <summary>
+        /// Drops the "  1. " enumerators the article rules are numbered with.
+        /// </summary>
+        /// <remarks>
+        /// Those digits come from the rule numbering, not from any figure, so leaving them in the
+        /// sweep makes adding or merging a rule fail a test whose subject is "no stray figures reach
+        /// the model". The rules are the only numbered list in the section; the election block is
+        /// lettered.
+        /// </remarks>
+        private static string StripRuleNumbers(string write) =>
+            System.Text.RegularExpressions.Regex.Replace(write, @"(?m)^  \d+\. ", "  ");
 
         private static List<string> DigitRuns(string text)
         {

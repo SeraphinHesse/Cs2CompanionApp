@@ -1343,7 +1343,12 @@ namespace Agora.Mod.Core
             };
 
             FillBriefs(request, _state);
-            _flavor.Pool.Roster = request;
+
+            // Through RosterCopy for the same reason LayeredFlavorProvider.RequestFlavor does it: one
+            // rule, so a roster is never an alias of a request anyone else holds. Nothing changes value
+            // here — this request is built locally, at the ordinary article count, and never handed to
+            // the CLI worker — but two assignment sites with opposite treatment is how the rule rots.
+            _flavor.Pool.Roster = request.RosterCopy();
         }
 
         /// <summary>

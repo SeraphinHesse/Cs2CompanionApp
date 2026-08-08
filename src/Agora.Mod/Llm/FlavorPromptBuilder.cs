@@ -296,21 +296,21 @@ namespace Agora.Mod.Llm
             sb.Append(" articles from local outlets covering the city as described above.\n");
             sb.Append("  1. Lead with what happened, to whom, and why it matters. ");
             sb.Append("The concrete change goes in the first sentence, not the last.\n");
-            sb.Append("  2. Name at least one party or district by the id given in the lists above, ");
-            sb.Append("and put that same id in refs.\n");
-            // AGORA-SEAM (W5-3): the requirement is stated, but not yet enforced — FilterAgainstCatalog
+            // TODO(W5-3): the requirement is stated, but not yet enforced — FilterAgainstCatalog
             // skips an article whose refs are absent rather than dropping it, and tightening it today
             // would delete every city-branch article the canned pool files, because StaticPoolProvider
             // sets refs only on the district branch. W5-3 gives the canned articles refs and tightens
             // the filter in the same change; the stronger "and is dropped" claim belongs there, once it
             // is true. Softened deliberately until then: the prompt must not describe a check that does
             // not run.
-            sb.Append("  3. refs is required on every article: at least one of eventId, districtId or ");
-            sb.Append("partyId, and only ids from the lists above. Write nothing you cannot point at.\n");
-            sb.Append("  4. Never attribute to a subject you have not named. Do not write \"residents say\", ");
+            sb.Append("  2. Always include refs: name at least one party or district in the prose by the ");
+            sb.Append("id given in the lists above, and put that same id in refs. refs takes at least one ");
+            sb.Append("of eventId, districtId or partyId, and only ids from the lists above. ");
+            sb.Append("Write nothing you cannot point at.\n");
+            sb.Append("  3. Never attribute to a subject you have not named. Do not write \"residents say\", ");
             sb.Append("\"officials say\", \"critics say\", \"sources say\", \"some argue\", \"many feel\", ");
             sb.Append("or any variant of them. Name the party, the faction or the district, or do not attribute at all.\n");
-            sb.Append("  5. Vary the outlets and the tones. Each article's id must be unique and kebab-case.\n");
+            sb.Append("  4. Vary the outlets and the tones. Each article's id must be unique and kebab-case.\n");
             // The cap sentence is left exactly as it was, interpolation and all: FlavorCacheMigration
             // is the single source of truth for both lengths, and the drift gate reads it there.
             sb.Append("  ");

@@ -60,6 +60,12 @@ authority; this is the tracker.
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ⬜ |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, committed** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **2 owner decisions raised**, and the drift re-run must repeat after W4/W6 |
 
+**W5 deviates from the ratified article count, deliberately.** §11 M3 ratifies 3–5 articles per
+wake; an election wake asks for 7 (NA) or 8 (EU) — the ordinary 4 plus one slot per dedicated
+election piece — because W5's "elections covered extensively" decision would otherwise buy the
+election coverage by cutting general coverage below an ordinary month. Recorded in `politicsmodplan.md`
+§11 M3. The extra tokens land on election months only, and elections are 3–4 years apart.
+
 **Phase 1 is code complete and through the checklist gate** (`dotnet build` 0/0 · 1033 tests ·
 `npm run check` clean). Nothing is committed. Four review-blocking defects were found and fixed, and
 the review passes corrected **eight** places where `fixplan.md` describes code that does not exist —

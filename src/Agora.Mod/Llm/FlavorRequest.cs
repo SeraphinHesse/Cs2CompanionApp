@@ -105,17 +105,29 @@ namespace Agora.Mod.Llm
         /// An election round under NA rules: the ordinary count plus one each for the result, the
         /// winner's reaction and the loser's reaction that <c>FlavorPromptBuilder</c> asks for on top.
         /// </summary>
+        /// <remarks>
+        /// Like <see cref="ElectionArticleCountEu"/>, this exceeds the "3–5 articles per wake" figure
+        /// §11 M3 ratifies; §11 M3 is where the deviation is recorded.
+        /// </remarks>
         public const int ElectionArticleCountNa = DefaultArticleCount + 3;
 
         /// <summary>
         /// An election round under EU rules: the NA set plus the coalition-outlook piece.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A raised count is a prompt instruction to the model and nothing else — the canned pool is
         /// handed <see cref="RosterCopy"/>, which carries <see cref="DefaultArticleCount"/>, so it is
         /// never asked to fill eight slots out of template lists that hold three.
         /// <c>FlavorPromptBuilder.AppendTask</c> clamps at twelve, so neither value is touched by it.
+        /// </para>
+        /// <para>
+        /// This is a deviation from the "3–5 articles per wake" figure §11 M3 ratifies, and §11 M3 is
+        /// where it is recorded — read the authority there, not just the rationale here.
+        /// </para>
         /// </remarks>
+        // StaticPoolProvider.BuildArticles clamps on this same constant rather than a literal, so the
+        // pool can never be handed a count it caps back down.
         public const int ElectionArticleCountEu = ElectionArticleCountNa + 1;
 
         /// <summary>How many articles to ask for. A prompt instruction, not engine state.</summary>
@@ -143,8 +155,9 @@ namespace Agora.Mod.Llm
         /// </para>
         /// <para>
         /// A copy rather than the request itself for a second reason: the pool writes
-        /// <see cref="Date"/>, <see cref="Snapshot"/> and <see cref="Theme"/> onto its roster on every
-        /// poll, from the sim thread, while the CLI worker may be reading the request it was handed.
+        /// <see cref="Date"/> and <see cref="Theme"/> onto its roster on every poll — and
+        /// <see cref="Snapshot"/> on the first poll after a roster that has none — from the sim
+        /// thread, while the CLI worker may be reading the request it was handed.
         /// The lists are shared, because both sides only ever read them, and the briefs inside are
         /// immutable once <c>FillBriefs</c> has built them.
         /// </para>

@@ -252,7 +252,10 @@ namespace Agora.Mod.Llm
 
             int count = request.ArticleCount;
             if (count < 1) count = 1;
-            if (count > 8) count = 8;
+            // The cap is FlavorRequest.ElectionArticleCountEu itself, the largest count anything asks
+            // for, so the two cannot drift apart: raising that raises this in the same edit, and an EU
+            // election round can never be quietly cut short here.
+            if (count > FlavorRequest.ElectionArticleCountEu) count = FlavorRequest.ElectionArticleCountEu;
 
             string mood = request.Snapshot == null
                 ? "hard to read"

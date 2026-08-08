@@ -74,7 +74,8 @@ namespace Agora.Mod.Llm
         /// same object made the roster an alias of what the CLI worker is reading, which cost twice
         /// over: an election round's raised <c>ArticleCount</c> became the canned pool's count until
         /// the next month boundary rebuilt the roster, and the pool's per-poll writes to
-        /// <c>Date</c>/<c>Snapshot</c>/<c>Theme</c> raced the worker thread. The copy is made here
+        /// <c>Date</c> and <c>Theme</c> — plus <c>Snapshot</c> on the first poll after a roster that
+        /// has none — raced the worker thread. The copy is made here
         /// because the aliasing is this method's doing; neither caller has to know.
         /// </remarks>
         public bool RequestFlavor(FlavorRequest request)
