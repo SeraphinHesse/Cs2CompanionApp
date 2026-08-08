@@ -137,6 +137,64 @@ export function joinNames(names: string[]): string {
   return names.slice(0, names.length - 1).join(", ") + " and " + names[names.length - 1];
 }
 
+// -- dates in prose -------------------------------------------------------------------------------
+
+/** English only (non-negotiable 10), so the month names are fixed rather than looked up by locale. */
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/**
+ * A wire date ("YYYY-MM-DD") as "March 1994", for a sentence rather than a table. Anything that does
+ * not parse is returned untouched: a date the pane cannot read is still a date, and dropping it would
+ * lose the only thing the sentence was carrying.
+ */
+export function monthYear(date: string): string {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(date || "");
+  if (!match) {
+    return date || "";
+  }
+  const month = parseInt(match[2], 10);
+  if (!(month >= 1 && month <= 12)) {
+    return date;
+  }
+  return MONTH_NAMES[month - 1] + " " + match[1];
+}
+
+/** The year alone, for a bar label with no room for more. "" when the date does not parse. */
+export function yearOf(date: string): string {
+  const match = /^(\d{4})-/.exec(date || "");
+  return match ? match[1] : "";
+}
+
+/**
+ * A revival count in words. Never a bare "1": "Revived 1" is not a sentence, and the count is a
+ * number of occasions rather than a measurement.
+ */
+export function revivalPhrase(count: number): string {
+  if (typeof count !== "number" || !isFinite(count) || count <= 0) {
+    return "";
+  }
+  if (count === 1) {
+    return "once";
+  }
+  if (count === 2) {
+    return "twice";
+  }
+  return int(count) + " times";
+}
+
 /**
  * The pane's one-line faction summary. Names are FLAVOR and come from `agora.parties.factions`; a
  * faction id is never rendered, so a faction the flavor layer has not named yet is counted but not

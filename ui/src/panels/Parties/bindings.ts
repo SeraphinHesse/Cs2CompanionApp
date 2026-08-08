@@ -68,6 +68,10 @@ export const EMPTY_PARTY_DETAIL: Agora.PartyDetail = {
   status: "Active",
   foundedDate: "",
   dissolvedDate: "",
+  predecessorPartyId: "",
+  successorPartyId: "",
+  revivalCount: 0,
+  absorbedPartyIds: [],
   governmentRole: "None",
   factionIds: [],
 };
@@ -113,6 +117,17 @@ export const partyDetail$ = bindMap<string, Agora.PartyDetail>("agora.parties", 
  * pane alone, for the open party, like the detail above.
  */
 export const pollTrend$ = bindMap<string, Agora.PollTrendPoint[]>("agora.parties", "pollTrend");
+
+/**
+ * Map binding, keyed by PartyBrief.id: one party's result at each election it took part in, OLDEST
+ * FIRST and capped at the newest twelve (contract section 4.2). Elections the party had no part in
+ * are absent from it, so the series is not a calendar and a gap is not a defeat. Subscribed by the
+ * detail pane alone, for the open party, like the two maps above.
+ */
+export const electionRecord$ = bindMap<string, Agora.PartyElectionRow[]>(
+  "agora.parties",
+  "electionRecord"
+);
 
 // -- agora.seats (rail columns and the coalition line) ---------------------------------------------
 

@@ -290,6 +290,12 @@ namespace Agora.Mod.UiBindings
             payload.FoundedDate = party.FoundedDate;
             payload.DissolvedDate = party.DissolvedDate;
 
+            // Both are nullable string? on Party; the wire carries "" for an absent id, never null.
+            payload.PredecessorPartyId = party.PredecessorPartyId ?? "";
+            payload.SuccessorPartyId = party.SuccessorPartyId ?? "";
+            payload.RevivalCount = party.RevivalCount;
+            payload.AbsorbedPartyIds = AbsorbedBy(state, partyId);
+
             payload.GovernmentRole = RoleOf(state, partyId);
             payload.FactionIds = SortedCopy(party.FactionIds);
             return payload;
@@ -312,6 +318,29 @@ namespace Agora.Mod.UiBindings
                 return PartyGovernmentRole.Opposition;
 
             return PartyGovernmentRole.None;
+        }
+
+        /// <summary>
+        /// The reverse index of <c>Party.SuccessorPartyId</c>: every party that merged into this one,
+        /// ascending. The forward pointer only tells a brand where it went; without this a party that
+        /// absorbed three rivals has nothing at all to show for it.
+        /// </summary>
+        private static List<string> AbsorbedBy(PoliticalState state, string partyId)
+        {
+            var absorbed = new List<string>();
+            if (state == null || state.Parties == null) return absorbed;
+
+            for (int i = 0; i < state.Parties.Count; i++)
+            {
+                Party other = state.Parties[i];
+                if (other == null || string.IsNullOrEmpty(other.Id)) continue;
+                if (string.CompareOrdinal(other.Id, partyId) == 0) continue;
+                if (string.CompareOrdinal(other.SuccessorPartyId ?? "", partyId) != 0) continue;
+
+                absorbed.Add(other.Id);
+            }
+
+            return SortedCopy(absorbed);
         }
 
         /// <summary>
@@ -363,6 +392,90 @@ namespace Agora.Mod.UiBindings
             }
 
             if (rows.Count > PollTrendMax) rows.RemoveRange(0, rows.Count - PollTrendMax);
+            return rows;
+        }
+
+        /// <summary>
+        /// One party's result at every election it took part in, oldest first, capped at
+        /// <see cref="ElectionHistoryMax"/> rows.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// An election this party had no part in — absent from the ballot and absent from the seat
+        /// table — contributes no row. A blank column for a brand that did not yet exist would read as
+        /// a wipeout it never suffered.
+        /// </para>
+        /// <para>
+        /// <c>WasOnBallot</c> is the ballot list's own answer, and it is the only thing that separates
+        /// "stood and took nothing" from "did not stand". A row carrying it false — seats recorded
+        /// against a party the ballot list does not name — is a <b>defensive guard</b>, not a shape any
+        /// current engine path produces: FPTP indexes its seat table by ballot position, and the
+        /// proportional path builds both lists from a ballot fixed earlier in the same tick, with
+        /// lifecycle running only after the count. The guard stands because this is a persisted,
+        /// versioned structure: a future allocator change, or an older sidecar, must not be able to
+        /// drop real seats silently. So the row is emitted rather than dropped.
+        /// </para>
+        /// <para>
+        /// <c>HasSeatRecord</c> is the converse, and it does occur: a party on the ballot with no
+        /// matching <c>SeatAllocation</c> at all, which FPTP's empty result produces for a city with no
+        /// districts. <c>SeatAllocation</c> is a readonly struct, so such a row's <c>PassedThreshold</c>
+        /// is an unset default rather than a verdict, and the pane needs to be told which it is.
+        /// </para>
+        /// <para>
+        /// Oldest first, and the cap therefore drops from the <b>front</b>, exactly as
+        /// <see cref="BuildPollTrend"/> does and the reverse of <see cref="BuildHistory"/>.
+        /// </para>
+        /// </remarks>
+        internal static List<PartyElectionRowPayload> BuildPartyElectionRecord(
+            PoliticalState state, string partyId)
+        {
+            var rows = new List<PartyElectionRowPayload>();
+            if (state == null || string.IsNullOrEmpty(partyId) || state.ElectionHistory == null)
+                return rows;
+
+            // Forward, because ElectionHistory is append-only and stored oldest first, which is the
+            // order this list publishes in.
+            for (int i = 0; i < state.ElectionHistory.Count; i++)
+            {
+                ElectionResult election = state.ElectionHistory[i];
+                if (election == null) continue;
+
+                bool onBallot = election.PartyIdsOnBallot != null &&
+                                election.PartyIdsOnBallot.Contains(partyId);
+
+                bool hasSeatRow = false;
+                var row = new PartyElectionRowPayload();
+
+                if (election.Seats != null)
+                {
+                    for (int j = 0; j < election.Seats.Count; j++)
+                    {
+                        SeatAllocation seat = election.Seats[j];
+                        if (string.CompareOrdinal(seat.PartyId, partyId) != 0) continue;
+
+                        hasSeatRow = true;
+                        row.Seats = seat.Seats;
+                        row.SeatShare = seat.SeatShare;
+                        row.VoteShare = seat.VoteShare;
+                        row.PassedThreshold = seat.PassedThreshold;
+                        break;
+                    }
+                }
+
+                if (!onBallot && !hasSeatRow) continue;
+
+                row.ElectionId = election.Id;
+                row.Date = election.Date;
+                row.TermNumber = election.TermNumber;
+                row.IsSnapElection = election.IsSnapElection;
+                row.WasOnBallot = onBallot;
+                row.HasSeatRecord = hasSeatRow;
+                rows.Add(row);
+            }
+
+            if (rows.Count > ElectionHistoryMax)
+                rows.RemoveRange(0, rows.Count - ElectionHistoryMax);
+
             return rows;
         }
 

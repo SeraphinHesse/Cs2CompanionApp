@@ -1,6 +1,6 @@
 import { ReactNode, useMemo } from "react";
 import { useMapValue } from "cs2/api";
-import { EMPTY_PARTY_DETAIL, partyDetail$, pollTrend$ } from "./bindings";
+import { EMPTY_PARTY_DETAIL, electionRecord$, partyDetail$, pollTrend$ } from "./bindings";
 import {
   NO_VALUE,
   ROLE_CHIP,
@@ -16,6 +16,7 @@ import {
   pct,
   signedPoints,
 } from "./format";
+import { HistoryStrip } from "./HistoryStrip";
 import { PlatformBars } from "./PlatformBars";
 import { PollSparkline } from "./PollSparkline";
 import styles from "./PartyDetail.module.scss";
@@ -123,14 +124,21 @@ export const PartyDetailPane = (props: {
   government: Agora.GovernmentSummary | null;
   /** The whole published faction list, subscribed once by the panel - never once per rail row. */
   factions: Agora.FactionBrief[];
+  /**
+   * The whole published register, subscribed once by the panel. The history strip resolves the
+   * labels of other parties through it - a predecessor or successor may itself be dissolved, and a
+   * dissolved brand stays in the register, so the name is always there to be found.
+   */
+  roster: Agora.PartyBrief[];
 }): JSX.Element => {
   const rawDetail = useMapValue(partyDetail$, props.partyId);
 
-  // Both map subscriptions live HERE rather than in the panel, and for the same reason: this
+  // All three map subscriptions live HERE rather than in the panel, and for the same reason: this
   // component is remounted on every selection change, so the hook's state initialiser runs against
   // the new key. Lifted to PartiesPanel - which does not remount - the key would change under a live
   // subscription and the pane would render the previous party's series for one frame.
   const rawTrend = useMapValue(pollTrend$, props.partyId);
+  const rawRecord = useMapValue(electionRecord$, props.partyId);
 
   // This party's slice of the published faction list. A filter, never a sort: the list arrives
   // ordered by partyId then internal support then id (contract section 4.2), and filtering keeps
@@ -157,6 +165,10 @@ export const PartyDetailPane = (props: {
 
   // Oldest first, as published. Never reversed or re-sorted here (contract section 4.2).
   const trend: Agora.PollTrendPoint[] = rawTrend || [];
+
+  // Oldest first as well, and for the same reason. Elections this party had no part in are absent
+  // from it, so the run is a record of contests fought, not a calendar.
+  const record: Agora.PartyElectionRow[] = rawRecord || [];
 
   // The nested groups are contractual, but a missing one would take the whole pane down for a
   // cosmetic payload gap. Fall back to the documented empty shape instead.
@@ -304,12 +316,25 @@ export const PartyDetailPane = (props: {
       ) : null}
 
       <SectionTitle title="Lifecycle" />
-      <div className={styles.line}>
-        Founded {brief.foundedDate || NO_VALUE}
-        {brief.dissolvedDate ? ", dissolved " + brief.dissolvedDate : ""}.
-      </div>
+      {/* The founded and dissolved dates are not printed here as well: they are the first and last
+          clauses of the strip's lineage sentence. Unpublished, there is no strip and no lineage, so
+          the one line below carries them instead - from the roster brief, which is always right. */}
+      {!published ? (
+        <div className={styles.line}>
+          Founded {brief.foundedDate || NO_VALUE}
+          {brief.dissolvedDate ? ", dissolved " + brief.dissolvedDate : ""}.
+        </div>
+      ) : null}
       {published ? (
         <>
+          <HistoryStrip
+            detail={detail}
+            foundedDate={brief.foundedDate}
+            dissolvedDate={brief.dissolvedDate}
+            rows={record}
+            roster={props.roster}
+            colorHex={partyColor(detail.colorHex || brief.colorHex)}
+          />
           <div className={styles.line}>
             {ROLE_SENTENCE[detail.governmentRole]}
             {partnerCount === 1

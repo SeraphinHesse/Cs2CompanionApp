@@ -160,6 +160,7 @@ const PartiesPanelInner = (): JSX.Element | null => {
                   system={summary.system}
                   government={government}
                   factions={factions}
+                  roster={roster}
                 />
               ) : (
                 <div className={styles.emptyPane}>

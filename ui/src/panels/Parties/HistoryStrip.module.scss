@@ -1,0 +1,156 @@
+// Panel 26 — Parties, the history strip. Flex only - Gameface has no CSS grid and fails silently on
+// it, and there is no SVG guarantee either, so the seat series is a row of flex columns.
+// `gap` is avoided throughout; spacing is done with margins and padding.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+/** The plot height. Bar heights are percentages of it, so it has to be a definite length. */
+$bar-height: 44rem;
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 4rem;
+}
+
+// -- the lineage sentence ---------------------------------------------------------------------------
+
+.lineage {
+  display: flex;
+  margin-bottom: 4rem;
+  font-size: 11rem;
+  line-height: 1.4;
+}
+
+.empty {
+  display: flex;
+  margin: 1rem 0 2rem 0;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+// -- the seat series ---------------------------------------------------------------------------------
+
+.plot {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  margin-top: 2rem;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 1rem;
+}
+
+/** The bar sits on the baseline of a fixed-height track, so short runs still share one axis. */
+.barTrack {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: $bar-height;
+  padding-bottom: 1rem;
+  border-bottom: 1rem solid $line;
+  background-color: $surface-track;
+}
+
+@mixin bar-base {
+  display: flex;
+  width: 100%;
+  min-height: 1rem;
+  border-radius: 1rem;
+}
+
+.bar {
+  @include bar-base;
+}
+
+/** Below the electoral threshold: drawn in the faint tone rather than the party's own colour. */
+.barBelow {
+  @include bar-base;
+  background-color: $text-faint;
+}
+
+/** A snap election, marked rather than reshaped so the run still reads as one series. */
+.snapTick {
+  display: flex;
+  align-self: center;
+  width: 4rem;
+  height: 4rem;
+  margin-top: 2rem;
+  border-radius: 2rem;
+  background-color: $accent;
+}
+
+/** The same box with no mark, so a scheduled election's year label sits on the same baseline. */
+.snapTickHidden {
+  display: flex;
+  align-self: center;
+  width: 4rem;
+  height: 4rem;
+  margin-top: 2rem;
+}
+
+@mixin year-base {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  font-size: 9rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.year {
+  @include year-base;
+  color: $text-dim;
+}
+
+.yearFaint {
+  @include year-base;
+  color: $text-faint;
+}
+
+.footnote {
+  display: flex;
+  margin-top: 2rem;
+  font-size: 9rem;
+  color: $text-faint;
+  line-height: 1.4;
+}
+
+// -- tooltip -------------------------------------------------------------------------------------
+
+.tip {
+  display: flex;
+  flex-direction: column;
+  max-width: 220rem;
+}
+
+.tipTitle {
+  display: flex;
+  font-size: 11rem;
+  font-weight: bold;
+}
+
+.tipBody {
+  display: flex;
+  margin-top: 1rem;
+  font-size: 10rem;
+  line-height: 1.35;
+}
+
+.tipNote {
+  display: flex;
+  margin-top: 2rem;
+  font-size: 10rem;
+  line-height: 1.35;
+  color: $text-dim;
+}

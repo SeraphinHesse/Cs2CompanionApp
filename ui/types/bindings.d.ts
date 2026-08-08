@@ -3892,6 +3892,14 @@ declare namespace Agora {
     foundedDate: SimDateString;
     /** "" while the party still exists. */
     dissolvedDate: SimDateString;
+    /** The party this one split from. "" when it was not a split. Resolve the label via the roster. */
+    predecessorPartyId: IdString;
+    /** The party this one merged into. "" unless `status` is "Merged". */
+    successorPartyId: IdString;
+    /** Times this brand has come back from dissolution. Render as words, never as a bare "1". */
+    revivalCount: number;
+    /** Ascending. The reverse index of `successorPartyId` — the parties this one absorbed. */
+    absorbedPartyIds: IdString[];
     governmentRole: PartyGovernmentRoleName;
     /** Ascending. Empty under the EU theme, which models no factions. */
     factionIds: IdString[];
@@ -3910,6 +3918,39 @@ declare namespace Agora {
     marginOfError: number;
     /** -1 when the poll anticipated no scheduled election. */
     weeksToElection: number;
+  }
+
+  /**
+   * `agora.parties.electionRecord` — a MAP binding keyed by `PartyBrief.id`: one party's result at
+   * each election it took part in. Oldest first, capped at AGORA_ELECTION_HISTORY_MAX = 12, keeping
+   * the newest twelve. An unknown key returns [].
+   *
+   * An election the party had no part in contributes NO ROW, so the series is not a calendar. A row
+   * with `wasOnBallot` false is the rare disagreement between the ballot list and the seat table:
+   * seats recorded against a party the ballot does not name.
+   */
+  interface PartyElectionRow {
+    electionId: IdString;
+    date: SimDateString;
+    /** The term this election opened, starting at 1. */
+    termNumber: number;
+    /** Triggered by a coalition collapse rather than by the calendar. */
+    isSnapElection: boolean;
+    seats: number;
+    /** [0,1] of the chamber. */
+    seatShare: number;
+    /** [0,1] that produced the seats. */
+    voteShare: number;
+    /** Cleared the electoral threshold at this count. Meaningless unless `hasSeatRecord`. */
+    passedThreshold: boolean;
+    /** Named on the ballot. False means the seats and the ballot list disagree — see above. */
+    wasOnBallot: boolean;
+    /**
+     * The seat table contained a row for this party. False is a party that stood while the count
+     * produced no allocation at all, in which case `passedThreshold`, `seats`, `seatShare` and
+     * `voteShare` are unset defaults rather than results, and no threshold verdict may be shown.
+     */
+    hasSeatRecord: boolean;
   }
 
   /**

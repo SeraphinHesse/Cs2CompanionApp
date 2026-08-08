@@ -27,6 +27,7 @@ namespace Agora.Mod.UiBindings
         private ValueBinding<List<FactionBriefPayload>> _factions;
         private GetterMapBinding<string, PartyDetailPayload> _partyDetail;
         private GetterMapBinding<string, List<PollTrendPointPayload>> _pollTrend;
+        private GetterMapBinding<string, List<PartyElectionRowPayload>> _electionRecord;
 
         protected override void CreateBindings()
         {
@@ -67,6 +68,11 @@ namespace Agora.Mod.UiBindings
             AddBinding(_pollTrend = new GetterMapBinding<string, List<PollTrendPointPayload>>(
                 PartiesGroup, "pollTrend", GetPollTrend,
                 valueWriter: ListOf<PollTrendPointPayload>()));
+
+            // A list again, so the explicit writer again — same trap as the trend above.
+            AddBinding(_electionRecord = new GetterMapBinding<string, List<PartyElectionRowPayload>>(
+                PartiesGroup, "electionRecord", GetPartyElectionRecord,
+                valueWriter: ListOf<PartyElectionRowPayload>()));
         }
 
         /// <summary>
@@ -82,6 +88,13 @@ namespace Agora.Mod.UiBindings
         /// </summary>
         private static List<PollTrendPointPayload> GetPollTrend(string partyId) =>
             AgoraUiProjection.BuildPollTrend(AgoraRuntime.State, partyId);
+
+        /// <summary>
+        /// One party's result at every election it took part in, oldest first. An unknown key returns
+        /// an empty list, as the two maps above do.
+        /// </summary>
+        private static List<PartyElectionRowPayload> GetPartyElectionRecord(string partyId) =>
+            AgoraUiProjection.BuildPartyElectionRecord(AgoraRuntime.State, partyId);
 
         /// <summary>
         /// The master toggle. Panels render <c>null</c> when this is false — not a disabled shell,
@@ -125,6 +138,7 @@ namespace Agora.Mod.UiBindings
             // when the Parties tab is closed.
             _partyDetail.UpdateAll();
             _pollTrend.UpdateAll();
+            _electionRecord.UpdateAll();
         }
     }
 }

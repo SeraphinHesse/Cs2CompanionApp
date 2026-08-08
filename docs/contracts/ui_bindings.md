@@ -187,6 +187,7 @@ Outcome codes are a closed set — see §4.6.
 | `agora.parties.factions` | `ValueBinding<T>` | `List<FactionBrief>` | `Agora.FactionBrief[]` | on faction lifecycle change (rare) + monthly | `[]` | M4 |
 | `agora.parties.detail` | `GetterMapBinding<string,T>` | `PartyDetail` per key | `Agora.PartyDetail` | on demand, per subscribed key | `EMPTY_PARTY_DETAIL` | W6 |
 | `agora.parties.pollTrend` | `GetterMapBinding<string,T>` | `List<PollTrendPoint>` per key | `Agora.PollTrendPoint[]` | on demand, per subscribed key | `[]` | W6 |
+| `agora.parties.electionRecord` | `GetterMapBinding<string,T>` | `List<PartyElectionRow>` per key | `Agora.PartyElectionRow[]` | on demand, per subscribed key | `[]` | W6 |
 
 The map key is the **party id** exactly as it appears in `PartyBrief.id`. An unknown key returns the
 empty value, never throws. Unlike a district, a party id is never removed from the roster — a dead
@@ -211,6 +212,22 @@ carry the **published** share only — `PollResult.TrueShares` never crosses the
 a poll with no entry for the party contributes no point rather than a zero, because a party that did
 not exist yet did not poll at 0%.
 
+`electionRecord` is the detail pane's history strip: one party's result at each election it took part
+in, fetched for the open party alone. It is a separate list rather than a field on `PartyDetail`
+because seats-per-election is a list of rows and §2 allows one level of nesting, not two. An election
+the party had **no part in — absent from the ballot and absent from the seat table — contributes no
+row**, so the series is not a calendar and a gap in it is not a wipeout. `wasOnBallot` is the ballot
+list's own answer and separates *stood and took nothing* from *did not stand*; a row carrying it
+**false** is the rare case where the seat table names a party the ballot list does not, and the row is
+published rather than dropped, because the seats are real. `hasSeatRecord` is the converse and says
+whether the seat table produced a row at all: a party that stood while the count allocated nothing —
+FPTP's empty result for a city with no districts — has `passedThreshold`, `seats`, `seatShare` and
+`voteShare` at their unset defaults, so the strip shows the contest but states no threshold verdict.
+`PartyDetail` carries the lineage scalars
+that go beside it — `predecessorPartyId`, `successorPartyId`, `revivalCount` and `absorbedPartyIds`,
+the last being the reverse index of `successorPartyId`, since the forward pointer alone cannot tell a
+party that absorbed three rivals that it did.
+
 `PartyBrief` gained `nameLocked`, `descriptionLocked` and `colorLocked` in plan 0001, ahead of W4's
 party editing. The publisher fills them from `Party.PlayerOverrides` today; **no panel consumes them
 yet**, and rendering them is W4's work, not a gap to be filled opportunistically.
@@ -224,6 +241,8 @@ Sort: `roster` by `id` ordinal ascending. `factions` by `partyId` ordinal ascend
 ascending. `pollTrend`: `date` ascending (oldest first) — a trend reads left to right in time. This
 is the one list in the contract that is **not** newest-first, and it is capped by dropping from the
 **front**, so the newest `AGORA_POLL_TREND_MAX = 24` points survive.
+`electionRecord`: `date` ascending (oldest first), capped at `AGORA_ELECTION_HISTORY_MAX = 12`,
+keeping the newest twelve. `detail.absorbedPartyIds`: ordinal ascending.
 
 ### 4.3 `agora.seats` — seat chart + government breakdown
 
@@ -376,8 +395,11 @@ PartyDetail         id, name, shortName, colorHex, archetypeId, description, slo
                     seatShare, lastVoteShare, hasContestedElection, passedThreshold,
                     consecutiveElectionsBelowThreshold, currentPollShare, hasPoll, pollDate,
                     pollDeltaSinceElection, currentStandingShare, status, foundedDate,
-                    dissolvedDate, governmentRole, factionIds
+                    dissolvedDate, governmentRole, factionIds, predecessorPartyId,
+                    successorPartyId, revivalCount, absorbedPartyIds
 PollTrendPoint      date, share, marginOfError, weeksToElection
+PartyElectionRow    electionId, date, termNumber, isSnapElection, seats, seatShare, voteShare,
+                    passedThreshold, wasOnBallot, hasSeatRecord
 FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
                     tensionWithParty, status, coreGrievance
 PartyShare          partyId, share
@@ -464,7 +486,8 @@ const EMPTY_PARTY_DETAIL: Agora.PartyDetail = {
   seats: 0, seatShare: 0, lastVoteShare: 0, hasContestedElection: false, passedThreshold: false,
   consecutiveElectionsBelowThreshold: 0, currentPollShare: 0, hasPoll: false, pollDate: "",
   pollDeltaSinceElection: 0, currentStandingShare: 0, status: "Active", foundedDate: "",
-  dissolvedDate: "", governmentRole: "None", factionIds: [],
+  dissolvedDate: "", predecessorPartyId: "", successorPartyId: "", revivalCount: 0,
+  absorbedPartyIds: [], governmentRole: "None", factionIds: [],
 };
 
 const EMPTY_CITY_INDICES: Agora.CityIndices = {

@@ -339,6 +339,19 @@ namespace Agora.Mod.UiBindings
         public Agora.Core.Contracts.SimDate? FoundedDate;
         public Agora.Core.Contracts.SimDate? DissolvedDate;
 
+        // Party.PredecessorPartyId and Party.SuccessorPartyId are nullable string?; the wire rule is
+        // "" for an absent id, never null (contract §2), so the projection coalesces into these.
+        public string PredecessorPartyId = "";
+        public string SuccessorPartyId = "";
+        public int RevivalCount;
+
+        /// <summary>
+        /// Party ids this one absorbed, ascending. Derived: every party whose SuccessorPartyId is this
+        /// party. Empty for a brand that has absorbed nobody. It is the half of the merge story the
+        /// forward pointer cannot tell — without it a party that absorbed three rivals shows nothing.
+        /// </summary>
+        public List<string> AbsorbedPartyIds = new List<string>();
+
         public PartyGovernmentRole GovernmentRole = PartyGovernmentRole.None;
         public List<string> FactionIds = new List<string>();
 
@@ -393,6 +406,11 @@ namespace Agora.Mod.UiBindings
             UiJson.Date(writer, "foundedDate", FoundedDate);
             UiJson.Date(writer, "dissolvedDate", DissolvedDate);
 
+            UiJson.Id(writer, "predecessorPartyId", PredecessorPartyId);
+            UiJson.Id(writer, "successorPartyId", SuccessorPartyId);
+            UiJson.Number(writer, "revivalCount", RevivalCount);
+            UiJson.Ids(writer, "absorbedPartyIds", AbsorbedPartyIds);
+
             UiJson.Enum(writer, "governmentRole", GovernmentRole);
             UiJson.Ids(writer, "factionIds", FactionIds);
             writer.TypeEnd();
@@ -425,6 +443,55 @@ namespace Agora.Mod.UiBindings
             UiJson.Number(writer, "share", Share);
             UiJson.Number(writer, "marginOfError", MarginOfError);
             UiJson.Number(writer, "weeksToElection", WeeksToElection);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>
+    /// One party's result at one past election. A flat row: seats-per-election cannot nest inside
+    /// <see cref="PartyDetailPayload"/> without breaking the payload budget's one-level rule
+    /// (<c>docs/contracts/ui_bindings.md</c> §2).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="WasOnBallot"/> separates <i>stood and won nothing</i> from <i>did not stand</i>. A
+    /// party missing from <c>ElectionResult.PartyIdsOnBallot</c> and from its seat table contributes
+    /// no row at all; a row with the flag false is the one case where the two disagree — seats
+    /// recorded against a party the ballot list does not name — and the pane says so rather than
+    /// silently presenting it as an ordinary contest.
+    /// <para>
+    /// <see cref="HasSeatRecord"/> says whether <see cref="PassedThreshold"/> means anything.
+    /// <c>SeatAllocation</c> is a readonly struct, so a row built for a party that stood with no
+    /// matching allocation carries <c>PassedThreshold = false</c> because nobody set it, not because
+    /// the count judged the party short. Without this flag the pane cannot tell the two apart and
+    /// would attribute a verdict the engine never gave.
+    /// </para>
+    /// </remarks>
+    public sealed class PartyElectionRowPayload : IJsonWritable
+    {
+        public string ElectionId = "";
+        public Agora.Core.Contracts.SimDate? Date;
+        public int TermNumber;
+        public bool IsSnapElection;
+        public int Seats;
+        public double SeatShare;
+        public double VoteShare;
+        public bool PassedThreshold;
+        public bool WasOnBallot;
+        public bool HasSeatRecord;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.PartyElectionRow");
+            UiJson.Id(writer, "electionId", ElectionId);
+            UiJson.Date(writer, "date", Date);
+            UiJson.Number(writer, "termNumber", TermNumber);
+            UiJson.Flag(writer, "isSnapElection", IsSnapElection);
+            UiJson.Number(writer, "seats", Seats);
+            UiJson.Number(writer, "seatShare", SeatShare);
+            UiJson.Number(writer, "voteShare", VoteShare);
+            UiJson.Flag(writer, "passedThreshold", PassedThreshold);
+            UiJson.Flag(writer, "wasOnBallot", WasOnBallot);
+            UiJson.Flag(writer, "hasSeatRecord", HasSeatRecord);
             writer.TypeEnd();
         }
     }
