@@ -54,7 +54,7 @@ authority; this is the tracker.
 | **W0** | Per-save reset seam — three layers retain the previous city's state across a main-menu round trip. The only *data-corrupting* bug of the seven. | 1 | ✅ code complete, review passed · **ECS half needs the manual walkthrough** |
 | **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed |
 | **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed) · **needs the manual walkthrough** |
-| **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ⬜ |
+| **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed) · **needs the manual walkthrough** |
 | **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | ⬜ |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop `ApplyProseNames` clobbering them. | 4 | ⬜ |
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ⬜ |

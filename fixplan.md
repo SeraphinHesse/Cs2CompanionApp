@@ -196,23 +196,55 @@ whatever map you are on.
 
 ### The fix
 
-- [ ] Publish `agora.state.settings` — already **reserved** in `docs/contracts/ui_bindings.md` §8
+- [x] Publish `agora.state.settings` — already **reserved** in `docs/contracts/ui_bindings.md` §8
       for exactly this. Read/write per-save settings; sidecar-backed, never global (non-negotiable
       #10).
-- [ ] New modal `ui/src/shell/FirstRunDialog.tsx`, rendered through `cs2/ui`'s `DialogRenderer` /
+- [x] New modal `ui/src/shell/FirstRunDialog.tsx`, rendered through `cs2/ui`'s `DialogRenderer` /
       `Portal` (`ui/types/ui.d.ts:78-87, 562-571`). Two large flag choices, each with one line of
       consequence text:
       - **Europe** — proportional list seats, 4–7 parties, coalition governments, 3-year terms.
       - **United States** — first-past-the-post district races, a directly elected mayor, two
         dominant parties with internal factions, 4-year terms.
-- [ ] Fires once per save, when the sidecar loads with no prior state. Pause the sim while it is
+- [x] Fires once per save, when the sidecar loads with no prior state. Pause the sim while it is
       open (see W5 for the pause helper).
-- [ ] Add `ThemeLocked: bool` to per-save settings. Set it at the first election — before that the
+- [x] Add `ThemeLocked: bool` to per-save settings. Set it at the first election — before that the
       player may change their mind from the settings surface; after it the choice is history.
-- [ ] `System` (`ElectoralSystem`) must be re-derived when `Theme` changes, and the party registry
+- [x] `System` (`ElectoralSystem`) must be re-derived when `Theme` changes, and the party registry
       regenerated if no election has yet been held.
-- [ ] Schema: per-save `AgoraSettings` gains `ThemeLocked`, `PauseOnMajorNews`, `ShowAllReports`.
-      Bump `schemaVersion` and run `/schema-change` — sidecar migration included.
+- [x] Schema: per-save `AgoraSettings` gains `ThemeLocked`, `PauseOnMajorNews`, `ShowAllReports`.
+      Bump `schemaVersion` and run `/schema-change` — sidecar migration included. **Landed in the
+      batched pass** (`docs/plans/0001-batched-schema-change.md`), not separately.
+
+### What this plan got wrong, and what W3 actually had to fix
+
+- **"`System` must be *re-derived* when `Theme` changes" understates it. `System` was never derived
+  from `Theme` on any path, ever.** `CreateInitialState` passed `Theme` to `PartyRegistry.GenerateInitial`
+  but never touched `Settings.System`, which sat at its initialiser default `Proportional`. A save
+  with `Theme = Na` would have run NA parties through a proportional election with 3-year terms and
+  no mayor. A coder implementing only the change-path would have left the mint-path bug in place.
+- **`SidecarStore.SaveSettings` had no caller anywhere in the repo.** Settings reached disk only as a
+  side effect of `SaveState`, i.e. only when the player saved the game. W3 is its first caller;
+  without that, a theme choice was lost to any crash.
+- **"Fires once per save, when the sidecar loads with no prior state" is not a sufficient condition.**
+  Settings resolve independently of state and fall back to `settings.json`, so "no prior state" and
+  "the player has never chosen a theme" are different questions. W3 added a runtime-only
+  `SettingsAreDefaults` signal rather than inferring it.
+- **The pause design in W5 below is wrong and W3 did not use it.** `SimulationSystem.selectedSpeed`'s
+  setter is a **no-op while the game is loading**, and the game re-sets speed once loading completes,
+  so a one-shot write is silently discarded. W3 subscribes to the game's own refcounted
+  `time.simulationPausedBarrier$` instead, which also makes "a closed dashboard leaves the player
+  paused with no way back" structurally impossible — the restore is the game's code.
+- **The settings surface had no home.** This plan says the player "may change their mind from the
+  settings surface" without saying where that is. W3 built one in the shell; W5 needs the same one.
+- **`isFirstRun` is published as its own binding**, not as a field on `SettingsPayload` — it is a
+  one-shot lifecycle signal, not part of the persisted settings document.
+
+**Two review-blocking defects were found and fixed, then re-reviewed.** A retheme deleted the flavor
+cache *before* disposing the provider, but the CLI worker leaves `Running` before it writes the
+cache — so the old theme's document was written back after the delete and read by the new provider,
+and because every id in it still validates against the new catalog, nothing was filtered: **EU prose
+restored verbatim onto US parties, silently.** And a full ECS sensor sweep was reachable from
+`SetSetting` on the UI phase, contradicting a comment three lines above it.
 
 ---
 
