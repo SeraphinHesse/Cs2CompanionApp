@@ -1261,11 +1261,20 @@ namespace Agora.Mod.Core
         /// away.
         /// </para>
         /// <para>
-        /// <b>"Normally" is the honest word.</b> The namer fails closed in three ways and none of
-        /// them is reported here: it returns at once if the flavor provider or its canned pool is
-        /// absent, it logs and returns if <c>Generate</c> throws, and it returns if <c>Generate</c>
-        /// hands back no document. On any of those the party is left nameless and the panel shows its
-        /// placeholder until the next prose wake, where <see cref="ApplyProseNames"/> renames it —
+        /// <b>"Normally" is the honest word.</b> The namer fails closed, and none of its failures is
+        /// reported here. Three are method-level and abandon the whole roster: it returns at once if
+        /// the runtime has no state or the flavor provider or its canned pool is absent, it logs and
+        /// returns if <c>Generate</c> throws, and it returns if <c>Generate</c> hands back no
+        /// document. Two more sit inside the per-party loop and abandon one party even though a
+        /// document arrived: the document carries no usable entry for that party — none at all, or
+        /// only entries that are null, name no party, or name a party not on the roster — or it
+        /// carries an entry for the party whose <c>Name</c> is empty, which the loop refuses rather
+        /// than let a nameless entry count as a naming. (<see cref="PartyIdentity.ApplyFlavor"/>'s own
+        /// name lock is a sixth door on paper only: this command clears the lock before calling, and
+        /// a blank name cannot be locked in the first place, since
+        /// <see cref="PartyIdentity.ValidateName"/> rejects one.) On any of those the party is left
+        /// nameless and the panel shows its placeholder until the next prose wake, where
+        /// <see cref="ApplyProseNames"/> renames it —
         /// the name is empty, so <c>mayRename</c> is true there — and the gap self-heals. That is the
         /// right trade: a nameless party for a wake is recoverable, a command that fails because the
         /// pool is missing is not.

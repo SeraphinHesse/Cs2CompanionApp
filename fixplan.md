@@ -280,14 +280,17 @@ rename would be silently reverted at the next flavor wake.
       description ≤ 600, slogan ≤ 120, colour must be `#RRGGBB`. **Reject rather than truncate** — a
       silent fix-up is a write the player did not ask for, and the one time it matters (a name cut
       off mid-word) they would have no way to tell.
-- [x] Colour picker offers the tuning palette plus a free hex field. Warn — do not block — on a
-      colour already taken. The warning crosses as `OkColorInUse`, which is an **acceptance**: it
-      must not map to the empty string, or the panel cannot show it.
-- [x] A "reset to generated" control per field that clears the lock and restores flavor ownership.
-      **Resets are separate bindings and cannot fold into the setters**: an empty string is
-      `ValueRequired`, never "reset". A cleared box — a slipped keystroke, a paste that did not
-      take — is otherwise indistinguishable from a deliberate hand-back, and the two have opposite
-      consequences.
+- [x] The **surface a colour picker needs**: the tuning palette published as
+      `agora.parties.colorPalette`, a free hex accepted by `setColor`, and a colour another party
+      already wears **accepted with a warning** rather than blocked. The warning crosses as
+      `OkColorInUse`, which is an **acceptance**: it must not map to the empty string, or the panel
+      cannot show it. **The picker itself is lane D and is not shipped — W6 owns it.**
+- [x] The **reset bindings** — `resetName`, `resetDescription`, `resetColor` — each clearing its
+      lock and handing the field back to flavor. **Resets are separate bindings and cannot fold into
+      the setters**: an empty string is `ValueRequired`, never "reset". A cleared box — a slipped
+      keystroke, a paste that did not take — is otherwise indistinguishable from a deliberate
+      hand-back, and the two have opposite consequences. **The per-field reset control is lane D and
+      is not shipped — W6 owns it.**
 - [x] Record every binding in `docs/contracts/ui_bindings.md`, before any UI is written.
 - [x] **Not in the original list:** the canned pool's de-duplication. `StaticPoolProvider` seeded
       its `usedNames` set only from its own draws and never read the roster's current names, so a

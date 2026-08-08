@@ -131,11 +131,13 @@ with an `IsAccepted`/`isAccepted` helper rather than against the empty string.
 **W4 persists no new field and needed no schema change.** `PlayerOverrides` shipped ahead of it in
 plan 0001, with migration.
 
-Two review rounds. The first found four blocking defects, the sharpest being that `PartyBrief`
-declared `description`/`slogan` in TypeScript and in the contract while the C# publisher emitted
-neither — a one-sided schema change that type-checks and hands the panel `undefined` at runtime. The
-second was the UI's outcome map never learning the four new codes, so an accepted duplicate colour
-was reported to the player as an unexplained failure.
+Three review rounds. The first, over the inherited work, found four blocking defects. The two
+sharpest: `PartyBrief` declared `description`/`slogan` in TypeScript and in the contract while the C#
+publisher emitted neither — a one-sided schema change that type-checks and hands the panel
+`undefined` at runtime — and the UI's outcome map had never learned the four new codes, so an
+accepted duplicate colour reached the player as an unexplained failure. The second round, after the
+fixes, blocked on two `fixplan.md` checkboxes ticked for UI controls that are lane D and did not
+ship; a ticked box hiding unshipped work is precisely what that section is a correction of.
 
 **Not covered by tests, by necessity:** `AgoraRuntime` and `src/Agora.Mod/UiBindings/**` are not
 linkable into the headless suite, so the six entry points, the gate locking and the eight binding
