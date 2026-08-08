@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Agora.Core.Contracts;
 using Agora.Core.Engine;
+using Agora.Core.Engine.Parties;
 using Agora.Core.Events.Catalog;
 using Agora.Core.Events.Scheduler;
 using Agora.Core.Tuning;
@@ -1077,6 +1078,321 @@ namespace Agora.Mod.Core
             }
         }
 
+        // ------------------------------------------------------------------ party identity
+
+        // The player's six edit channels for a party's identity. Every one of them follows the shape
+        // SetSetting established, for the same reasons: the Gate, the active-save guard, and a catch
+        // that logs the exception and hands back CommandOutcome.Failed. No exception text ever crosses
+        // the bridge — the panel switches on the value (docs/contracts/ui_bindings.md §4.5), and a
+        // stack trace rendered in a tooltip is neither actionable nor translatable.
+        //
+        // Validation is Agora.Core's: PartyIdentity owns the limits and PartyRegistry owns the
+        // roster-wide questions. Nothing here decides what a legal name is, because that rule has to be
+        // testable without the game and this assembly is not.
+        //
+        // WHAT PERSISTS. Not PersistSettings() — that writes settings.json, and a party's name is
+        // state, not a setting. Party edits mutate the live Party objects inside _state, which is the
+        // same object GetStateForSave hands to AgoraSidecarSystem.PreSerialize, so the edit reaches
+        // state_*.json with the player's next game save and no sooner. That is deliberate rather than
+        // merely convenient: writing the state blob out of band from the UI update tick would race the
+        // save path for the same file, and an edit that survives a crash the surrounding city does not
+        // is a sidecar describing a city that never existed (#6). _stateVersion++ is what makes the
+        // change visible immediately — the dashboard publishers watch it and republish on the next UI
+        // tick, so the panel redraws in the same frame the player let go of the field.
+        //
+        // RESETS ARE IDEMPOTENT. Resetting a field the player never locked is a no-op that returns Ok,
+        // in all three cases. The alternative — an error code for "there was nothing to undo" — makes a
+        // reset button that is safe to press twice look broken the second time, and gives the panel a
+        // failure state it has nothing useful to say about.
+
+        /// <summary>
+        /// Renames a party on the player's behalf and takes the name out of flavor's hands for good.
+        /// Backs <c>agora.parties.rename</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Both fields at once, because <see cref="PartyOverrides.NameLocked"/> covers both. A rename
+        /// that set only <see cref="Party.Name"/> would still lock <see cref="Party.ShortName"/>,
+        /// freezing whatever the generator last happened to put there with no way to change it.
+        /// </para>
+        /// <para>
+        /// The party leaves <see cref="_provisionalNamePartyIds"/> here, and that line is not tidying.
+        /// It makes <i>"provisional implies not player-owned"</i> true by construction. Without it the
+        /// invariant holds only because <see cref="ApplyProseNames"/> happens to consult the lock
+        /// before it consults the set — an ordering nothing states and nothing tests, and one that a
+        /// future fourth call site would have no reason to preserve.
+        /// </para>
+        /// </remarks>
+        public static CommandOutcome RenameParty(string partyId, string name, string shortName)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null) return CommandOutcome.NoActiveSave;
+
+                    Party party = PartyRegistry.Find(_state.Parties, partyId);
+                    if (party == null) return CommandOutcome.NotFound;
+
+                    CommandOutcome valid = PartyIdentity.ValidateName(name, shortName);
+                    if (valid != CommandOutcome.Ok) return valid;
+
+                    party.Name = name;
+                    party.ShortName = shortName;
+                    party.PlayerOverrides |= PartyOverrides.NameLocked;
+
+                    // See the remarks: the invariant, not housekeeping.
+                    _provisionalNamePartyIds.Remove(party.Id);
+
+                    _stateVersion++;
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: party '" + (partyId ?? "(null)") + "' could not be " +
+                                           "renamed; the previous name stands.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Writes the player's own description and slogan onto a party and stops flavor rewriting
+        /// them. Backs <c>agora.parties.setDescription</c>.
+        /// </summary>
+        /// <remarks>
+        /// One lock for the pair, as with <see cref="RenameParty"/>: <see cref="PartyOverrides"/> maps
+        /// <see cref="PartyOverrides.DescriptionLocked"/> onto <see cref="Party.Description"/> and
+        /// <see cref="Party.Slogan"/> together, so they are taken together or not at all.
+        /// </remarks>
+        public static CommandOutcome SetPartyDescription(string partyId, string description, string slogan)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null) return CommandOutcome.NoActiveSave;
+
+                    Party party = PartyRegistry.Find(_state.Parties, partyId);
+                    if (party == null) return CommandOutcome.NotFound;
+
+                    CommandOutcome valid = PartyIdentity.ValidateDescription(description, slogan);
+                    if (valid != CommandOutcome.Ok) return valid;
+
+                    party.Description = description;
+                    party.Slogan = slogan;
+                    party.PlayerOverrides |= PartyOverrides.DescriptionLocked;
+
+                    _stateVersion++;
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: the description for party '" + (partyId ?? "(null)") +
+                                           "' could not be applied; the previous text stands.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gives a party the colour the player picked. Backs <c>agora.parties.setColor</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The <b>normalised</b> form is what gets stored, and that is the whole point of this method
+        /// existing rather than a raw assignment. Duplicate detection compares ordinally against a
+        /// palette that is upper case, so <c>#c0392b</c> as a player types it is byte-different from
+        /// the palette's <c>#C0392B</c> and simply never registers as taken — the next splinter is
+        /// handed a colour nobody can tell apart from this one on any chart.
+        /// </para>
+        /// <para>
+        /// <see cref="CommandOutcome.OkColorInUse"/> is an <b>acceptance</b>. The colour is applied
+        /// either way; the code exists so the panel can say "another party already wears this" instead
+        /// of leaving the player to discover it from a seat chart with two identical slices. The party
+        /// is excluded from the scan, or its own freshly written colour would flag itself every time.
+        /// </para>
+        /// </remarks>
+        public static CommandOutcome SetPartyColor(string partyId, string colorHex)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null) return CommandOutcome.NoActiveSave;
+
+                    Party party = PartyRegistry.Find(_state.Parties, partyId);
+                    if (party == null) return CommandOutcome.NotFound;
+
+                    CommandOutcome valid = PartyIdentity.ValidateColor(colorHex);
+                    if (valid != CommandOutcome.Ok) return valid;
+
+                    string normalised = PartyIdentity.NormalizeHex(colorHex);
+
+                    party.ColorHex = normalised;
+                    party.PlayerOverrides |= PartyOverrides.ColorLocked;
+
+                    _stateVersion++;
+
+                    return PartyRegistry.IsColorTaken(_state.Parties, normalised, partyId)
+                        ? CommandOutcome.OkColorInUse
+                        : CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: the colour for party '" + (partyId ?? "(null)") +
+                                           "' could not be applied; the previous colour stands.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Hands a party's name back to flavor. Backs <c>agora.parties.resetName</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Clearing the lock is only half of it. A cleared lock on a party that still carries the
+        /// player's name would leave that name in place indefinitely —
+        /// <see cref="ApplyProseNames"/> declines to rename any party whose name is non-empty and not
+        /// provisional — so the fields are blanked and <see cref="EnsureEveryPartyNamed"/> is run
+        /// immediately, which is what puts a generated name back before the panel redraws rather than
+        /// showing a blank party until the next prose collection, possibly months of sim time away.
+        /// </para>
+        /// <para>
+        /// <b>The date is <see cref="PoliticalState.Date"/>, not a computed one</b> (non-negotiable
+        /// #8). It is the same argument <see cref="SetTheme"/> passes from the same UI-thread command
+        /// path, which is also the evidence that the call is safe here: the namer is synchronous, it
+        /// reaches only the canned pool's <c>Generate</c>, and it calls nothing on this type — so
+        /// there is no re-entry into any of these six entry points, and the <see cref="Gate"/> it
+        /// re-enters is a monitor this thread already holds.
+        /// </para>
+        /// <para>
+        /// <b>Asymmetric with <see cref="ResetPartyDescription"/> on purpose</b>, and the panel has to
+        /// say so: this one visibly re-rolls the name on the spot, that one does not touch the text.
+        /// </para>
+        /// </remarks>
+        public static CommandOutcome ResetPartyName(string partyId)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null) return CommandOutcome.NoActiveSave;
+
+                    Party party = PartyRegistry.Find(_state.Parties, partyId);
+                    if (party == null) return CommandOutcome.NotFound;
+
+                    if ((party.PlayerOverrides & PartyOverrides.NameLocked) == 0) return CommandOutcome.Ok;
+
+                    party.PlayerOverrides &= ~PartyOverrides.NameLocked;
+                    party.Name = "";
+                    party.ShortName = "";
+
+                    // Synchronous, and it is what stops the party being nameless on the very next
+                    // frame. It is also the path the description lock has to survive: this party's
+                    // description may well still be the player's.
+                    EnsureEveryPartyNamed(_state.Date);
+
+                    _stateVersion++;
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: the name of party '" + (partyId ?? "(null)") +
+                                           "' could not be reset.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Hands a party's description and slogan back to flavor. Backs
+        /// <c>agora.parties.resetDescription</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The text is left exactly as it stands</b>, which is the one place this differs from
+        /// <see cref="ResetPartyName"/> and a difference the panel must state rather than leave the
+        /// player to infer. There is no cheap regenerate-a-description path: the canned pool's namer
+        /// only touches parties with no name, and asking the CLI is tens of seconds away and may never
+        /// answer at all. Blanking the field and waiting would leave the party with an empty
+        /// description for however long that takes — up to the next yearly wake, months of sim time.
+        /// Flavor reclaims the field at that wake, because the lock is now clear and
+        /// <see cref="PartyIdentity.ApplyFlavor"/> writes an unlocked description on every pass.
+        /// </para>
+        /// <para>
+        /// So the observable effect of this command is a promise about the future, not a change now.
+        /// Saying that plainly in the UI is cheaper than the support question.
+        /// </para>
+        /// </remarks>
+        public static CommandOutcome ResetPartyDescription(string partyId)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null) return CommandOutcome.NoActiveSave;
+
+                    Party party = PartyRegistry.Find(_state.Parties, partyId);
+                    if (party == null) return CommandOutcome.NotFound;
+
+                    if ((party.PlayerOverrides & PartyOverrides.DescriptionLocked) == 0)
+                        return CommandOutcome.Ok;
+
+                    party.PlayerOverrides &= ~PartyOverrides.DescriptionLocked;
+
+                    _stateVersion++;
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: the description lock on party '" +
+                                           (partyId ?? "(null)") + "' could not be cleared.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gives a party back an engine-allocated colour. Backs <c>agora.parties.resetColor</c>.
+        /// </summary>
+        /// <remarks>
+        /// <b>A reassignment from today's registry, not a restore of the launch colour.</b>
+        /// <see cref="PartyRegistry.RegenerateColor"/> scans the palette from the slot this party's
+        /// ordinal originally drew from and takes the first entry nobody holds — so if the colour it
+        /// launched with has since gone to another brand, founded while the player was wearing a
+        /// custom one, the party legitimately comes back a different colour. That is the honest
+        /// outcome; the alternative is two brands sharing a colour, which is worse and permanent.
+        /// </remarks>
+        public static CommandOutcome ResetPartyColor(string partyId)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null) return CommandOutcome.NoActiveSave;
+
+                    Party party = PartyRegistry.Find(_state.Parties, partyId);
+                    if (party == null) return CommandOutcome.NotFound;
+
+                    if ((party.PlayerOverrides & PartyOverrides.ColorLocked) == 0) return CommandOutcome.Ok;
+
+                    party.PlayerOverrides &= ~PartyOverrides.ColorLocked;
+                    party.ColorHex = PartyRegistry.RegenerateColor(_state.Parties, party.Id, Tuning);
+
+                    _stateVersion++;
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: the colour of party '" + (partyId ?? "(null)") +
+                                           "' could not be reset.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
         // ------------------------------------------------------------------ cadence
 
         /// <summary>
@@ -1413,16 +1729,31 @@ namespace Agora.Mod.Core
                 {
                     Party party = _state.Parties[p];
                     if (string.CompareOrdinal(party.Id, flavor.PartyId) != 0) continue;
+                    // Both guards stay, and both are load-bearing. The first is what makes this method
+                    // "name the unnamed" rather than "rewrite everybody from the canned pool" — drop
+                    // it and a party the model named years ago has its prose replaced by a stopgap on
+                    // the next load. The second stops an entry that carried no name from counting as
+                    // a naming and marking the party provisional for a write that never happened.
                     if (!string.IsNullOrEmpty(party.Name)) break;
                     if (string.IsNullOrEmpty(flavor.Name)) break;
 
-                    party.Name = flavor.Name;
-                    if (!string.IsNullOrEmpty(flavor.ShortName)) party.ShortName = flavor.ShortName;
-                    if (!string.IsNullOrEmpty(flavor.Description)) party.Description = flavor.Description;
-                    if (!string.IsNullOrEmpty(flavor.Slogan)) party.Slogan = flavor.Slogan;
+                    // mayRename is unconditionally true: the guard above already established the name
+                    // is empty, which is the only case this method acts in. The locks are still
+                    // honoured, inside ApplyFlavor, and the description lock is the one that matters
+                    // here — this is the second pair of writes fixplan.md's "single enforcement point"
+                    // framing misses entirely, and it becomes a live bug the moment "reset name"
+                    // ships: the player locks the description, then resets the name, the name goes
+                    // empty, this method fires on the very next pass, and without the lock check it
+                    // overwrites the description the player wrote with pool prose. Nothing would be
+                    // logged and nothing would look wrong.
+                    bool wroteName;
+                    PartyIdentity.ApplyFlavor(party, flavor, mayRename: true, wroteName: out wroteName);
 
-                    _provisionalNamePartyIds.Add(party.Id);
-                    named++;
+                    if (wroteName)
+                    {
+                        _provisionalNamePartyIds.Add(party.Id);
+                        named++;
+                    }
                     break;
                 }
             }
@@ -1501,6 +1832,22 @@ namespace Agora.Mod.Core
         /// True when the payload came from the canned pool, in which case any name it writes joins the
         /// set of names a later model document is still allowed to replace. False locks on write.
         /// </param>
+        /// <remarks>
+        /// <para>
+        /// The merge rule itself is <see cref="PartyIdentity.ApplyFlavor"/>, in <c>Agora.Core</c>. It
+        /// used to be written out inline here, which made it the one rule in the whole prose path that
+        /// no test could reach — this assembly names game types and the headless suite cannot load it.
+        /// What is left on this side is the part that is genuinely the mod's: matching a payload entry
+        /// to a party, deciding <c>mayRename</c>, and keeping the provisional set.
+        /// </para>
+        /// <para>
+        /// <b>This method is one of four writes across two methods, not the single enforcement
+        /// point.</b> <see cref="EnsureEveryPartyNamed"/> has the other two and is reached on paths
+        /// this one is not (load, retheme, a party founded between wakes). Anything that must hold for
+        /// every flavor write has to hold in <see cref="PartyIdentity.ApplyFlavor"/>, which is why the
+        /// player's locks are checked there and not here.
+        /// </para>
+        /// </remarks>
         private static void ApplyProseNames(FlavorPayload payload, bool provisional)
         {
             for (int i = 0; i < payload.Parties.Count; i++)
@@ -1521,21 +1868,22 @@ namespace Agora.Mod.Core
                     bool mayRename = string.IsNullOrEmpty(party.Name) ||
                                      _provisionalNamePartyIds.Contains(party.Id);
 
-                    if (mayRename && !string.IsNullOrEmpty(flavor.Name))
-                    {
-                        party.Name = flavor.Name;
-                        if (!string.IsNullOrEmpty(flavor.ShortName)) party.ShortName = flavor.ShortName;
+                    // Description and slogan are prose, not identity. They are allowed to move with
+                    // the politics, and a party whose platform shifted saying the same thing forever
+                    // is the worse failure — so ApplyFlavor writes them whenever the player has not
+                    // taken them, independently of whether the rename above was allowed.
+                    bool wroteName;
+                    PartyIdentity.ApplyFlavor(party, flavor, mayRename, out wroteName);
 
-                        // Canned prose leaves the door open; a model document closes it.
+                    if (wroteName)
+                    {
+                        // Canned prose leaves the door open; a model document closes it. Keyed off
+                        // what was actually written rather than off mayRename: a document with no
+                        // name for this party leaves the door exactly as it found it.
                         if (provisional) _provisionalNamePartyIds.Add(party.Id);
                         else _provisionalNamePartyIds.Remove(party.Id);
                     }
 
-                    // Description and slogan are prose, not identity. They are allowed to move with
-                    // the politics, and a party whose platform shifted saying the same thing forever
-                    // is the worse failure.
-                    if (!string.IsNullOrEmpty(flavor.Description)) party.Description = flavor.Description;
-                    if (!string.IsNullOrEmpty(flavor.Slogan)) party.Slogan = flavor.Slogan;
                     break;
                 }
             }

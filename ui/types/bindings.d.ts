@@ -3732,22 +3732,33 @@ declare namespace Agora {
 
   /**
    * What became of a write the panel requested. The CLOSED vocabulary every inbound `CallBinding`
-   * answers with — `agora.state.setSetting` today, the party editors W4 adds next. Mirrors
+   * answers with — `agora.state.setSetting` and the six `agora.parties.*` editors. Mirrors
    * `Agora.Core.Contracts.CommandOutcome`; a new reason is added THERE first.
    *
-   * Engine-authored, always: never an exception message, never model output. `""` means accepted —
-   * `CommandOutcome.Ok` crosses as the empty string, the same falsy answer `FlavorErrorName` gives.
+   * Engine-authored, always: never an exception message, never model output.
+   *
+   * TWO of these are acceptances: `""` and `"OkColorInUse"`. Everything else is a rejection.
+   * Test acceptance as `r === "" || r === "OkColorInUse"` — the mirror of C#'s
+   * `CommandOutcomes.IsAccepted` — and NEVER as `r === ""` alone. The empty-string test reads the
+   * accepted-with-warning case as a failure, and the panel would roll the swatch back to the old
+   * colour while the engine kept the new one.
    *
    * - `""`             accepted, or already true; nothing needed to happen
+   * - `OkColorInUse`   ACCEPTED, with a warning: applied, but another party wears that colour too
    * - `NoActiveSave`   no save is loaded, or the political layer never came up for this one
    * - `UnknownKey`     this build does not recognise the setting or field name
    * - `BadValue`       the name was recognised; the value was not legal for it
    * - `ThemeLocked`    the save has held an election; the region theme is history
    * - `Busy`           something the request would tear down is in flight — retry shortly
    * - `Failed`         it failed for a reason the player cannot act on; see Agora.log
+   * - `NotFound`       no party in this save carries that id
+   * - `ValueRequired`  the field was left empty; an empty string is NEVER read as "reset"
+   * - `TooLong`        over the limit published by `agora.parties.editLimits`
    */
   type CommandOutcomeName =
-    | "" | "NoActiveSave" | "UnknownKey" | "BadValue" | "ThemeLocked" | "Busy" | "Failed";
+    | "" | "OkColorInUse"
+    | "NoActiveSave" | "UnknownKey" | "BadValue" | "ThemeLocked" | "Busy" | "Failed"
+    | "NotFound" | "ValueRequired" | "TooLong";
 
   // -- agora.state -----------------------------------------------------------------------------
 
@@ -3806,13 +3817,19 @@ declare namespace Agora {
    * name and colour are resolved here so two panels cannot disagree about a party's colour.
    * Sorted by `id` ordinal ascending. Empty value: [].
    *
-   * `name` and `shortName` are FLAVOR — render them, never parse or sort by them.
+   * `name`, `shortName`, `description` and `slogan` are FLAVOR — render them, never parse or sort
+   * by them — unless the matching lock below is set, in which case they are the player's words.
    */
   interface PartyBrief {
     id: IdString;
     name: string;
     shortName: string;
-    /** "#RRGGBB". Engine-owned, from the tuned palette. */
+    /** The party's blurb. FLAVOR unless `descriptionLocked`. "" until prose has been generated. */
+    description: string;
+    /** The party's one-liner. FLAVOR unless `descriptionLocked`. "" until prose has been generated. */
+    slogan: string;
+    /** "#RRGGBB", UPPERCASE. Engine-owned from the tuned palette — never flavor — unless
+     *  `colorLocked`, when it is the player's. */
     colorHex: string;
     status: PartyStatusName;
     isIncumbent: boolean;
@@ -3848,6 +3865,39 @@ declare namespace Agora {
     tensionWithParty: number;
     status: FactionStatusName;
     coreGrievance: IssueName;
+  }
+
+  /**
+   * `agora.parties.colorPalette` — the tuned chart palette, published so a colour picker can offer
+   * the swatches the engine actually assigns from. Empty value: { colors: [] }.
+   *
+   * Published rather than hard-coded in the panel because the array lives in
+   * `EngineTuning.Parties.ColorPalette`; a second copy in TypeScript would drift the first time
+   * the tuning is edited, and the drift would be invisible.
+   */
+  interface PartyPalette {
+    /** "#RRGGBB", UPPERCASE, in tuning order. Not a closed set — a player may pick any legal hex. */
+    colors: string[];
+  }
+
+  /**
+   * `agora.parties.editLimits` — what the party editors will accept, published so the character
+   * counter and the C# rejector are the same numbers. Empty value: all zero, `colorPattern: ""`.
+   *
+   * Over the limit is `"TooLong"`; empty is `"ValueRequired"`, never a reset.
+   */
+  interface PartyEditLimits {
+    /** Max length of `PartyBrief.name`. */
+    nameMax: number;
+    /** Max length of `PartyBrief.shortName`. */
+    shortNameMax: number;
+    /** Max length of `PartyBrief.description`. */
+    descriptionMax: number;
+    /** Max length of `PartyBrief.slogan`. */
+    sloganMax: number;
+    /** Regex source for `colorHex`, e.g. "^#[0-9A-Fa-f]{6}$". Pre-validate with it; the engine
+     *  validates again regardless and normalises the accepted value to upper case. */
+    colorPattern: string;
   }
 
   // -- shared ----------------------------------------------------------------------------------

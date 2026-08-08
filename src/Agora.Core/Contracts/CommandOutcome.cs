@@ -56,7 +56,51 @@ namespace Agora.Core.Contracts
         /// It failed, and the reason is not one the player can act on. Whatever went wrong is in
         /// <c>Agora.log</c>; this is deliberately all that reaches the panel.
         /// </summary>
-        Failed = 6
+        Failed = 6,
+
+        /// <summary>
+        /// No party in this save carries that id. Distinct from <see cref="UnknownKey"/>, which is
+        /// about the field name: the request was well-formed and named a field that exists, it just
+        /// addressed a brand that does not.
+        /// </summary>
+        NotFound = 7,
+
+        /// <summary>
+        /// The field was left empty.
+        ///
+        /// <para>
+        /// <b>An empty string is a rejection and never a reset.</b> Resetting a field to its
+        /// engine- or flavor-owned value is a separate binding, deliberately, because "empty means
+        /// reset" makes a typo — a cleared box, a paste that did not take — indistinguishable from
+        /// an intention. A player who wanted the generated name back has to say so.
+        /// </para>
+        /// </summary>
+        ValueRequired = 8,
+
+        /// <summary>
+        /// Recognised and well-formed, but over the published limit
+        /// (<see cref="Agora.Core.Engine.Parties.PartyIdentity"/>).
+        ///
+        /// <para>
+        /// Separate from <see cref="BadValue"/> so that the panel's character counter and the
+        /// rejector can say the same thing. A single "bad value" would leave the counter guessing
+        /// whether it was the length it was counting that failed.
+        /// </para>
+        /// </summary>
+        TooLong = 9,
+
+        /// <summary>
+        /// <b>An acceptance, not a rejection.</b> The colour was applied; another party already
+        /// wears it, and the player is being told so rather than stopped.
+        ///
+        /// <para>
+        /// This must <b>not</b> be mapped to <c>""</c> by <see cref="CommandOutcomes.ToWire"/>: the
+        /// panel cannot show the warning if it does, and a duplicate colour is invisible on a chart
+        /// until the player wonders which of the two slices is theirs. Consumers test acceptance
+        /// with <see cref="CommandOutcomes.IsAccepted"/>, never with <c>== Ok</c>.
+        /// </para>
+        /// </summary>
+        OkColorInUse = 10
     }
 
     /// <summary>The wire form of a <see cref="CommandOutcome"/>.</summary>
@@ -67,9 +111,32 @@ namespace Agora.Core.Contracts
         /// member name for everything else (<c>docs/contracts/ui_bindings.md</c> §2 — enums cross as
         /// their member name, never as an integer).
         /// </summary>
+        /// <remarks>
+        /// <see cref="CommandOutcome.OkColorInUse"/> is an acceptance and still crosses as its member
+        /// name, on purpose: the empty string means "nothing to tell the player", and there is
+        /// something to tell them. That is why acceptance is tested with <see cref="IsAccepted"/> on
+        /// the C# side and against the enum's member name — not against <c>""</c> — on the panel's.
+        /// </remarks>
         public static string ToWire(CommandOutcome outcome)
         {
             return outcome == CommandOutcome.Ok ? "" : outcome.ToString();
+        }
+
+        /// <summary>
+        /// Whether the write took: <see cref="CommandOutcome.Ok"/> or
+        /// <see cref="CommandOutcome.OkColorInUse"/>.
+        ///
+        /// <para>
+        /// <b>Every consumer must ask the question this way.</b> Testing
+        /// <c>outcome == CommandOutcome.Ok</c>, or a wire-level <c>=== ""</c>, reads the
+        /// accepted-with-warning case as a failure — the panel would roll the swatch back to the
+        /// old colour while the engine kept the new one, and the two would disagree until the next
+        /// republish.
+        /// </para>
+        /// </summary>
+        public static bool IsAccepted(CommandOutcome outcome)
+        {
+            return outcome == CommandOutcome.Ok || outcome == CommandOutcome.OkColorInUse;
         }
     }
 }

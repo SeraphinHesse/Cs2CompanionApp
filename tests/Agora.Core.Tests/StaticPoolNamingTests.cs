@@ -232,6 +232,175 @@ namespace Agora.Core.Tests
             }
         }
 
+        /// <summary>
+        /// T6 — a name the roster already wears is off the table. Party A carries a CurrentName the
+        /// engine (or the player, by hand) already gave it; no other party may be handed that string.
+        ///
+        /// <para>
+        /// The fixture calibrates itself rather than hard-coding a word from
+        /// <c>StaticPoolContent</c>: it generates once with everyone unnamed, takes the name
+        /// <c>party-01</c> drew, and hands that exact string to <c>party-00</c> as its CurrentName.
+        /// <c>party-00</c>'s draw is unaffected (its own stream did not move) and <c>party-01</c>'s
+        /// first candidate is unchanged too — so against the unseeded code <c>party-01</c> would draw
+        /// the reserved string again and the last assertion here would fail. That is the defect: the
+        /// used-set started empty, so a current name reserved nothing, and the runtime would write the
+        /// duplicate onto the still-unnamed party without ever noticing.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ANameTheRosterAlreadyWearsIsNotHandedToAnotherParty()
+        {
+            StaticPoolProvider pool = Pool(SaveA);
+            var date = new SimDate(2011, 4, 1);
+
+            FlavorRequest baseline = Request(date, 2);
+            string wanted = Names(pool, baseline)["party-01"];
+            Assert.False(string.IsNullOrEmpty(wanted));
+
+            // party-00 already holds it - the player renamed their own party to exactly that.
+            // party-01 is still unnamed and is the one the pool is about to christen.
+            FlavorRequest contested = Request(date, 2);
+            contested.Parties[0].CurrentName = wanted;
+
+            Dictionary<string, string> after = Names(pool, contested);
+
+            Assert.False(string.Equals(after["party-01"], wanted, StringComparison.Ordinal),
+                         "party-01 was named " + after["party-01"] + ", which party-00 already holds.");
+        }
+
+        /// <summary>
+        /// T7 — and reserving a name must not cost its owner that name. The pool draws for every party
+        /// in the roster, named ones included, so a party whose CurrentName is reserved has to be able
+        /// to draw it back; otherwise its entry comes back holding something else, and because a
+        /// pool-written name is provisional, <c>AgoraRuntime.ApplyProseNames</c> would apply the
+        /// replacement — a rename every sim month, which is T1's defect returning by a side door.
+        /// </summary>
+        [Fact]
+        public void APartyMayStillDrawItsOwnCurrentName()
+        {
+            StaticPoolProvider pool = Pool(SaveA);
+            var date = new SimDate(2011, 4, 1);
+
+            FlavorRequest baseline = Request(date, 4);
+            Dictionary<string, string> drawn = Names(pool, baseline);
+
+            // The steady state the runtime actually reaches: everyone wearing the name the pool gave
+            // them last month, handed straight back in as CurrentName.
+            FlavorRequest settled = Request(date, 4);
+            for (int i = 0; i < settled.Parties.Count; i++)
+            {
+                settled.Parties[i].CurrentName = drawn[settled.Parties[i].PartyId];
+            }
+
+            Dictionary<string, string> again = Names(pool, settled);
+
+            foreach (KeyValuePair<string, string> pair in drawn)
+            {
+                Assert.Equal(pair.Value, again[pair.Key]);
+            }
+        }
+
+        /// <summary>
+        /// T8 — factions are reserved too, and parties are built first, so this is the direction only
+        /// the shared seeding can cover: a party drawing before any faction entry exists still cannot
+        /// take a name a faction already wears. Calibrated the same way as T6.
+        /// </summary>
+        [Fact]
+        public void APartyDoesNotTakeANameAFactionAlreadyWears()
+        {
+            StaticPoolProvider pool = Pool(SaveA);
+            var date = new SimDate(2011, 4, 1);
+
+            string wanted = Names(pool, Request(date, 2))["party-01"];
+
+            FlavorRequest contested = Request(date, 2);
+            contested.Factions.Add(new FactionBrief
+            {
+                FactionId = "faction-00",
+                PartyId = "party-00",
+                ArchetypeId = "archetype-faction-00",
+                CoreGrievance = Issues.All[0],
+                StatusWord = "Insurgent",
+                CurrentName = wanted,
+                FoundedDate = Founded
+            });
+
+            Dictionary<string, string> after = Names(pool, contested);
+
+            Assert.False(string.Equals(after["party-01"], wanted, StringComparison.Ordinal),
+                         "party-01 was named " + after["party-01"] + ", which faction-00 already holds.");
+        }
+
+        /// <summary>
+        /// T9 — the seeding is request data, so the document stays a pure function of the request
+        /// (non-negotiable #3). Two generations from one request, compared as serialized text rather
+        /// than field by field, so a field a hand-written assertion forgot still counts.
+        /// </summary>
+        [Fact]
+        public void GeneratingTwiceFromTheSameRequestIsIdentical()
+        {
+            StaticPoolProvider pool = Pool(SaveA);
+            var date = new SimDate(2011, 4, 1);
+
+            FlavorRequest request = Request(date, 5);
+            request.Parties[0].CurrentName = "Steady Assembly";
+            request.Parties[3].CurrentName = "Steady Assembly";   // a duplicate already in the wild
+            request.Factions.Add(new FactionBrief
+            {
+                FactionId = "faction-00",
+                PartyId = "party-00",
+                ArchetypeId = "archetype-faction-00",
+                CoreGrievance = Issues.All[1],
+                StatusWord = "Insurgent",
+                CurrentName = "Quiet Caucus",
+                FoundedDate = Founded
+            });
+
+            Assert.Equal(Serialize(pool.Generate(request)), Serialize(pool.Generate(request)));
+        }
+
+        /// <summary>Every string the document carries, in document order, as one comparable blob.</summary>
+        private static string Serialize(FlavorDocument document)
+        {
+            Assert.NotNull(document);
+
+            var text = new System.Text.StringBuilder();
+            text.Append(document.SchemaVersion).Append('\n').Append(document.GeneratedAtSimDateText).Append('\n');
+
+            for (int i = 0; i < document.PartyFlavor.Count; i++)
+            {
+                PartyFlavorEntry p = document.PartyFlavor[i];
+                text.Append("party\t").Append(p.PartyId).Append('\t').Append(p.Name).Append('\t')
+                    .Append(p.ShortName).Append('\t').Append(p.Description).Append('\t')
+                    .Append(p.Slogan).Append('\n');
+            }
+
+            for (int i = 0; i < document.FactionFlavor.Count; i++)
+            {
+                FactionFlavorEntry f = document.FactionFlavor[i];
+                text.Append("faction\t").Append(f.FactionId).Append('\t').Append(f.PartyId).Append('\t')
+                    .Append(f.Name).Append('\t').Append(f.ShortName).Append('\t')
+                    .Append(f.Description).Append('\t').Append(f.LeaderName).Append('\n');
+            }
+
+            for (int i = 0; i < document.Articles.Count; i++)
+            {
+                ArticleEntry a = document.Articles[i];
+                text.Append("article\t").Append(a.Id).Append('\t').Append(a.Outlet).Append('\t')
+                    .Append(a.Headline).Append('\t').Append(a.Body).Append('\t').Append(a.Tone).Append('\t')
+                    .Append(a.DistrictId).Append('\t').Append(a.EventId).Append('\t')
+                    .Append(a.PartyId).Append('\n');
+            }
+
+            for (int i = 0; i < document.EventProse.Count; i++)
+            {
+                EventProseEntry e = document.EventProse[i];
+                text.Append("event\t").Append(e.EventId).Append('\t').Append(e.LocalAngle).Append('\n');
+            }
+
+            return text.ToString();
+        }
+
         private static PartyBrief NewParty(string partyId, SimDate founded) => new PartyBrief
         {
             PartyId = partyId,

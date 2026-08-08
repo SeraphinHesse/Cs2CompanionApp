@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 4**
+**schemaVersion: 5**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -10,13 +10,25 @@ must be listed here, and this file is the authority when the two sides disagree.
 rename, do not add a field, do not reorder a sort key. If a panel needs something that is not here,
 report it — do not invent a binding name locally.
 
-**Unfrozen twice, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`) added three
-fields to `PartyBrief` on 2026-08-08 under `/schema-change`, which is the only route through the
+**Unfrozen three times, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`) added
+three fields to `PartyBrief` on 2026-08-08 under `/schema-change`, which is the only route through the
 freeze: a version bump on this file, both sides moved in the same pass, and the reason written down.
 W3 then published `agora.state.settings` and `agora.state.isFirstRun` out of §8 and added
 `agora.state.setSetting`, the contract's first inbound `CallBinding` — three names that were
-**already reserved here**, so nothing was renamed and no existing payload moved. The freeze otherwise
-stands; these notes exist so the next reviewer reads authorised changes rather than violations.
+**already reserved here**, so nothing was renamed and no existing payload moved.
+
+**W4, on 2026-08-08**, took the same route for the party editors. The reason: player-owned party
+identity needs a write surface and two read bindings that **were never reserved** — §8 had reserved
+the settings channel in advance but nothing for editing a party, so there was no reserved name to
+publish out of. What moved: two fields on `PartyBrief` (`description`, `slogan`), six inbound
+`CallBinding`s (`rename`, `setDescription`, `setColor`, `resetName`, `resetDescription`,
+`resetColor`), two outbound `ValueBinding`s (`colorPalette`, `editLimits`), and four outcome codes
+(`NotFound`, `ValueRequired`, `TooLong`, `OkColorInUse`). **Nothing was renamed and no existing
+payload field moved or changed type** — which is the property the freeze actually protects; a purely
+additive change cannot break a consumer that has not been updated.
+
+The freeze otherwise stands; these notes exist so the next reviewer reads authorised changes rather
+than violations.
 
 ---
 
@@ -105,9 +117,11 @@ Selection state (which district is open, which party is highlighted) is UI-only.
 
 ## 4. Registered bindings
 
-Direction is C# → UI for everything except the two inbound bindings — `agora.news.wakeFlavor` (a
-trigger) and `agora.state.setSetting` (a call). Both are marked **UI → C#** in their own tables.
-"Cadence" is when the publisher calls `Update`, not how often the UI re-renders.
+Direction is C# → UI unless a row says otherwise. Eight bindings run the other way and every one of
+them is marked **UI → C#** in its own table: `agora.news.wakeFlavor` (the only trigger),
+`agora.state.setSetting`, and the six party editors in §4.2. "Cadence" is when the publisher calls
+`Update`, not how often the UI re-renders. An inbound binding has no cadence and no empty value: its
+row reads `n/a` where the table has those columns, and §4.2 drops them entirely.
 
 ### 4.0 `agora.debug` — M0 pipeline proof (closed)
 
@@ -172,23 +186,83 @@ confirm before calling.
 
 Outcome codes are a closed set — see §4.6.
 
-### 4.2 `agora.parties` — shared lookup table
+### 4.2 `agora.parties` — shared lookup table + the party editors
+
+Reads — every row here is C# → UI:
 
 | Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
 |---|---|---|---|---|---|---|
 | `agora.parties.roster` | `ValueBinding<T>` | `List<PartyBrief>` | `Agora.PartyBrief[]` | on party lifecycle change (rare) + monthly | `[]` | M4 |
 | `agora.parties.factions` | `ValueBinding<T>` | `List<FactionBrief>` | `Agora.FactionBrief[]` | on faction lifecycle change (rare) + monthly | `[]` | M4 |
+| `agora.parties.colorPalette` | `ValueBinding<T>` | `PartyPalette : IJsonWritable` | `Agora.PartyPalette` | with the roster, on the same version-gated tick | `EMPTY_PARTY_PALETTE` | W4 |
+| `agora.parties.editLimits` | `ValueBinding<T>` | `PartyEditLimits : IJsonWritable` | `Agora.PartyEditLimits` | with the roster, on the same version-gated tick | `EMPTY_PARTY_EDIT_LIMITS` | W4 |
+
+Writes — **UI → C#**, all six. Every one returns a `CommandOutcome` in wire form (§4.6); none has a
+cadence or an empty value:
+
+| Binding | C# type | Args | TS signature | Since |
+|---|---|---|---|---|
+| `agora.parties.rename` | `CallBinding<string,string,string,string>` | `(partyId, name, shortName)` | `(partyId: string, name: string, shortName: string) => Promise<Agora.CommandOutcomeName>` | W4 |
+| `agora.parties.setDescription` | `CallBinding<string,string,string,string>` | `(partyId, description, slogan)` | `(partyId: string, description: string, slogan: string) => Promise<Agora.CommandOutcomeName>` | W4 |
+| `agora.parties.setColor` | `CallBinding<string,string,string>` | `(partyId, colorHex)` | `(partyId: string, colorHex: string) => Promise<Agora.CommandOutcomeName>` | W4 |
+| `agora.parties.resetName` | `CallBinding<string,string>` | `(partyId)` | `(partyId: string) => Promise<Agora.CommandOutcomeName>` | W4 |
+| `agora.parties.resetDescription` | `CallBinding<string,string>` | `(partyId)` | `(partyId: string) => Promise<Agora.CommandOutcomeName>` | W4 |
+| `agora.parties.resetColor` | `CallBinding<string,string>` | `(partyId)` | `(partyId: string) => Promise<Agora.CommandOutcomeName>` | W4 |
+
+Two tables rather than one with a `Direction` column, unlike §4.1 and §4.5. Those two carry a single
+inbound row each, where one extra column is cheaper than a heading. Here the inbound rows are the
+majority and share none of the read table's shape: a call has no cadence, no empty value and no TS
+*payload* type, and it has an argument list, which a read binding does not. Folded together, six of
+eight rows would read `n/a` in three columns and the argument lists would have nowhere to live.
+
+**`rename` carries the short name and `setDescription` carries the slogan** — not an oversight, a
+requirement. `NameLocked` covers `Name` **and** `ShortName`, and `DescriptionLocked` covers
+`Description` **and** `Slogan` (`PartyOverrides` in `src/Agora.Core/Contracts/Parties.cs`). A rename
+that could not also set the short name would take ownership of the short name and freeze it
+permanently: flavor is barred from writing it from that moment, and nothing else could. Both fields
+of a pair are required and must be non-empty.
+
+**An empty string is rejected with `ValueRequired`; it is never read as "reset".** That is why the
+three resets are their own bindings rather than a setter called with `""`. A cleared text box — a
+slipped keystroke, a paste that did not take, a focus change mid-edit — is otherwise
+indistinguishable from a deliberate hand-back, and the two have opposite consequences. A player who
+wants the generated name back has to say so.
+
+**A reset on a field that is not locked is a no-op returning `Ok`.** The resets are idempotent: the
+player asked for the state the save is already in, and nothing needed to happen. Do not return
+`BadValue`, and do not have the panel suppress the call to avoid one.
+
+`setColor` takes `#RRGGBB` and is normalised to upper case on the C# side, so the value that comes
+back on the next roster publish may differ in case from what was sent. A colour another party
+already wears is **accepted** with `OkColorInUse` — a warning to render, not a refusal. `resetColor`
+clears `ColorLocked` and hands the party back a palette colour.
 
 `PartyBrief` gained `nameLocked`, `descriptionLocked` and `colorLocked` in plan 0001, ahead of W4's
-party editing. The publisher fills them from `Party.PlayerOverrides` today; **no panel consumes them
-yet**, and rendering them is W4's work, not a gap to be filled opportunistically.
+party editing, and `description`/`slogan` in W4. The publisher fills the locks from
+`Party.PlayerOverrides`. **W4's party editors are the consumer**; the earlier note that no panel read
+them is obsolete.
+
+`description` and `slogan` ride on the roster rather than in a new per-party detail payload because
+of the rule below: every other payload identifies a party by `partyId` alone and party metadata is
+looked up here. A description editor cannot show the text it is editing if the text is published
+nowhere, and adding a second place to look up a party's own fields is exactly the duplication the
+rule exists to prevent.
+
+`colorPalette` and `editLimits` are bindings rather than constants in the panel for the same reason,
+one step further out. The palette lives in `EngineTuning.Parties.ColorPalette`; a picker that
+hard-coded the swatches would drift from the tuning silently the first time it was edited. The limits
+are enforced by `PartyIdentity` in C#; a hard-coded character counter and the rejector would be two
+copies of one number, and when they disagree the wrong one is the counter — the player finds out by
+being refused after typing.
 
 **Every other payload in this contract identifies a party by `partyId` only.** Name, short name and
 colour are looked up here. Do not duplicate party metadata into seat rows, district rows or news
 items — that is how the colour of one party ends up different in two panels.
 
 Sort: `roster` by `id` ordinal ascending. `factions` by `partyId` ordinal ascending, then
-`internalSupport` **descending**, then `id` ordinal ascending.
+`internalSupport` **descending**, then `id` ordinal ascending. `colorPalette.colors` is in
+**tuning order** — the order the engine assigns from — and is never re-sorted; a swatch's position
+is how a player recognises it between sessions. `editLimits` is a flat object with no list in it.
 
 ### 4.3 `agora.seats` — seat chart + government breakdown
 
@@ -299,18 +373,29 @@ while its metric was unreadable.
 
 Every inbound `CallBinding` in this contract returns one of these, and only these. Mirrors
 `Agora.Core.Contracts.CommandOutcome`; the TypeScript union is `Agora.CommandOutcomeName`. A new
-reason is added to the **C# enum first**, then here, then to the `.d.ts` — W4's party editors extend
-this set rather than starting a parallel one.
+reason is added to the **C# enum first**, then here, then to the `.d.ts` — W4's party editors
+extended this set rather than starting a parallel one, adding the last four rows below.
 
 | Wire | Meaning |
 |---|---|
-| `""` | Accepted, or already true — nothing needed to happen. `Ok` crosses as the empty string, not as `"Ok"`, so the panel's test is a falsy check. |
+| `""` | Accepted, or already true — nothing needed to happen. `Ok` crosses as the empty string, not as `"Ok"`. |
 | `NoActiveSave` | No save is loaded, or the political layer never came up for this one. |
 | `UnknownKey` | This build does not recognise the setting or field name. |
 | `BadValue` | The name was recognised; the value was not legal for it. |
 | `ThemeLocked` | The save has held an election; the region theme is history. |
 | `Busy` | Something the request would tear down is in flight. Retry shortly. |
 | `Failed` | It failed for a reason the player cannot act on. The detail is in `Agora.log`. |
+| `NotFound` | No party in this save carries that id. Unlike `UnknownKey`, the *field* was fine — the *subject* was not. |
+| `ValueRequired` | The field was left empty. **Empty is never a reset**; resetting is its own binding (§4.2). |
+| `TooLong` | Over the limit published by `agora.parties.editLimits`. Separate from `BadValue` so the counter and the rejector say the same thing. |
+| `OkColorInUse` | **Accepted, with a warning.** The colour was applied; another party already wears it. |
+
+**Two of these are acceptances: `""` and `OkColorInUse`. Everything else is a rejection.** Test with
+`CommandOutcomes.IsAccepted` on the C# side, and with the same two-value check on the panel's —
+**never with `result === ""`**. An empty-string test reads the accepted-with-warning case as a
+failure, so the panel would revert the swatch to the old colour while the engine kept the new one,
+and the two would disagree until the next republish. `OkColorInUse` deliberately does *not* cross as
+`""`: the empty string means "nothing to tell the player", and here there is something to tell them.
 
 **Engine-authored, always** — never an exception message, never `ex.Message`, never model output.
 Same rule and same reason as `flavorStatus.lastError` (§4.5): the panel switches on the value, and a
@@ -332,9 +417,11 @@ StateSummary        schemaVersion, date, termNumber, system, theme, nextElection
                     isCampaignSeason, weeksToElection, mayorPartyId
 SettingsPayload     schemaVersion, startYear, theme, system, themeLocked, pauseOnMajorNews,
                     showAllReports, effectsEnabled
-PartyBrief          id, name, shortName, colorHex, status, isIncumbent, isInGovernment,
-                    coreGrievance, foundedDate, dissolvedDate, nameLocked, descriptionLocked,
-                    colorLocked
+PartyBrief          id, name, shortName, description, slogan, colorHex, status, isIncumbent,
+                    isInGovernment, coreGrievance, foundedDate, dissolvedDate, nameLocked,
+                    descriptionLocked, colorLocked
+PartyPalette        colors  — "#RRGGBB", UPPERCASE, in EngineTuning.Parties.ColorPalette order
+PartyEditLimits     nameMax, shortNameMax, descriptionMax, sloganMax, colorPattern
 FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
                     tensionWithParty, status, coreGrievance
 PartyShare          partyId, share
@@ -375,19 +462,35 @@ FlavorStatus        lastFlavorDate, lastAttemptDate, isStale, providerAvailable,
                     lastError, articleCount
 ```
 
+The two W4 payloads cross as `agora.PartyPalette` and `agora.PartyEditLimits` (the writer's
+`TypeBegin` name, matching `agora.PartyBrief`). `PartyEditLimits` carries the limits `PartyIdentity`
+enforces in `src/Agora.Core/Engine/Parties/PartyIdentity.cs` — at time of writing `nameMax` 80,
+`shortNameMax` 12, `descriptionMax` 600, `sloganMax` 120, `colorPattern` `^#[0-9A-Fa-f]{6}$`. Those
+numbers are the payload's *values*, not the contract: read them from the binding, do not copy them
+into a panel.
+
 ### Which fields are flavor
 
-`PartyBrief.name`/`shortName`, `FactionBrief.name`/`shortName`/`leaderName`,
-`MayorSummary.name`, `PollSummary.pollsterName`, `NewsHeadline.headline`/`summary`/`outletName`,
-`NewsArticle.*` prose, `TimelineEventBrief.localAngle` and `MandateRow.text` are **flavor-owned**.
-Render them; never parse them, never sort by them, never derive a number from them. Everything else
-is engine-owned.
+Three ownerships, not two, and the difference decides what the UI may offer to do with a field.
 
-**Except where the player has taken over.** A `PartyBrief` field whose lock is set —
-`nameLocked` for `name`/`shortName`, `descriptionLocked`, `colorLocked` for `colorHex` — is
-**player-owned**, not flavor-owned. The UI must not offer to regenerate it without first offering
-"reset to generated", and must never present it as LLM output. A player who names their party and
-then sees it described as generated text has been told the mod is going to overwrite it.
+**Flavor-owned** — `PartyBrief.name`/`shortName`/`description`/`slogan`,
+`FactionBrief.name`/`shortName`/`leaderName`, `MayorSummary.name`, `PollSummary.pollsterName`,
+`NewsHeadline.headline`/`summary`/`outletName`, `NewsArticle.*` prose,
+`TimelineEventBrief.localAngle` and `MandateRow.text`. Render them; never parse them, never sort by
+them, never derive a number from them.
+
+**Engine-owned** — everything else, including **`PartyBrief.colorHex`**. Colour has never been
+flavor-owned and cannot become so: `PartyFlavor` in `src/Agora.Core/Contracts/Boundary.cs` has no
+colour field, so there is nothing for a model to write. It is assigned from the tuned palette
+(`agora.parties.colorPalette`) in order, so a party keeps its colour across reloads.
+
+**Player-owned, where the player has taken over.** A `PartyBrief` field whose lock is set is the
+player's, whatever it was before — `nameLocked` for `name` **and** `shortName`, `descriptionLocked`
+for `description` **and** `slogan`, `colorLocked` for `colorHex`. Flavor output for a locked field is
+discarded, not merged. The UI must not offer to regenerate a locked field without offering "reset to
+generated" (`agora.parties.resetName` / `resetDescription` / `resetColor`), and must never present it
+as LLM output. A player who names their party and then sees it described as generated text has been
+told the mod is going to overwrite it.
 
 ---
 
@@ -407,6 +510,12 @@ const EMPTY_STATE_SUMMARY: Agora.StateSummary = {
 const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
   themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+};
+
+const EMPTY_PARTY_PALETTE: Agora.PartyPalette = { colors: [] };
+
+const EMPTY_PARTY_EDIT_LIMITS: Agora.PartyEditLimits = {
+  nameMax: 0, shortNameMax: 0, descriptionMax: 0, sloganMax: 0, colorPattern: "",
 };
 
 const EMPTY_CITY_INDICES: Agora.CityIndices = {
@@ -441,6 +550,11 @@ and `agora.seats.latestPoll` take `null`.
 
 `weeksToElection` is `-1` — not `0` — when no election is scheduled, so "the election is this week"
 stays distinguishable from "there is no election".
+
+`EMPTY_PARTY_EDIT_LIMITS` is all zeroes, which is not a usable limit: a counter reading `nameMax: 0`
+would declare every keystroke too long. Gate the editors on `state.ready` (§4.1) like every other
+panel, rather than treating the empty value as a real ceiling. The same is true of an empty palette —
+render no swatches, not a picker with nothing in it.
 
 ---
 

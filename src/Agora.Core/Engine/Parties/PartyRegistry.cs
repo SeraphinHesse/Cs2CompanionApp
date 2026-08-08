@@ -95,7 +95,7 @@ namespace Agora.Core.Engine.Parties
             {
                 for (int i = 0; i < existing.Count; i++)
                 {
-                    int n = ParseOrdinal(existing[i].Id);
+                    int n = OrdinalOf(existing[i].Id);
                     if (n > highest) highest = n;
                 }
             }
@@ -106,7 +106,12 @@ namespace Agora.Core.Engine.Parties
         public static string FormatId(int ordinal) =>
             IdPrefix + ordinal.ToString("D2", CultureInfo.InvariantCulture);
 
-        private static int ParseOrdinal(string id)
+        /// <summary>
+        /// The numeric suffix of a <c>party-NN</c> id, or 0 when the id is empty, foreign or
+        /// unparseable. Public because the ordinal is also a party's <i>preferred palette slot</i>
+        /// (see <see cref="RegenerateColor"/>), which is not a fact the registry can keep to itself.
+        /// </summary>
+        public static int OrdinalOf(string id)
         {
             if (string.IsNullOrEmpty(id) || !id.StartsWith(IdPrefix, StringComparison.Ordinal)) return 0;
             string tail = id.Substring(IdPrefix.Length);
@@ -121,6 +126,17 @@ namespace Agora.Core.Engine.Parties
         /// </summary>
         public static string AllocateColor(IReadOnlyList<Party> existing, int preferredIndex, EngineTuning tuning)
         {
+            return AllocateColor(existing, preferredIndex, tuning, null);
+        }
+
+        /// <summary>
+        /// The shared allocation core. <paramref name="excludingPartyId"/> is the one party whose
+        /// current colour does not count as taken — needed only when reallocating a colour to a party
+        /// that already has one.
+        /// </summary>
+        private static string AllocateColor(IReadOnlyList<Party> existing, int preferredIndex,
+                                            EngineTuning tuning, string? excludingPartyId)
+        {
             if (tuning == null) throw new ArgumentNullException(nameof(tuning));
 
             string[] palette = tuning.Parties.ColorPalette;
@@ -132,19 +148,72 @@ namespace Agora.Core.Engine.Parties
             for (int offset = 0; offset < palette.Length; offset++)
             {
                 string candidate = palette[(start + offset) % palette.Length];
-                if (!IsColorTaken(existing, candidate)) return candidate;
+                if (!IsColorTaken(existing, candidate, excludingPartyId)) return candidate;
             }
             return palette[start];
         }
 
-        private static bool IsColorTaken(IReadOnlyList<Party> existing, string color)
+        /// <summary>
+        /// Whether any party already wears this colour, comparing on
+        /// <see cref="PartyIdentity.NormalizeHex"/> of both sides. Dissolved and merged brands count:
+        /// a colour is held for the life of the brand, so a revived party comes back the colour the
+        /// player remembers.
+        /// </summary>
+        /// <param name="excludingPartyId">
+        /// A party to skip, ordinal match on <see cref="Party.Id"/>. Null or empty excludes nothing.
+        /// </param>
+        /// <remarks>
+        /// The normalisation is a fix, not tidying. This check used to compare raw
+        /// <see cref="string.CompareOrdinal(string,string)"/>, so <c>#c0392b</c> as a player typed it
+        /// was byte-different from the palette's <c>#C0392B</c> and simply did not register as taken —
+        /// and the next splinter was handed the identical-looking colour, leaving two indistinguishable
+        /// slices on every chart.
+        /// </remarks>
+        public static bool IsColorTaken(IReadOnlyList<Party> parties, string colorHex, string? excludingPartyId)
         {
-            if (existing == null) return false;
-            for (int i = 0; i < existing.Count; i++)
+            if (parties == null) return false;
+
+            string wanted = PartyIdentity.NormalizeHex(colorHex);
+            bool excluding = !string.IsNullOrEmpty(excludingPartyId);
+
+            for (int i = 0; i < parties.Count; i++)
             {
-                if (string.CompareOrdinal(existing[i].ColorHex, color) == 0) return true;
+                Party p = parties[i];
+                if (p == null) continue;
+                if (excluding && string.CompareOrdinal(p.Id, excludingPartyId) == 0) continue;
+                if (string.CompareOrdinal(PartyIdentity.NormalizeHex(p.ColorHex), wanted) == 0) return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Reassigns a party its palette colour from <i>today's</i> registry: the first free entry
+        /// scanning from the slot its ordinal originally drew from.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is not a restore, and the name says so.</b> It reallocates against the roster as it
+        /// stands now, so if the party's launch colour has since gone to another brand — a splinter
+        /// founded while the player was wearing a custom colour, say — the party comes back a
+        /// different one. A method called <c>RestoreColor</c> would be a lie, and the player would
+        /// read the difference as the reset having failed.
+        /// </para>
+        /// <para>
+        /// The party is excluded from the taken-colour scan. Without that its own current colour
+        /// blocks its own preferred slot, and a reset could never give the slot back — the one case
+        /// this method exists for.
+        /// </para>
+        /// </remarks>
+        public static string RegenerateColor(IReadOnlyList<Party> parties, string partyId, EngineTuning tuning)
+        {
+            if (tuning == null) throw new ArgumentNullException(nameof(tuning));
+
+            // GenerateInitial allocated party-NN from index NN-1: `AllocateColor(parties, i, tuning)`
+            // beside `Id = FormatId(i + 1)`. An unparseable id has ordinal 0 and starts at the top.
+            int preferred = OrdinalOf(partyId) - 1;
+            if (preferred < 0) preferred = 0;
+
+            return AllocateColor(parties, preferred, tuning, partyId);
         }
 
         /// <summary>

@@ -131,7 +131,18 @@ namespace Agora.Mod.Llm
                 ["generatedAtSimDate"] = request.Date.ToString()
             };
 
+            // Seeded with the names the roster already wears, before any draw happens. The set used to
+            // start empty, so uniqueness was only ever enforced against this call's own draws: a name
+            // an entity already held - including one the player typed for their own party - was no
+            // obstacle at all, and an unnamed newcomer could draw that exact string. The runtime,
+            // seeing an empty Name on the newcomer, would then write it. Two parties, one name, and
+            // nothing left to repair it, because the incumbent's name is locked.
+            //
+            // Seeded here rather than inside either builder so that parties and factions share one
+            // reservation - a party is built first and would otherwise be free to take a faction's
+            // name - and so that neither builder can later be changed in a way that forgets.
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
+            SeedCurrentNames(request, usedNames);
 
             JArray parties = BuildParties(request, usedNames);
             if (parties.Count > 0) root["partyFlavor"] = parties;
@@ -146,6 +157,32 @@ namespace Agora.Mod.Llm
             if (eventProse.Count > 0) root["eventProse"] = eventProse;
 
             return root;
+        }
+
+        /// <summary>
+        /// Reserves every name the roster already wears, skipping the blanks.
+        /// </summary>
+        /// <remarks>
+        /// Pure over the request: the set is seeded from request data and from nothing ambient, which
+        /// is what keeps the document a function of its inputs (non-negotiable #3). It is only ever
+        /// membership-tested afterwards - <see cref="UniqueName"/> reads it through
+        /// <c>HashSet.Add</c>'s bool and never enumerates it - so its iteration order reaches no draw.
+        /// </remarks>
+        private static void SeedCurrentNames(FlavorRequest request, HashSet<string> used)
+        {
+            List<PartyBrief> parties = request.Parties;
+            for (int i = 0; parties != null && i < parties.Count; i++)
+            {
+                PartyBrief party = parties[i];
+                if (party != null && !string.IsNullOrEmpty(party.CurrentName)) used.Add(party.CurrentName);
+            }
+
+            List<FactionBrief> factions = request.Factions;
+            for (int i = 0; factions != null && i < factions.Count; i++)
+            {
+                FactionBrief faction = factions[i];
+                if (faction != null && !string.IsNullOrEmpty(faction.CurrentName)) used.Add(faction.CurrentName);
+            }
         }
 
         private JArray BuildParties(FlavorRequest request, HashSet<string> usedNames)
@@ -165,6 +202,15 @@ namespace Agora.Mod.Llm
             // parties wearing one name with nothing left to repair it. Party ids are handed out
             // ascending (PartyRegistry.NextPartyId), so with the full roster a newly founded party
             // sorts last and settles its own collisions without disturbing anyone already named.
+            //
+            // A name is drawn for EVERY party here, already-named ones included, and the runtime
+            // decides whether to apply it - it will not overwrite a locked name. That is why the
+            // usedNames seeding in BuildDocument hands each party its own CurrentName back as a legal
+            // draw (see UniqueName): a party whose current name is reserved against everyone else must
+            // still be able to draw it itself, or its entry would come back holding a different name,
+            // and a pool-written name is provisional, so ApplyProseNames would apply the replacement.
+            // That is a rename every sim month - the exact defect keying the seed on the founding date
+            // was introduced to kill.
             var parties = new List<PartyBrief>(request.Parties);
             parties.Sort((a, b) => string.CompareOrdinal(a.PartyId, b.PartyId));
 
@@ -186,7 +232,7 @@ namespace Agora.Mod.Llm
                 var rng = SeedStreams.RngFor(_saveGuid, party.FoundedDate, StreamNames.NameSelection,
                                              "party:" + party.PartyId);
 
-                string name = UniqueName(rng, adjectives, nouns, usedNames);
+                string name = UniqueName(rng, adjectives, nouns, usedNames, party.CurrentName);
                 int issue = IssueIndex(party.CoreGrievance);
 
                 array.Add(new JObject
@@ -220,7 +266,7 @@ namespace Agora.Mod.Llm
                                              "faction:" + faction.FactionId);
 
                 string name = UniqueName(rng, StaticPoolContent.FactionAdjectives,
-                                         StaticPoolContent.FactionNouns, usedNames);
+                                         StaticPoolContent.FactionNouns, usedNames, faction.CurrentName);
                 int issue = IssueIndex(faction.CoreGrievance);
 
                 string leader = StaticPoolContent.Pick(StaticPoolContent.LeaderGivenNames, rng) + " " +
@@ -358,15 +404,26 @@ namespace Agora.Mod.Llm
         /// Draws an "Adjective Noun" name, retrying within the entity's own stream until it is
         /// unused. Bounded: after the attempts run out it takes the last draw and lets the collision
         /// stand, because an unbounded loop on a small pool would hang on a city with many parties.
+        ///
+        /// <para>
+        /// <paramref name="ownName"/> is the drawer's current name, and is the one already-reserved
+        /// string it is allowed to draw. The set is seeded from the roster's current names
+        /// (<c>SeedCurrentNames</c>), so without this exemption every named entity would collide with
+        /// itself and retry into something else - see the note in <see cref="BuildParties"/> for why
+        /// that is worse than the collision it would be avoiding. Null or empty means "no name yet",
+        /// and never matches: a drawn name always contains a space.
+        /// </para>
         /// </summary>
         private static string UniqueName(DeterministicRng rng, string[] adjectives, string[] nouns,
-                                         HashSet<string> used)
+                                         HashSet<string> used, string ownName)
         {
             string name = string.Empty;
             for (int attempt = 0; attempt < 12; attempt++)
             {
                 name = StaticPoolContent.Pick(adjectives, rng) + " " + StaticPoolContent.Pick(nouns, rng);
-                if (used.Add(name)) return name;
+                // The ownName test comes first because Add would report it as taken - the seeding put
+                // it there, and the entity that put it there is the one drawing.
+                if (string.Equals(name, ownName, StringComparison.Ordinal) || used.Add(name)) return name;
             }
             return name;
         }
