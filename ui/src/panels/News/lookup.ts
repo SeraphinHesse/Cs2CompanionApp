@@ -11,6 +11,10 @@ import { districts$, roster$ } from "./bindings";
  * of those bindings: resolve in one place so a party cannot end up two different colours in two
  * panels. Nothing here iterates a map in a way that reaches engine state — these are point
  * lookups for rendering.
+ *
+ * The two resolvers treat missing data differently on purpose: `partyLabel` collapses "not in the
+ * roster" and "in the roster but unnamed" into one placeholder, while `districtLabel` keeps them
+ * apart. An unnamed district is something the player can go and fix; no party state is.
  */
 
 /** Used when a party id is empty or has aged out of the roster. */
@@ -22,13 +26,28 @@ const NEUTRAL_COLOR = "#8a8f98";
  */
 const UNNAMED_PARTY = "Unnamed party";
 
+/**
+ * Shown when a district id is not in `agora.districts.list` — deleted while an old item still names
+ * it, or the list has not arrived yet. We hold a subject we cannot name; a raw id is never rendered.
+ */
+const UNKNOWN_DISTRICT = "Unknown district";
+
+/**
+ * Shown when the district *is* in the list but carries no name. A different fact from the above and
+ * a different one to act on: this district exists on the map and is waiting to be named.
+ */
+const UNNAMED_DISTRICT = "Unnamed district";
+
 export interface Lookups {
   party(id: string): Agora.PartyBrief | undefined;
   /** Always a usable "#RRGGBB" — falls back to neutral rather than rendering a broken colour. */
   partyColor(id: string): string;
   /** "" for an absent party id, so callers can skip the chip entirely. */
   partyLabel(id: string): string;
-  /** "Citywide" for an absent district id; the raw id if the district is not in the list. */
+  /**
+   * "Citywide" for an absent district id, "Unknown district" when the id is not in the list, and
+   * "Unnamed district" when it is but has no name. Three distinguishable states, never the id.
+   */
   districtLabel(id: string): string;
 }
 
@@ -72,7 +91,12 @@ export function useLookups(): Lookups {
           return "Citywide";
         }
         const district = districtsById[id];
-        return district && district.name ? district.name : id;
+        if (!district) {
+          // The item genuinely has a district subject, we just cannot name it — say that rather
+          // than dropping the chip, which would read as citywide.
+          return UNKNOWN_DISTRICT;
+        }
+        return district.name || UNNAMED_DISTRICT;
       },
     };
   }, [roster, districts]);

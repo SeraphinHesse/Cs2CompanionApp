@@ -44,6 +44,22 @@ function originLabel(origin: string): string {
   return ORIGIN_LABEL[origin] || origin;
 }
 
+/**
+ * Shown when an event arrives with no title.
+ *
+ * The previous fallback chain put `archetypeId` and then `id` into the heading, and neither is
+ * player-legible ("housing-squeeze", "proc-2031-04-housing-squeeze-1"). `archetypeId` is not mapped
+ * to English the way `origin` is: it is non-empty only for procedural events, and a procedural
+ * event's `title` is copied from the *same* archetype, so a map here would only ever restore text
+ * the payload was already meant to carry — and the archetype pool is an injectable parameter on the
+ * C# side, so the map would silently fall behind a pool the engine grew.
+ *
+ * Deliberately says only that the heading is missing. Date, origin, region, duration, severity,
+ * districts and tags are all still on the row, so the event stays identifiable without this line
+ * repeating any of them.
+ */
+const UNTITLED_EVENT = "Untitled event";
+
 export const EventList = ({ events, lookups }: EventListProps) => {
   if (events.length === 0) {
     return (
@@ -101,7 +117,7 @@ const EventItem = ({ event, lookups }: EventItemProps) => {
         ) : null}
       </div>
 
-      <div className={styles.eventTitle}>{event.title || event.archetypeId || event.id}</div>
+      <div className={styles.eventTitle}>{event.title || UNTITLED_EVENT}</div>
 
       {event.localAngle ? <div className={styles.localAngle}>{event.localAngle}</div> : null}
 
