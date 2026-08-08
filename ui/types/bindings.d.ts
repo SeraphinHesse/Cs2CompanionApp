@@ -3898,6 +3898,21 @@ declare namespace Agora {
   }
 
   /**
+   * `agora.parties.pollTrend` — a MAP binding keyed by `PartyBrief.id`. Oldest first, capped at
+   * AGORA_POLL_TREND_MAX = 24. An unknown key returns []. Published polls only; the engine's own
+   * PollResult.TrueShares never crosses the bridge (contract rule 8).
+   */
+  interface PollTrendPoint {
+    date: SimDateString;
+    /** [0,1] as published. */
+    share: number;
+    /** [0,1], e.g. 0.031 for ±3.1 points. */
+    marginOfError: number;
+    /** -1 when the poll anticipated no scheduled election. */
+    weeksToElection: number;
+  }
+
+  /**
    * `agora.parties.factions` — sorted by `partyId` ascending, then `internalSupport` DESCENDING,
    * then `id` ascending. Empty value: []. Empty under the EU theme, which has no factions.
    *

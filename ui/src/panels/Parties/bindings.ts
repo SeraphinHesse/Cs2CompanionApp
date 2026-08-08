@@ -105,6 +105,15 @@ export const factions$ = bindValue<Agora.FactionBrief[]>("agora.parties", "facti
  */
 export const partyDetail$ = bindMap<string, Agora.PartyDetail>("agora.parties", "detail");
 
+/**
+ * Map binding, keyed by PartyBrief.id: one party's published poll shares over time, OLDEST FIRST.
+ *
+ * That order is contractual and is the one list in the contract that is not newest-first - a trend
+ * reads left to right in time (contract section 4.2). Do not reverse it. Subscribed by the detail
+ * pane alone, for the open party, like the detail above.
+ */
+export const pollTrend$ = bindMap<string, Agora.PollTrendPoint[]>("agora.parties", "pollTrend");
+
 // -- agora.seats (rail columns and the coalition line) ---------------------------------------------
 
 export const allocation$ = bindValue<Agora.SeatRow[]>("agora.seats", "allocation", []);

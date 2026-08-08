@@ -399,6 +399,36 @@ namespace Agora.Mod.UiBindings
         }
     }
 
+    /// <summary>
+    /// One published poll's figure for one party. A flat row on purpose: a series of dates each
+    /// carrying every party's shares would be a list of rows containing lists, which the payload
+    /// budget (<c>docs/contracts/ui_bindings.md</c> §2) forbids.
+    /// </summary>
+    /// <remarks>
+    /// The share is the <b>published</b> one. <c>PollResult.TrueShares</c> is the model's own answer
+    /// and never crosses the bridge (contract rule 8) — a sparkline drawn from it would be the engine
+    /// showing the player its own working.
+    /// </remarks>
+    public sealed class PollTrendPointPayload : IJsonWritable
+    {
+        public Agora.Core.Contracts.SimDate? Date;
+        public double Share;
+        public double MarginOfError;
+
+        /// <summary>Weeks to the ballot this poll anticipated; -1 when none was scheduled.</summary>
+        public int WeeksToElection = -1;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.PollTrendPoint");
+            UiJson.Date(writer, "date", Date);
+            UiJson.Number(writer, "share", Share);
+            UiJson.Number(writer, "marginOfError", MarginOfError);
+            UiJson.Number(writer, "weeksToElection", WeeksToElection);
+            writer.TypeEnd();
+        }
+    }
+
     // ---------------------------------------------------------------------------- agora.seats
 
     /// <summary>

@@ -21,6 +21,7 @@ namespace Agora.Mod.UiBindings
         internal const int NewsFeedMax = 40;
         internal const int EventsMax = 25;
         internal const int ElectionHistoryMax = 12;
+        internal const int PollTrendMax = 24;
 
         private const int DaysPerWeek = 7;
 
@@ -311,6 +312,58 @@ namespace Agora.Mod.UiBindings
                 return PartyGovernmentRole.Opposition;
 
             return PartyGovernmentRole.None;
+        }
+
+        /// <summary>
+        /// One party's published poll shares over time, oldest first, capped at
+        /// <see cref="PollTrendMax"/> points.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Oldest first is deliberate and is the one list in the contract that is not newest-first: a
+        /// trend reads left to right in time, so the cap drops from the <b>front</b> — the reverse of
+        /// <see cref="BuildHistory"/>, which trims the tail of a newest-first list.
+        /// </para>
+        /// <para>
+        /// A poll with no entry for this party contributes no point at all rather than a zero. A party
+        /// that did not exist yet did not poll at 0%, and a sparkline that says it did is inventing a
+        /// collapse. <c>PollResult.TrueShares</c> is never read, for the same reason as
+        /// <see cref="BuildPartyDetail"/>.
+        /// </para>
+        /// </remarks>
+        internal static List<PollTrendPointPayload> BuildPollTrend(PoliticalState state, string partyId)
+        {
+            var rows = new List<PollTrendPointPayload>();
+            if (state == null || string.IsNullOrEmpty(partyId) || state.RecentPolls == null) return rows;
+
+            // Forward, because RecentPolls is stored oldest first and that is the order this list
+            // publishes in.
+            for (int i = 0; i < state.RecentPolls.Count; i++)
+            {
+                PollResult poll = state.RecentPolls[i];
+                if (poll == null || !poll.IsPublished || poll.Shares == null) continue;
+
+                for (int j = 0; j < poll.Shares.Count; j++)
+                {
+                    PartyVoteShare share = poll.Shares[j];
+                    if (string.CompareOrdinal(share.PartyId, partyId) != 0) continue;
+
+                    rows.Add(new PollTrendPointPayload
+                    {
+                        Date = poll.Date,
+                        Share = share.Share,
+                        MarginOfError = poll.MarginOfError,
+
+                        // WeeksToElection is only meaningful against a scheduled ballot; without one
+                        // the field is whatever the pollster last carried, so the sentinel is used.
+                        WeeksToElection = poll.ElectionDate.HasValue ? poll.WeeksToElection : -1
+                    });
+                    break;
+                }
+            }
+
+            if (rows.Count > PollTrendMax) rows.RemoveRange(0, rows.Count - PollTrendMax);
+            return rows;
         }
 
         // ------------------------------------------------------------------ agora.seats

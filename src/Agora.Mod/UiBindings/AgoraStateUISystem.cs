@@ -26,6 +26,7 @@ namespace Agora.Mod.UiBindings
         private ValueBinding<List<PartyBriefPayload>> _roster;
         private ValueBinding<List<FactionBriefPayload>> _factions;
         private GetterMapBinding<string, PartyDetailPayload> _partyDetail;
+        private GetterMapBinding<string, List<PollTrendPointPayload>> _pollTrend;
 
         protected override void CreateBindings()
         {
@@ -59,6 +60,13 @@ namespace Agora.Mod.UiBindings
             // AgoraDistrictsUISystem.CreateBindings, above its own detail map binding.
             AddBinding(_partyDetail = new GetterMapBinding<string, PartyDetailPayload>(
                 PartiesGroup, "detail", GetPartyDetail));
+
+            // Named argument: keyReader and keyWriter come first in the signature, and this value is
+            // a list, so it needs the same explicit writer a ValueBinding<List<T>> does — omitting it
+            // throws MissingMethodException on construction. Same shape as the districts crosstab.
+            AddBinding(_pollTrend = new GetterMapBinding<string, List<PollTrendPointPayload>>(
+                PartiesGroup, "pollTrend", GetPollTrend,
+                valueWriter: ListOf<PollTrendPointPayload>()));
         }
 
         /// <summary>
@@ -67,6 +75,13 @@ namespace Agora.Mod.UiBindings
         /// </summary>
         private static PartyDetailPayload GetPartyDetail(string partyId) =>
             AgoraUiProjection.BuildPartyDetail(AgoraRuntime.State, partyId);
+
+        /// <summary>
+        /// One party's published poll shares over time, oldest first. An unknown key returns an empty
+        /// list, for the same reason the detail returns an empty payload.
+        /// </summary>
+        private static List<PollTrendPointPayload> GetPollTrend(string partyId) =>
+            AgoraUiProjection.BuildPollTrend(AgoraRuntime.State, partyId);
 
         /// <summary>
         /// The master toggle. Panels render <c>null</c> when this is false — not a disabled shell,
@@ -109,6 +124,7 @@ namespace Agora.Mod.UiBindings
             // UpdateAll only pushes keys the panel has actually subscribed, so this costs nothing
             // when the Parties tab is closed.
             _partyDetail.UpdateAll();
+            _pollTrend.UpdateAll();
         }
     }
 }

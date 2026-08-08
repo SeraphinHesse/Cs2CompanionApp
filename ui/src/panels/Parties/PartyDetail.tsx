@@ -1,6 +1,6 @@
 import { ReactNode, useMemo } from "react";
 import { useMapValue } from "cs2/api";
-import { EMPTY_PARTY_DETAIL, partyDetail$ } from "./bindings";
+import { EMPTY_PARTY_DETAIL, partyDetail$, pollTrend$ } from "./bindings";
 import {
   NO_VALUE,
   ROLE_CHIP,
@@ -17,6 +17,7 @@ import {
   signedPoints,
 } from "./format";
 import { PlatformBars } from "./PlatformBars";
+import { PollSparkline } from "./PollSparkline";
 import styles from "./PartyDetail.module.scss";
 
 /**
@@ -125,6 +126,12 @@ export const PartyDetailPane = (props: {
 }): JSX.Element => {
   const rawDetail = useMapValue(partyDetail$, props.partyId);
 
+  // Both map subscriptions live HERE rather than in the panel, and for the same reason: this
+  // component is remounted on every selection change, so the hook's state initialiser runs against
+  // the new key. Lifted to PartiesPanel - which does not remount - the key would change under a live
+  // subscription and the pane would render the previous party's series for one frame.
+  const rawTrend = useMapValue(pollTrend$, props.partyId);
+
   // This party's slice of the published faction list. A filter, never a sort: the list arrives
   // ordered by partyId then internal support then id (contract section 4.2), and filtering keeps
   // that order, so the names below read strongest-first and read the same way on every run.
@@ -147,6 +154,9 @@ export const PartyDetailPane = (props: {
   }, [props.factions, props.partyId]);
 
   const detail: Agora.PartyDetail = rawDetail || EMPTY_PARTY_DETAIL;
+
+  // Oldest first, as published. Never reversed or re-sorted here (contract section 4.2).
+  const trend: Agora.PollTrendPoint[] = rawTrend || [];
 
   // The nested groups are contractual, but a missing one would take the whole pane down for a
   // cosmetic payload gap. Fall back to the documented empty shape instead.
@@ -252,6 +262,10 @@ export const PartyDetailPane = (props: {
             <StatCell label="Since the election" value={deltaValue} tone={deltaTone} />
           </div>
           {standingNote ? <div className={styles.note}>{standingNote}</div> : null}
+
+          {/* Directly beneath the stat row, so the delta figure and the shape it came from are read
+              together rather than a section apart. */}
+          <PollSparkline points={trend} colorHex={partyColor(detail.colorHex || brief.colorHex)} />
 
           <SectionTitle title="Threshold" />
           <div className={styles.line}>
