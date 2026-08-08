@@ -56,7 +56,7 @@ authority; this is the tracker.
 | **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed) · **needs the manual walkthrough** |
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed) · **needs the manual walkthrough** |
 | **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | ⬜ |
-| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop `ApplyProseNames` clobbering them. | 4 | ⬜ |
+| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab |
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ⬜ |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, committed** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **2 owner decisions raised**, and the drift re-run must repeat after W4/W6 |
 
@@ -91,6 +91,61 @@ the envelope unwrap) · `npx tsc --noEmit` and `npm run check` clean. Four items
 Two owner decisions came out of it, both recorded in `fixplan.md` § "Decisions for the owner":
 five `NewsArticle` wire fields with no engine source, and whether the Crosstab's Turnout mode should
 exist now that its copy admits it is a single district-wide number.
+
+## W4 — player-owned party identity
+
+**Lanes A–C are code complete and independently reviewed. Lane D is specified and handed to W6.**
+
+The player can own a party's name and short name, its description and slogan, and its colour. Each
+of the three groups is a lock in `Party.PlayerOverrides`, and a set lock bars flavor from that group
+for good.
+
+**The enforcement point is one function, and it lives in `Agora.Core`.**
+`PartyIdentity.ApplyFlavor` is the lock-aware merge, lifted out of `AgoraRuntime.ApplyProseNames`.
+That move is the substance of the work rather than tidying: `AgoraRuntime` cannot be loaded by the
+headless suite, so the rule deciding whether a player's rename survives a flavor wake was the one
+rule in the mod no test could reach. It is now the rule the mod runs *and* the rule the suite tests.
+
+`fixplan.md` §W4 called `ApplyProseNames` "the single enforcement point". It is one of four —
+W2 added a second flavor writer of all four prose fields, `EnsureEveryPartyNamed`, and colour has no
+flavor path at all. The fourth was a latent bug that "reset name" would have made live: lock the
+description, reset the *name*, and `EnsureEveryPartyNamed` fires on the now-empty name and silently
+overwrites the locked description. All five corrections to §W4 are recorded there in full.
+
+**Two bugs fixed that the plan did not know about.** `PartyRegistry.IsColorTaken` compared hex
+case-sensitively against an uppercase palette, so a player typing `#c0392b` held a colour that never
+registered as taken and the next splinter was handed the identical-looking `#C0392B`. And
+`StaticPoolProvider` seeded its uniqueness set only from its own draws, so a newly-named party could
+land exactly on the name the player had chosen.
+
+**Eight bindings, not the three the plan listed.** Six writes (`rename`, `setDescription`,
+`setColor`, `resetName`, `resetDescription`, `resetColor`) and two reads the plan never mentioned:
+`colorPalette`, without which a picker cannot render the swatches the engine assigns from, and
+`editLimits`, without which the character counter and the C# rejector are two copies of one number.
+Resets are separate bindings because an empty string is `ValueRequired`, never a reset — a cleared
+box is a slipped keystroke as often as it is an intention, and the two mean opposite things.
+`CommandOutcome` gained four members: `NotFound`, `ValueRequired`, `TooLong` and `OkColorInUse`.
+**`OkColorInUse` is an acceptance**, so it does not cross as `""`; both sides now test acceptance
+with an `IsAccepted`/`isAccepted` helper rather than against the empty string.
+
+**W4 persists no new field and needed no schema change.** `PlayerOverrides` shipped ahead of it in
+plan 0001, with migration.
+
+Three review rounds. The first, over the inherited work, found four blocking defects. The two
+sharpest: `PartyBrief` declared `description`/`slogan` in TypeScript and in the contract while the C#
+publisher emitted neither — a one-sided schema change that type-checks and hands the panel
+`undefined` at runtime — and the UI's outcome map had never learned the four new codes, so an
+accepted duplicate colour reached the player as an unexplained failure. The second round, after the
+fixes, blocked on two `fixplan.md` checkboxes ticked for UI controls that are lane D and did not
+ship; a ticked box hiding unshipped work is precisely what that section is a correction of.
+
+**Not covered by tests, by necessity:** `AgoraRuntime` and `src/Agora.Mod/UiBindings/**` are not
+linkable into the headless suite, so the six entry points, the gate locking and the eight binding
+registrations have manual gates instead — listed at the end of `fixplan.md` §W4. Nothing was stubbed
+to manufacture coverage.
+
+**Out of scope, backlog:** factions have the same flavor-owned fields and no `PlayerOverrides`.
+Giving them locks needs a second flags field and its own migration.
 
 **Schema bumps are batched, and the batch has landed.** `docs/plans/0001-batched-schema-change.md`
 is complete and reviewed across all three chunks: per-save settings (`ThemeLocked`,

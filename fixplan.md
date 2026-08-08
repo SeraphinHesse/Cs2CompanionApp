@@ -254,26 +254,149 @@ restored verbatim onto US parties, silently.** And a full ECS sensor sweep was r
 
 ### The defect
 
-Does not exist. And `AgoraRuntime.ApplyProseNames` (`:764-783`) overwrites `Name`, `ShortName`,
-`Description` and `Slogan` unconditionally on every successful generation, so a naive rename would
-be silently reverted at the next flavor wake.
+Does not exist. And flavor overwrites the prose fields on every successful generation, so a naive
+rename would be silently reverted at the next flavor wake.
+
+> **This section as first written was wrong in five verified places.** It is corrected below rather
+> than rewritten, because the corrections are the useful part. Each was checked against source
+> before the work started.
+>
+> 1. **`ApplyProseNames` is not "the single enforcement point" — it is one of four.** It never
+>    writes `ColorHex` at all (colour has no flavor path; its only writers are in `Agora.Core`),
+>    and W2 added a *second* flavor writer of all four prose fields, `EnsureEveryPartyNamed`.
+>    Both write the name/short-name pair and the description/slogan pair, so there are four
+>    enforcement points, not one.
+> 2. **It does not overwrite unconditionally — not since W2.** Name and short name are already
+>    gated by `mayRename`. Description and slogan *were* still unconditional, and that is the write
+>    that actually breaks a player's text, on the very next wake.
+> 3. **Short name ≤ 12 is not "because the seat chart depends on it."** Every label that renders a
+>    short name ellipsises. The real constraint is `data/schemas/political_state.schema.json`'s own
+>    `$defs.party.shortName.maxLength: 12` — exceeding it fails the schema the sidecar ships with,
+>    which is a load-time failure. The limit stands at 12; only the justification changes.
+> 4. **Name ≤ 60 is unsupported anywhere in this repo.** The flavor schema allows 80 and the canned
+>    pool caps its own draws at 80. At 60 the generator could produce a name the player is then
+>    forbidden to retype — the field would reject the text already sitting in it. **Ruling:
+>    `NameMax = 80`.**
+> 5. **A party split will not recolour a player-recoloured party.** Both `ColorHex` writes in
+>    `PartyLifecycle` are inside `new Party { … }` initialisers, so they can only touch a brand-new
+>    brand. Revival and merge mutate in place and touch no prose, colour or `PlayerOverrides`. All
+>    four cases are now locked in by tests in `PartyLifecycleTests`, with the conclusion written
+>    into a comment there so that nobody "fixes" a bug that is not present.
+>
+> **And one real hazard this section missed.** `PartyRegistry.IsColorTaken` compared with
+> `string.CompareOrdinal` — case-sensitively — against an uppercase palette. A player typing
+> `#c0392b` held a colour byte-different from but visually identical to the palette's `#C0392B`,
+> so it never registered as taken and `AllocateColor` handed the identical-looking colour to the
+> next splinter. Fixed by normalising every hex to uppercase at the C# boundary.
 
 ### The fix
 
-- [ ] Add `PlayerOverrides` to `Party` — a small flag set (`NameLocked`, `DescriptionLocked`,
-      `ColorLocked`) rather than four booleans on the root, so it stays cheap to serialise. Schema
-      bump via `/schema-change`.
-- [ ] `ApplyProseNames` skips any field whose lock is set. This is the single enforcement point.
-- [ ] New UI→C# bindings under `agora.parties`: `rename`, `setDescription`, `setColor`. Use
-      `CallBinding` (not `TriggerBinding`) so the panel can surface a rejection.
-- [ ] Validate on the C# side: name ≤ 60 chars, short name ≤ 12 (the seat chart depends on it),
-      description ≤ 600, colour must be `#RRGGBB`. Reject rather than truncate.
-- [ ] Colour picker offers the tuning palette (`tuning.Parties.ColorPalette`) plus a free hex
-      field. Warn — do not block — on a colour already taken; `PartyRegistry.AllocateColor` only
-      guarantees uniqueness at generation time.
-- [ ] A "reset to generated" control per field that clears the lock and restores flavor ownership.
-- [ ] Record every binding in `docs/contracts/ui_bindings.md`. That contract spans two build
-      systems and drifts silently.
+- [x] Add `PlayerOverrides` to `Party` — a small flag set (`NameLocked`, `DescriptionLocked`,
+      `ColorLocked`) rather than four booleans on the root, so it stays cheap to serialise.
+      *Landed ahead of W4 in plan 0001, with migration and `PartyRegistry.Clone` support. The enum's
+      doc comment is the authoritative mapping: `NameLocked` covers `Name` **and** `ShortName`;
+      `DescriptionLocked` covers `Description` **and** `Slogan`; `ColorLocked` covers `ColorHex`.
+      W4 therefore persists no new field and needed no further schema change.*
+- [x] **All four** flavor write sites honour the locks, via one shared rule:
+      `Agora.Core.Engine.Parties.PartyIdentity.ApplyFlavor`. Lifting the merge into `Agora.Core` is
+      what makes it testable — `AgoraRuntime` cannot be loaded by the headless suite, so the rule
+      deciding whether a player's rename survives was the one rule in the mod no test could reach.
+- [x] New UI→C# bindings under `agora.parties` — **eight, not three**: `rename`, `setDescription`,
+      `setColor`, `resetName`, `resetDescription`, `resetColor`, plus two *read* bindings this
+      section never mentioned. `colorPalette` publishes the tuning palette, without which the
+      picker cannot render the swatches the engine assigns from; `editLimits` publishes the four
+      limits and the colour pattern, without which the character counter and the C# rejector are
+      two copies of one number that drift silently. `CallBinding`, not `TriggerBinding`, so a
+      rejection reaches the player.
+- [x] Validate on the C# side: name ≤ **80** (see correction 4), short name ≤ 12 (see correction 3),
+      description ≤ 600, slogan ≤ 120, colour must be `#RRGGBB`. **Reject rather than truncate** — a
+      silent fix-up is a write the player did not ask for, and the one time it matters (a name cut
+      off mid-word) they would have no way to tell.
+- [x] The **surface a colour picker needs**: the tuning palette published as
+      `agora.parties.colorPalette`, a free hex accepted by `setColor`, and a colour another party
+      already wears **accepted with a warning** rather than blocked. The warning crosses as
+      `OkColorInUse`, which is an **acceptance**: it must not map to the empty string, or the panel
+      cannot show it. **The picker itself is lane D and is not shipped — W6 owns it.**
+- [x] The **reset bindings** — `resetName`, `resetDescription`, `resetColor` — each clearing its
+      lock and handing the field back to flavor. **Resets are separate bindings and cannot fold into
+      the setters**: an empty string is `ValueRequired`, never "reset". A cleared box — a slipped
+      keystroke, a paste that did not take — is otherwise indistinguishable from a deliberate
+      hand-back, and the two have opposite consequences. **The per-field reset control is lane D and
+      is not shipped — W6 owns it.**
+- [x] Record every binding in `docs/contracts/ui_bindings.md`, before any UI is written.
+- [x] **Not in the original list:** the canned pool's de-duplication. `StaticPoolProvider` seeded
+      its `usedNames` set only from its own draws and never read the roster's current names, so a
+      newly-named party could land exactly on the name the player had chosen for theirs.
+
+**Out of scope, reported as backlog:** factions have the same flavor-owned fields and no
+`PlayerOverrides`. Giving them locks needs a second flags field and its own migration.
+
+**Lane D (the UI controls) is deliberately not W4's.** They live in `PartyDetailHeader` inside the
+Parties tab, which W6 owns; building them here would collide on merge. Specified and handed over.
+
+### Manual gates — a human must run these
+
+`AgoraRuntime` and `src/Agora.Mod/UiBindings/**` cannot be loaded by the headless suite, so the six
+entry points, the gate locking and the eight binding registrations have **no automated coverage and
+cannot be given any** without stubbing `AgoraRuntime`, which would test the stub. These checks are
+the substitute. Numbers 5, 6 and 10 are the ones most likely to fail.
+
+1. **Reads land on the first frame.** Load a save, open the binding inspector.
+   `agora.parties.colorPalette` is `{colors: [...]}`, non-empty, uppercase, in the same order as
+   `parties.colorPalette` in `data/engine_tuning.json`. `agora.parties.editLimits` reads
+   `80 / 12 / 600 / 120` and `^#[0-9A-Fa-f]{6}$`.
+2. **Roster carries prose.** Before any flavor has generated, every `PartyBrief.description` and
+   `.slogan` is `""` — never `null`, never absent. After a prose pass they are populated.
+3. **Rename round-trip.** `rename(id, "X", "Y")` returns `""`; the next roster publish shows the new
+   name with `nameLocked: true`.
+4. **Rejections.** Empty name → `"ValueRequired"`. An 81-character name → `"TooLong"`. An unknown
+   party id → `"NotFound"`. Nothing is truncated into shape.
+5. **The lock actually holds across a flavor wake.** Rename a party, then force a prose generation
+   and let it succeed. The player's name must survive. **This is the whole point of the
+   workstream**; if only one gate is run, run this one.
+6. **The fourth enforcement point.** Set a description, then reset the *name* on the same party. The
+   name re-rolls; the description must be untouched. This is the path that silently overwrote a
+   locked description before W4.
+7. **`OkColorInUse` is an acceptance.** `setColor` with a hex another party wears returns
+   `"OkColorInUse"` **and the colour changes** on the next publish. The panel shows a warning, not a
+   failure. If the colour did not change, the acceptance/refusal split is broken.
+8. **Case normalisation.** `setColor(id, "#c0392b")` returns `""` and the roster comes back
+   `"#C0392B"`.
+9. **Resets are idempotent.** `resetName` on a never-renamed party returns `""` and changes nothing;
+   twice in a row returns `""` both times.
+10. **Per-save isolation.** Rename a party, return to the main menu, load a *different* save. The
+    other city's parties must carry none of it — W0's reset seam is what makes this true and W4 adds
+    new state to it.
+11. **Disabled path.** With the master toggle off, none of the six calls mutates state.
+
+### Lane D — the specification handed to W6
+
+The controls belong in `PartyDetailHeader` inside the Parties tab. W4 ships the whole surface they
+need; lane D is presentation only and must add no validation rule of its own.
+
+- **Read the limits from `agora.parties.editLimits`, never from a literal.** That binding exists so
+  the character counter and the C# rejector cannot disagree. When they do, the wrong one is always
+  the counter: the player finds out by being refused after typing.
+- **Read the swatches from `agora.parties.colorPalette`**, in the order published — never re-sorted,
+  never de-duplicated. A swatch's position is how a player recognises it between sessions. Offer a
+  free hex field beside them; the palette is not a closed set.
+- **Test acceptance with `isAccepted`, never with a falsy check on the message.** `OkColorInUse` is
+  an accepted write that carries a warning. A panel that reads "has a message" as "was rejected"
+  will roll the swatch back to the old colour while the engine keeps the new one, and the two stay
+  disagreed until the next republish.
+- **Trim before sending.** The C# validators judge the raw input and deliberately do not trim, so
+  `" My Party "` is stored with its padding. Trimming is the panel's job.
+- **Send both fields of a pair.** `rename` carries the short name and `setDescription` carries the
+  slogan. A description editor with no slogan field would take ownership of the slogan and then
+  freeze it permanently, because flavor is barred from writing it from that moment.
+- **Reset name and reset description behave differently, and the copy must say so.** Reset name
+  visibly re-rolls the name on the spot. Reset description changes nothing visible — it hands the
+  field back to flavor, which reclaims it at the next wake, possibly months of sim time away. Its
+  effect is a promise about the future, and saying that plainly is cheaper than the support question.
+- **A locked field is the player's words — never label it as generated.** The three lock booleans
+  ride on `PartyBrief`.
+- No new binding is needed. If lane D finds it wants one, that is a contract change and goes through
+  `/schema-change` first, not a panel-side workaround.
 
 ---
 

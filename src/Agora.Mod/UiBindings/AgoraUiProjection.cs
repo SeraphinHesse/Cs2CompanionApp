@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Core.Engine.Parties;
+using Agora.Core.Tuning;
 using Agora.Mod.Core;
 
 namespace Agora.Mod.UiBindings
@@ -101,6 +103,8 @@ namespace Agora.Mod.UiBindings
                     Id = party.Id,
                     Name = party.Name,
                     ShortName = party.ShortName,
+                    Description = party.Description ?? "",
+                    Slogan = party.Slogan ?? "",
                     ColorHex = party.ColorHex,
                     Status = party.Status.ToString(),
                     IsIncumbent = party.IsIncumbent,
@@ -147,6 +151,44 @@ namespace Agora.Mod.UiBindings
             rows.Sort(CompareFactionRows);
             return rows;
         }
+
+        /// <summary>
+        /// The colour picker's swatches, in tuning order — deliberately not sorted, and not
+        /// de-duplicated either, because a swatch's index is what a player remembers.
+        /// </summary>
+        /// <remarks>
+        /// Normalised through <see cref="PartyIdentity.NormalizeHex"/> so the published palette is
+        /// upper case whatever the tuning file typed, matching both the wire contract and what
+        /// <c>PartyRegistry.IsColorTaken</c> compares against. Absent tuning publishes an empty list:
+        /// a picker with no swatches still lets the player type a hex, a throw takes the panel down.
+        /// </remarks>
+        internal static PartyPalettePayload BuildPalette(EngineTuning tuning)
+        {
+            var payload = new PartyPalettePayload();
+
+            string[] palette = tuning?.Parties?.ColorPalette;
+            if (palette == null) return payload;
+
+            for (int i = 0; i < palette.Length; i++)
+            {
+                payload.Colors.Add(PartyIdentity.NormalizeHex(palette[i]));
+            }
+
+            return payload;
+        }
+
+        /// <summary>
+        /// The editors' limits, straight from the type that enforces them. Takes no state: these are
+        /// compile-time constants of the engine, not per-save values.
+        /// </summary>
+        internal static PartyEditLimitsPayload BuildEditLimits() => new PartyEditLimitsPayload
+        {
+            NameMax = PartyIdentity.NameMax,
+            ShortNameMax = PartyIdentity.ShortNameMax,
+            DescriptionMax = PartyIdentity.DescriptionMax,
+            SloganMax = PartyIdentity.SloganMax,
+            ColorPattern = PartyIdentity.ColorPattern
+        };
 
         private static int CompareFactionRows(FactionBriefPayload a, FactionBriefPayload b)
         {

@@ -25,6 +25,8 @@ namespace Agora.Mod.UiBindings
         private ValueBinding<SettingsPayload> _settings;
         private ValueBinding<List<PartyBriefPayload>> _roster;
         private ValueBinding<List<FactionBriefPayload>> _factions;
+        private ValueBinding<PartyPalettePayload> _colorPalette;
+        private ValueBinding<PartyEditLimitsPayload> _editLimits;
 
         protected override void CreateBindings()
         {
@@ -53,6 +55,36 @@ namespace Agora.Mod.UiBindings
 
             AddBinding(_factions = new ValueBinding<List<FactionBriefPayload>>(
                 PartiesGroup, "factions", new List<FactionBriefPayload>(), ListOf<FactionBriefPayload>()));
+
+            // Published rather than hard-coded in the panel so the swatches and the character
+            // counters cannot become second copies of the tuning and of PartyIdentity's limits.
+            AddBinding(_colorPalette = new ValueBinding<PartyPalettePayload>(
+                PartiesGroup, "colorPalette", new PartyPalettePayload()));
+
+            AddBinding(_editLimits = new ValueBinding<PartyEditLimitsPayload>(
+                PartiesGroup, "editLimits", new PartyEditLimitsPayload()));
+
+            // The party editors. Paired fields travel together — a rename that could not also set
+            // the short name would lock the short name away from flavor with no way to write it.
+            AddBinding(new CallBinding<string, string, string, string>(
+                PartiesGroup, "rename", OnRenameParty));
+
+            AddBinding(new CallBinding<string, string, string, string>(
+                PartiesGroup, "setDescription", OnSetPartyDescription));
+
+            AddBinding(new CallBinding<string, string, string>(
+                PartiesGroup, "setColor", OnSetPartyColor));
+
+            // Separate bindings rather than a setter called with "": a cleared text box is a slipped
+            // keystroke as often as it is a deliberate hand-back, and the two have opposite meanings.
+            AddBinding(new CallBinding<string, string>(
+                PartiesGroup, "resetName", OnResetPartyName));
+
+            AddBinding(new CallBinding<string, string>(
+                PartiesGroup, "resetDescription", OnResetPartyDescription));
+
+            AddBinding(new CallBinding<string, string>(
+                PartiesGroup, "resetColor", OnResetPartyColor));
         }
 
         /// <summary>
@@ -84,6 +116,34 @@ namespace Agora.Mod.UiBindings
         private static string OnSetSetting(string key, string value) =>
             CommandOutcomes.ToWire(AgoraRuntime.SetSetting(key, value));
 
+        /// <summary>
+        /// The six write channels of <c>agora.parties</c>. Each answers the outcome's wire form and
+        /// nothing else — never an exception message, for the same reason as
+        /// <see cref="OnSetSetting"/>.
+        /// </summary>
+        /// <remarks>
+        /// The wire form is taken from the outcome as a whole rather than tested against
+        /// <see cref="CommandOutcome.Ok"/>: <c>OkColorInUse</c> is an acceptance that still crosses
+        /// under its own name, and a panel that saw only Ok would drop the warning.
+        /// </remarks>
+        private static string OnRenameParty(string partyId, string name, string shortName) =>
+            CommandOutcomes.ToWire(AgoraRuntime.RenameParty(partyId, name, shortName));
+
+        private static string OnSetPartyDescription(string partyId, string description, string slogan) =>
+            CommandOutcomes.ToWire(AgoraRuntime.SetPartyDescription(partyId, description, slogan));
+
+        private static string OnSetPartyColor(string partyId, string colorHex) =>
+            CommandOutcomes.ToWire(AgoraRuntime.SetPartyColor(partyId, colorHex));
+
+        private static string OnResetPartyName(string partyId) =>
+            CommandOutcomes.ToWire(AgoraRuntime.ResetPartyName(partyId));
+
+        private static string OnResetPartyDescription(string partyId) =>
+            CommandOutcomes.ToWire(AgoraRuntime.ResetPartyDescription(partyId));
+
+        private static string OnResetPartyColor(string partyId) =>
+            CommandOutcomes.ToWire(AgoraRuntime.ResetPartyColor(partyId));
+
         protected override void Publish()
         {
             var state = AgoraRuntime.State;
@@ -92,6 +152,11 @@ namespace Agora.Mod.UiBindings
             _settings.Update(AgoraUiProjection.BuildSettings(AgoraRuntime.SaveSettings));
             _roster.Update(AgoraUiProjection.BuildRoster(state));
             _factions.Update(AgoraUiProjection.BuildFactions(state));
+
+            // On the roster's tick, per the contract: an editor that had the roster but not yet the
+            // limits would count characters against zero.
+            _colorPalette.Update(AgoraUiProjection.BuildPalette(AgoraRuntime.Tuning));
+            _editLimits.Update(AgoraUiProjection.BuildEditLimits());
         }
     }
 }

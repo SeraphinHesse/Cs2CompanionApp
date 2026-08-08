@@ -165,7 +165,10 @@ export function requestSetting(key: string, value: string): Promise<WriteOutcome
  * vocabulary, and "BadValue" on a modal is worse than saying nothing useful politely. An untaught
  * code therefore degrades to the generic sentence below.
  *
- * `""` is not in here. It means accepted, and there is nothing to tell the player.
+ * `""` is not in here. It means accepted, and there is nothing to tell the player. `OkColorInUse`
+ * IS in here and is also an acceptance — see `isAccepted`. Its sentence is worded as a warning about
+ * a write that went through, because a refusal-shaped sentence over an applied colour would send the
+ * player back to change something the engine already changed.
  */
 const OUTCOME_MESSAGE: { [outcome: string]: string } = {
   NoActiveSave: "No save is loaded, so there is nothing to change yet.",
@@ -174,14 +177,42 @@ const OUTCOME_MESSAGE: { [outcome: string]: string } = {
   ThemeLocked: "This save has already held an election, so the region is now history.",
   Busy: "Something this would tear down is still running. Try again in a moment.",
   Failed: "That did not take. The reason is in Agora.log.",
+  NotFound: "That party is no longer part of this save.",
+  ValueRequired: "This field needs some text. To hand it back to the generator, use reset.",
+  // No number in this sentence on purpose. The limits are published by `agora.parties.editLimits`
+  // and rendered by the character counter; a literal here would be a second copy of the same number
+  // that can drift from the engine's, which is the whole reason that binding exists.
+  TooLong: "That is longer than this field will hold. Shorten it and try again.",
+  OkColorInUse: "Saved. Another party already wears this colour, so the two will look alike.",
 };
 
 /** Shown when the engine gave a code this build was never taught, and when it gave none at all. */
 const GENERIC_FAILURE = "That did not take, and this build has no explanation why. See Agora.log.";
 
 /**
- * The one sentence to put in front of the player for a write that did not take. Empty string when
- * the write was accepted, so the caller's test is a falsy check on the message.
+ * Did the write go through? The mirror of `CommandOutcomes.IsAccepted` on the C# side: two of the
+ * codes are acceptances, `""` and `OkColorInUse`.
+ *
+ * This exists because acceptance and "is there something to say" stopped being the same question the
+ * moment an accepted write could carry a message. An `outcome === ""` test — or a falsy test on
+ * `writeMessage` — reads `OkColorInUse` as a failure, so the panel would revert the swatch while the
+ * engine kept the new colour, and the two would disagree until the next republish (contract §4.6).
+ *
+ * `answered: false` is false here. We did not hear that it took, so we must not act as though it
+ * did, and contract rule 5 bars us from inventing an outcome code to explain the silence.
+ */
+export function isAccepted(result: WriteOutcome): boolean {
+  return result.answered && (result.outcome === "" || result.outcome === "OkColorInUse");
+}
+
+/**
+ * The one sentence to put in front of the player about a write, or `""` when there is nothing to
+ * say.
+ *
+ * An empty message no longer means the write was accepted. `OkColorInUse` is an acceptance
+ * that carries a warning, so a falsy check on this string reports a colour that was applied as a
+ * failure. Callers deciding whether the write took must ask `isAccepted`; this function only decides
+ * what to print, and the two answers are independent.
  */
 export function writeMessage(result: WriteOutcome): string {
   if (!result.answered) {

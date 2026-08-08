@@ -704,6 +704,132 @@ namespace Agora.Core.Tests
             Assert.True(revivals > 0, "no brand ever revived across 30 cycles");
         }
 
+        // ============================ Player-owned fields survive the lifecycle ====================
+        //
+        // W4 lets the player own a party's name, blurb and colour. The obvious worry is that a
+        // lifecycle pass recolours or re-christens a brand behind their back, and the obvious place to
+        // look is a split — a new party appearing needs a colour, and the allocator is handed the
+        // whole roster.
+        //
+        // It does not happen, and these four tests exist so that nobody "fixes" a bug that is not
+        // there. Verified against PartyLifecycle.cs: BOTH ColorHex writes in the file are inside
+        // `new Party { … }` initialisers (the splinter in ApplySplits, the entrant in ApplyNewEntry),
+        // so they can only ever touch a brand-new brand. No stage writes Name, ShortName, Description,
+        // Slogan or PlayerOverrides at all; revival and merge mutate existing parties, but only their
+        // status, counters, seats, shares, platform and faction list.
+
+        [Fact]
+        public void Split_ColoursOnlyTheSplinterAndLeavesTheParentsIdentityAlone()
+        {
+            EngineTuning tuning = Tuning("\"splitProbabilityPerCycle\":1.0," +
+                                         "\"mergeProbabilityPerCycle\":0.0," +
+                                         "\"newPartyEntryProbability\":0.0");
+            List<Party> parties = Field(5);
+            Party parent = parties[0];
+            Claim(parent);
+            parent.LastVoteShare = 0.30;
+            parent.Platform = Uniform(0.5);
+            parent.LastManifesto = Uniform(-0.5);      // tension over the threshold
+
+            PartyLifecycleOutcome outcome = Advance(tuning, parties, null, Y2000);
+
+            Party splinter = Get(outcome, "party-06");
+            Assert.Equal(parent.Id, splinter.PredecessorPartyId);
+            Assert.NotEqual(parent.ColorHex, splinter.ColorHex);
+
+            AssertIdentityUnchanged(parent, Get(outcome, parent.Id));
+
+            // And the splinter is a genuinely blank brand, not a copy of the parent's identity.
+            Assert.Equal("", splinter.Name);
+            Assert.Equal("", splinter.Slogan);
+            Assert.Equal(PartyOverrides.None, splinter.PlayerOverrides);
+        }
+
+        [Fact]
+        public void NewEntry_DisturbsNobodysIdentity()
+        {
+            EngineTuning tuning = Tuning("\"newPartyEntryProbability\":1.0," +
+                                         "\"splitProbabilityPerCycle\":0.0," +
+                                         "\"mergeProbabilityPerCycle\":0.0");
+            List<Party> parties = PartyRegistry.GenerateInitial(SaveA, Y1990, RegionTheme.Eu, tuning);
+            foreach (Party p in parties) Claim(p);
+
+            PartyLifecycleOutcome outcome = Advance(tuning, parties, null, Y2000);
+
+            Assert.Equal(parties.Count + 1, outcome.Parties.Count);
+            foreach (Party before in parties) AssertIdentityUnchanged(before, Get(outcome, before.Id));
+        }
+
+        [Fact]
+        public void Revival_ChangesStatusAndNothingAboutTheBrand()
+        {
+            EngineTuning tuning = Quiet();
+            List<Party> parties = Field(5);
+            Party dead = parties[0];
+            Claim(dead);
+            dead.Status = PartyStatus.Dissolved;
+            dead.DissolvedDate = Y1993;
+            dead.CoreGrievance = Issue.Environment;
+
+            PartyLifecycleOutcome outcome = Advance(tuning, parties, null, Y2000,
+                Grievance(Issue.Environment, 0.9));
+
+            Party revived = Get(outcome, dead.Id);
+            Assert.Equal(PartyStatus.Revived, revived.Status);
+
+            // The brand comes back the colour the player remembers — literally the point of holding a
+            // colour for the life of a brand rather than freeing it on dissolution.
+            AssertIdentityUnchanged(dead, revived);
+        }
+
+        [Fact]
+        public void Merge_LeavesTheIdentityOfBothSurvivorAndAbsorbedAlone()
+        {
+            EngineTuning tuning = Tuning("\"mergeProbabilityPerCycle\":1.0," +
+                                         "\"splitProbabilityPerCycle\":0.0," +
+                                         "\"newPartyEntryProbability\":0.0");
+            List<Party> parties = Field(5);
+            Party survivor = parties[0];
+            Party absorbed = parties[1];
+            Claim(survivor);
+            Claim(absorbed);
+            survivor.Platform = Uniform(0.4);
+            survivor.LastVoteShare = 0.20;
+            absorbed.Platform = Uniform(0.4);          // identical → affinity 1.0
+            absorbed.LastVoteShare = 0.10;
+
+            PartyLifecycleOutcome outcome = Advance(tuning, parties, null, Y2000);
+
+            Assert.Equal(PartyStatus.Merged, Get(outcome, absorbed.Id).Status);
+
+            // A merged brand keeps its name and colour: the news layer still has to be able to say
+            // which party was absorbed, years later.
+            AssertIdentityUnchanged(survivor, Get(outcome, survivor.Id));
+            AssertIdentityUnchanged(absorbed, Get(outcome, absorbed.Id));
+        }
+
+        /// <summary>Gives a party the identity a player would have written onto it, all three locks set.</summary>
+        private static void Claim(Party party)
+        {
+            party.Name = "Player " + party.Id;
+            party.ShortName = "PLR" + party.Id.Substring(party.Id.Length - 2);
+            party.Description = "A blurb the player wrote for " + party.Id + ".";
+            party.Slogan = "Onward, " + party.Id + "!";
+            party.ColorHex = "#C0392B";                // a palette colour, so a naive allocator collides
+            party.PlayerOverrides = PartyOverrides.NameLocked | PartyOverrides.DescriptionLocked |
+                                    PartyOverrides.ColorLocked;
+        }
+
+        private static void AssertIdentityUnchanged(Party before, Party after)
+        {
+            Assert.Equal(before.Name, after.Name);
+            Assert.Equal(before.ShortName, after.ShortName);
+            Assert.Equal(before.Description, after.Description);
+            Assert.Equal(before.Slogan, after.Slogan);
+            Assert.Equal(before.ColorHex, after.ColorHex);
+            Assert.Equal(before.PlayerOverrides, after.PlayerOverrides);
+        }
+
         // ============================ Fixtures ====================================================
 
         /// <summary>Tuning with the shipped defaults plus the given <c>parties</c> overrides.</summary>
