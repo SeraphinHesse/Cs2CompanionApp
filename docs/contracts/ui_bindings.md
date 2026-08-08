@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 4**
+**schemaVersion: 5**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -10,12 +10,16 @@ must be listed here, and this file is the authority when the two sides disagree.
 rename, do not add a field, do not reorder a sort key. If a panel needs something that is not here,
 report it — do not invent a binding name locally.
 
-**Unfrozen twice, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`) added three
-fields to `PartyBrief` on 2026-08-08 under `/schema-change`, which is the only route through the
+**Unfrozen three times, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`)
+added three fields to `PartyBrief` on 2026-08-08 under `/schema-change`, the only route through the
 freeze: a version bump on this file, both sides moved in the same pass, and the reason written down.
 W3 then published `agora.state.settings` and `agora.state.isFirstRun` out of §8 and added
 `agora.state.setSetting`, the contract's first inbound `CallBinding` — three names that were
-**already reserved here**, so nothing was renamed and no existing payload moved. The freeze otherwise
+**already reserved here**, so nothing was renamed and no existing payload moved. Then fixplan **W6**
+unfroze `agora.parties` on 2026-08-08, under plan `docs/plans/0002-w6-parties-tab.md`, to add
+`detail` — a new map binding and two new payload shapes, `PartyDetail` and `IssuePositionView`;
+nothing existing was renamed or reordered. **Version 5 covers the whole of W6**, so the later
+chunks of that plan add bindings under this version and must not bump it again. The freeze otherwise
 stands; these notes exist so the next reviewer reads authorised changes rather than violations.
 
 ---
@@ -178,6 +182,15 @@ Outcome codes are a closed set — see §4.6.
 |---|---|---|---|---|---|---|
 | `agora.parties.roster` | `ValueBinding<T>` | `List<PartyBrief>` | `Agora.PartyBrief[]` | on party lifecycle change (rare) + monthly | `[]` | M4 |
 | `agora.parties.factions` | `ValueBinding<T>` | `List<FactionBrief>` | `Agora.FactionBrief[]` | on faction lifecycle change (rare) + monthly | `[]` | M4 |
+| `agora.parties.detail` | `GetterMapBinding<string,T>` | `PartyDetail` per key | `Agora.PartyDetail` | on demand, per subscribed key | `EMPTY_PARTY_DETAIL` | W6 |
+
+The map key is the **party id** exactly as it appears in `PartyBrief.id`. An unknown key returns the
+empty value, never throws. Unlike a district, a party id is never removed from the roster — a dead
+party becomes `Dissolved` — so an id that resolves once resolves for the life of the save.
+
+`detail` is a map rather than fields on `PartyBrief` for the reason every map binding here exists:
+the roster is pushed to every panel on every monthly tick, and twelve issue positions plus polling
+per party is not something the seat chart or the news feed needs to carry.
 
 `PartyBrief` gained `nameLocked`, `descriptionLocked` and `colorLocked` in plan 0001, ahead of W4's
 party editing. The publisher fills them from `Party.PlayerOverrides` today; **no panel consumes them
@@ -188,7 +201,8 @@ colour are looked up here. Do not duplicate party metadata into seat rows, distr
 items — that is how the colour of one party ends up different in two panels.
 
 Sort: `roster` by `id` ordinal ascending. `factions` by `partyId` ordinal ascending, then
-`internalSupport` **descending**, then `id` ordinal ascending.
+`internalSupport` **descending**, then `id` ordinal ascending. `detail.factionIds`: ordinal
+ascending.
 
 ### 4.3 `agora.seats` — seat chart + government breakdown
 
@@ -335,6 +349,13 @@ SettingsPayload     schemaVersion, startYear, theme, system, themeLocked, pauseO
 PartyBrief          id, name, shortName, colorHex, status, isIncumbent, isInGovernment,
                     coreGrievance, foundedDate, dissolvedDate, nameLocked, descriptionLocked,
                     colorLocked
+IssuePositionView   services, costOfLiving, environment, transit, growth, heritageOrder
+PartyDetail         id, name, shortName, colorHex, archetypeId, description, slogan,
+                    platform{…IssuePositionView}, lastManifesto{…IssuePositionView}, seats,
+                    seatShare, lastVoteShare, hasContestedElection, passedThreshold,
+                    consecutiveElectionsBelowThreshold, currentPollShare, hasPoll, pollDate,
+                    pollDeltaSinceElection, currentStandingShare, status, foundedDate,
+                    dissolvedDate, governmentRole, factionIds
 FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
                     tensionWithParty, status, coreGrievance
 PartyShare          partyId, share
@@ -377,9 +398,9 @@ FlavorStatus        lastFlavorDate, lastAttemptDate, isStale, providerAvailable,
 
 ### Which fields are flavor
 
-`PartyBrief.name`/`shortName`, `FactionBrief.name`/`shortName`/`leaderName`,
-`MayorSummary.name`, `PollSummary.pollsterName`, `NewsHeadline.headline`/`summary`/`outletName`,
-`NewsArticle.*` prose, `TimelineEventBrief.localAngle` and `MandateRow.text` are **flavor-owned**.
+`PartyBrief.name`/`shortName`, `PartyDetail.name`/`shortName`/`description`/`slogan`,
+`FactionBrief.name`/`shortName`/`leaderName`, `MayorSummary.name`, `PollSummary.pollsterName`,
+`NewsHeadline.headline`/`summary`/`outletName`, `NewsArticle.*` prose, `TimelineEventBrief.localAngle` and `MandateRow.text` are **flavor-owned**.
 Render them; never parse them, never sort by them, never derive a number from them. Everything else
 is engine-owned.
 
@@ -407,6 +428,21 @@ const EMPTY_STATE_SUMMARY: Agora.StateSummary = {
 const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
   themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+};
+
+const EMPTY_PARTY_DETAIL: Agora.PartyDetail = {
+  id: "", name: "", shortName: "", colorHex: "#808080", archetypeId: "", description: "",
+  slogan: "",
+  platform: {
+    services: 0, costOfLiving: 0, environment: 0, transit: 0, growth: 0, heritageOrder: 0,
+  },
+  lastManifesto: {
+    services: 0, costOfLiving: 0, environment: 0, transit: 0, growth: 0, heritageOrder: 0,
+  },
+  seats: 0, seatShare: 0, lastVoteShare: 0, hasContestedElection: false, passedThreshold: false,
+  consecutiveElectionsBelowThreshold: 0, currentPollShare: 0, hasPoll: false, pollDate: "",
+  pollDeltaSinceElection: 0, currentStandingShare: 0, status: "Active", foundedDate: "",
+  dissolvedDate: "", governmentRole: "None", factionIds: [],
 };
 
 const EMPTY_CITY_INDICES: Agora.CityIndices = {
@@ -438,6 +474,16 @@ const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {
 
 Array bindings take `[]`. `agora.seats.government`, `agora.seats.mayor`, `agora.seats.lastElection`
 and `agora.seats.latestPoll` take `null`.
+
+**Map bindings are the exception: `bindMap` takes no fallback argument**, and
+`useMapValue(binding, key)` cannot return `undefined` for a key the panel has asked for. So
+`EMPTY_DISTRICT_DETAIL`, `EMPTY_NEWS_ARTICLE` and `EMPTY_PARTY_DETAIL` are not wired into a binding
+declaration — they are module-local guard constants the panel substitutes for whatever `useMapValue`
+hands back, `const detail = raw || EMPTY_PARTY_DETAIL`, covering the frame before the getter has run
+and any nested group the payload did not write. The C# side answers an unknown key with its own
+empty payload, so the two must agree field for field; the literal above is why this section exists.
+`EMPTY_PARTY_DETAIL.colorHex` is `"#808080"` rather than `""` for that reason — it matches the C#
+initialiser, and a swatch with no colour renders as a hole rather than as grey.
 
 `weeksToElection` is `-1` — not `0` — when no election is scheduled, so "the election is this week"
 stays distinguishable from "there is no election".

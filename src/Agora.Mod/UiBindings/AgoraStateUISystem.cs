@@ -25,6 +25,7 @@ namespace Agora.Mod.UiBindings
         private ValueBinding<SettingsPayload> _settings;
         private ValueBinding<List<PartyBriefPayload>> _roster;
         private ValueBinding<List<FactionBriefPayload>> _factions;
+        private GetterMapBinding<string, PartyDetailPayload> _partyDetail;
 
         protected override void CreateBindings()
         {
@@ -53,7 +54,19 @@ namespace Agora.Mod.UiBindings
 
             AddBinding(_factions = new ValueBinding<List<FactionBriefPayload>>(
                 PartiesGroup, "factions", new List<FactionBriefPayload>(), ListOf<FactionBriefPayload>()));
+
+            // AddBinding, not AddUpdateBinding — for the reason given in
+            // AgoraDistrictsUISystem.CreateBindings, above its own detail map binding.
+            AddBinding(_partyDetail = new GetterMapBinding<string, PartyDetailPayload>(
+                PartiesGroup, "detail", GetPartyDetail));
         }
+
+        /// <summary>
+        /// One party's detail. An unknown key returns the empty payload rather than throwing: a map
+        /// binding that threw would take the interface down with it.
+        /// </summary>
+        private static PartyDetailPayload GetPartyDetail(string partyId) =>
+            AgoraUiProjection.BuildPartyDetail(AgoraRuntime.State, partyId);
 
         /// <summary>
         /// The master toggle. Panels render <c>null</c> when this is false — not a disabled shell,
@@ -92,6 +105,10 @@ namespace Agora.Mod.UiBindings
             _settings.Update(AgoraUiProjection.BuildSettings(AgoraRuntime.SaveSettings));
             _roster.Update(AgoraUiProjection.BuildRoster(state));
             _factions.Update(AgoraUiProjection.BuildFactions(state));
+
+            // UpdateAll only pushes keys the panel has actually subscribed, so this costs nothing
+            // when the Parties tab is closed.
+            _partyDetail.UpdateAll();
         }
     }
 }

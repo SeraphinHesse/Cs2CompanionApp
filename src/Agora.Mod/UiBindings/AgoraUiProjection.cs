@@ -159,6 +159,160 @@ namespace Agora.Mod.UiBindings
             return string.CompareOrdinal(a.Id, b.Id);
         }
 
+        /// <summary>
+        /// One party's full detail. An unknown id returns an empty payload rather than throwing — a
+        /// party can dissolve while its pane is open.
+        /// </summary>
+        /// <remarks>
+        /// <c>PollResult.TrueShares</c> is never read here, for the same reason as
+        /// <see cref="BuildLatestPoll"/>: the pane would be showing the model's own answer next to
+        /// the published estimate of it.
+        /// </remarks>
+        internal static PartyDetailPayload BuildPartyDetail(PoliticalState state, string partyId)
+        {
+            var payload = new PartyDetailPayload();
+            if (state == null || string.IsNullOrEmpty(partyId)) return payload;
+
+            Party party = null;
+            for (int i = 0; i < state.Parties.Count; i++)
+            {
+                if (state.Parties[i] == null) continue;
+                if (string.CompareOrdinal(state.Parties[i].Id, partyId) == 0)
+                {
+                    party = state.Parties[i];
+                    break;
+                }
+            }
+
+            if (party == null) return payload;
+
+            payload.Id = party.Id;
+            payload.Name = party.Name;
+            payload.ShortName = party.ShortName;
+            payload.ColorHex = party.ColorHex;
+            payload.ArchetypeId = party.ArchetypeId;
+            payload.Description = party.Description;
+            payload.Slogan = party.Slogan;
+
+            IssuePosition platform = party.Platform;
+            payload.PlatformServices = platform.Services;
+            payload.PlatformCostOfLiving = platform.CostOfLiving;
+            payload.PlatformEnvironment = platform.Environment;
+            payload.PlatformTransit = platform.Transit;
+            payload.PlatformGrowth = platform.Growth;
+            payload.PlatformHeritageOrder = platform.HeritageOrder;
+
+            IssuePosition manifesto = party.LastManifesto;
+            payload.ManifestoServices = manifesto.Services;
+            payload.ManifestoCostOfLiving = manifesto.CostOfLiving;
+            payload.ManifestoEnvironment = manifesto.Environment;
+            payload.ManifestoTransit = manifesto.Transit;
+            payload.ManifestoGrowth = manifesto.Growth;
+            payload.ManifestoHeritageOrder = manifesto.HeritageOrder;
+
+            // The live count, not the last election's allocation: a lifecycle event between ballots
+            // moves seats without producing an ElectionResult.
+            payload.Seats = party.SeatsHeld;
+
+            int totalSeats = TotalSeats(state);
+            payload.SeatShare = totalSeats > 0 ? (double)party.SeatsHeld / totalSeats : 0.0;
+            payload.LastVoteShare = party.LastVoteShare;
+            payload.ConsecutiveElectionsBelowThreshold = party.ConsecutiveElectionsBelowThreshold;
+
+            if (state.ElectionHistory != null && state.ElectionHistory.Count > 0)
+            {
+                ElectionResult latest = state.ElectionHistory[state.ElectionHistory.Count - 1];
+                if (latest != null)
+                {
+                    payload.HasContestedElection =
+                        latest.PartyIdsOnBallot != null && latest.PartyIdsOnBallot.Contains(partyId);
+
+                    if (latest.Seats != null)
+                    {
+                        for (int i = 0; i < latest.Seats.Count; i++)
+                        {
+                            SeatAllocation seat = latest.Seats[i];
+                            if (string.CompareOrdinal(seat.PartyId, partyId) != 0) continue;
+
+                            payload.PassedThreshold = seat.PassedThreshold;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (state.RecentPolls != null)
+            {
+                // A party absent from the newest published poll has no current polling figure, and
+                // hasPoll: false is how that is said. Walking back to an older poll would put a stale
+                // number under currentPollShare while agora.seats.latestPoll shows a different one.
+                for (int i = state.RecentPolls.Count - 1; i >= 0; i--)
+                {
+                    PollResult poll = state.RecentPolls[i];
+                    if (poll == null || !poll.IsPublished) continue;
+
+                    if (poll.Shares != null)
+                    {
+                        for (int j = 0; j < poll.Shares.Count; j++)
+                        {
+                            PartyVoteShare share = poll.Shares[j];
+                            if (string.CompareOrdinal(share.PartyId, partyId) != 0) continue;
+
+                            payload.HasPoll = true;
+                            payload.CurrentPollShare = share.Share;
+                            payload.PollDate = poll.Date;
+                            break;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            payload.PollDeltaSinceElection = payload.HasPoll && payload.HasContestedElection
+                ? payload.CurrentPollShare - party.LastVoteShare
+                : 0.0;
+
+            if (state.CurrentVoteShares != null)
+            {
+                for (int i = 0; i < state.CurrentVoteShares.Count; i++)
+                {
+                    PartyVoteShare share = state.CurrentVoteShares[i];
+                    if (string.CompareOrdinal(share.PartyId, partyId) != 0) continue;
+
+                    payload.CurrentStandingShare = share.Share;
+                    break;
+                }
+            }
+
+            payload.Status = party.Status.ToString();
+            payload.FoundedDate = party.FoundedDate;
+            payload.DissolvedDate = party.DissolvedDate;
+
+            payload.GovernmentRole = RoleOf(state, partyId);
+            payload.FactionIds = SortedCopy(party.FactionIds);
+            return payload;
+        }
+
+        private static PartyGovernmentRole RoleOf(PoliticalState state, string partyId)
+        {
+            Coalition government = state.Government;
+            if (government == null) return PartyGovernmentRole.None;
+
+            // Lead first: MemberPartyIds always contains LeadPartyId, so the member test would
+            // swallow the leadership.
+            if (string.CompareOrdinal(government.LeadPartyId, partyId) == 0)
+                return PartyGovernmentRole.Lead;
+
+            if (government.MemberPartyIds != null && government.MemberPartyIds.Contains(partyId))
+                return PartyGovernmentRole.Member;
+
+            if (government.OppositionPartyIds != null && government.OppositionPartyIds.Contains(partyId))
+                return PartyGovernmentRole.Opposition;
+
+            return PartyGovernmentRole.None;
+        }
+
         // ------------------------------------------------------------------ agora.seats
 
         /// <summary>Seat rows, sorted by seats descending then party id so ties do not reshuffle.</summary>
