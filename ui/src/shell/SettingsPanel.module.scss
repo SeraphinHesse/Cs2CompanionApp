@@ -1,0 +1,172 @@
+// The per-save settings drawer, between the shell bar and the panel slot.
+//
+// Flexbox only — `display: grid` fails silently in Coherent Gameface — and no `backdrop-filter`.
+// Colours come from the shared token file; see _tokens.scss for why none are declared here.
+//
+// It matches the shell bar's width behaviour rather than a panel's: the shell pins everything to the
+// same right edge, so this card carries the bar's 8rem margins and nothing else.
+
+@use "./tokens" as *;
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 420rem;
+  margin: 8rem 8rem 0 8rem;
+  padding: 12rem 14rem 14rem 14rem;
+  background-color: $surface;
+  border-radius: 4rem;
+  color: $text;
+  font-size: 12rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 0 0 auto;
+  padding-bottom: 8rem;
+  border-bottom: 1rem solid $line;
+}
+
+.headerTitle {
+  display: flex;
+  flex: 1 1 auto;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  opacity: 0.8;
+}
+
+.headerClose {
+  flex: 0 0 auto;
+  padding: 0 6rem;
+  font-size: 14rem;
+  color: $text-dim;
+}
+
+// ---- one setting -----------------------------------------------------------------------------
+
+.row {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  padding: 10rem 0;
+  border-bottom: 1rem solid $line-soft;
+}
+
+.rowLabel {
+  display: flex;
+  font-size: 12rem;
+}
+
+// One line of consequence, and it must wrap rather than widen the drawer.
+.rowHint {
+  display: flex;
+  margin-top: 3rem;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 14rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.options {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 8rem;
+}
+
+@mixin option-base {
+  flex: 0 0 auto;
+  margin-right: 6rem;
+  padding: 3rem 12rem;
+  border: 1rem solid $line;
+  border-radius: 3rem;
+  font-size: 11rem;
+}
+
+.option {
+  @include option-base;
+  background-color: $surface-inset;
+  color: $text-dim;
+}
+
+.optionSelected {
+  @include option-base;
+  background-color: $surface-hover;
+  border-color: $accent;
+  color: $text;
+}
+
+// ---- the theme-change confirmation ---------------------------------------------------------------
+//
+// Not a rejection — the engine has not been asked yet. This is the panel telling the player what the
+// request is about to destroy, because a theme change discards the whole party registry and a party
+// the player renamed goes with it.
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  margin-top: 10rem;
+  padding: 10rem 12rem;
+  background-color: $surface-inset;
+  border-left: 2rem solid $warn;
+  border-radius: 3rem;
+}
+
+.confirmText {
+  display: flex;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 16rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.confirmActions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  margin-top: 10rem;
+}
+
+.confirmCancel {
+  flex: 0 0 auto;
+  margin-right: 8rem;
+  padding: 3rem 12rem;
+  border-radius: 3rem;
+  color: $text-dim;
+  font-size: 11rem;
+}
+
+.confirmGo {
+  flex: 0 0 auto;
+  padding: 3rem 12rem;
+  background-color: rgba(224, 96, 62, 0.28);
+  border: 1rem solid $bad;
+  border-radius: 3rem;
+  color: $text;
+  font-size: 11rem;
+}
+
+// ---- what the engine said ------------------------------------------------------------------------
+
+.refusal {
+  display: flex;
+  margin-top: 12rem;
+  padding: 8rem 10rem;
+  background-color: $surface-inset;
+  border-left: 2rem solid $warn;
+  border-radius: 3rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 16rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}

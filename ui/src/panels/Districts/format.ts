@@ -162,6 +162,12 @@ export function indexParties(roster: Agora.PartyBrief[]): PartyIndex {
 
 const UNKNOWN_COLOR = "#9698a2";
 
+/**
+ * Shown wherever a party exists but has no usable name yet — either it has aged out of the roster
+ * or the flavor layer has not authored one. A raw id is never rendered to the player.
+ */
+const UNNAMED_PARTY = "Unnamed party";
+
 /** FLAVOR. Render it, never parse it, never sort by it. */
 export function partyName(index: PartyIndex, id: string): string {
   if (!id) {
@@ -169,9 +175,9 @@ export function partyName(index: PartyIndex, id: string): string {
   }
   const party = index[id];
   if (!party) {
-    return id;
+    return UNNAMED_PARTY;
   }
-  return party.name || party.shortName || id;
+  return party.name || party.shortName || UNNAMED_PARTY;
 }
 
 /** FLAVOR, as above. */
@@ -181,9 +187,9 @@ export function partyShort(index: PartyIndex, id: string): string {
   }
   const party = index[id];
   if (!party) {
-    return id;
+    return UNNAMED_PARTY;
   }
-  return party.shortName || party.name || id;
+  return party.shortName || party.name || UNNAMED_PARTY;
 }
 
 /** Engine-owned, from the tuned palette. */

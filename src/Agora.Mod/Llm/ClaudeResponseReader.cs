@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using Newtonsoft.Json.Linq;
 
@@ -171,6 +176,14 @@ namespace Agora.Mod.Llm
         /// not move the depth counter. Getting that wrong truncates any document containing a slogan
         /// with a brace in it - rare, and exactly the sort of rare that shows up once and is never
         /// reproducible.
+        ///
+        /// <para>
+        /// <b>The two escape checks below are ordered, not interchangeable.</b> Consuming the
+        /// already-escaped character has to come first; testing for a backslash first would let the
+        /// second half of a <c>\\</c> pair re-arm the flag, so the quote after it would be swallowed
+        /// and a slogan containing a single backslash would truncate the whole document.
+        /// <c>ClaudeResponseReaderTests</c> pins this.
+        /// </para>
         /// </remarks>
         public static string FirstBalancedObject(string text)
         {

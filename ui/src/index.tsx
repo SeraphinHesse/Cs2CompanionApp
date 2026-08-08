@@ -1,5 +1,5 @@
 import { ModRegistrar } from "cs2/modding";
-import { AgoraButton, Dashboard } from "./shell";
+import { AgoraButton, Dashboard, FirstRunDialog } from "./shell";
 
 /**
  * UI mod entry point.
@@ -8,7 +8,7 @@ import { AgoraButton, Dashboard } from "./shell";
  * find, override, extend and append. Prefer `append` — it adds to a hook point without
  * replacing game code, so it survives game updates that `override` would break.
  *
- * Exactly two appends, and the split is the point. Agora used to mount its three panels straight
+ * Three appends, and the splits are the point. Agora used to mount its three panels straight
  * onto GameTopRight, all three at once, with no way to dismiss them: News alone is 760rem wide and
  * 640rem tall, so the stack overflowed the hook point at any interface scale and buried the city.
  * Now the only thing the mod puts on screen is one button, and `Dashboard` renders null until that
@@ -26,6 +26,13 @@ const register: ModRegistrar = (moduleRegistry) => {
 
   // The tab bar plus whichever one of Council / Districts / News is selected.
   moduleRegistry.append("GameTopRight", Dashboard);
+
+  // The first-load region prompt, on its own append. It renders through `Portal` and overlays the
+  // whole HUD, so the hook point is only an anchor and which one it is barely matters — what matters
+  // is that it is not the dashboard's. This subtree holds the simulation paused while it is up; a
+  // failure in it must not be able to take the dashboard with it, or the other way round. It renders
+  // null on every load after the first, and on every load with the mod switched off.
+  moduleRegistry.append("GameTopLeft", FirstRunDialog);
 };
 
 export default register;

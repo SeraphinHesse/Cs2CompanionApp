@@ -159,9 +159,10 @@ namespace Agora.Mod
             Log.Info($"{Id} unloading.");
 
             // Drops the flavor provider (which owns a background thread and possibly a child
-            // process), clears the effect ledger and releases the per-save references. The ECS
-            // systems are the world's to destroy; AgoraEffectApplicationSystem reverts the city's
-            // modifier buffers in its own OnDestroy.
+            // process), clears the effect ledger and releases the per-save references. It also hands
+            // the city's modifier buffers back, here rather than in AgoraEffectApplicationSystem's
+            // OnDestroy: the mod can be unloaded with the city still open, and this is the last point
+            // at which those buffers are reachable. See AgoraRuntime.ResetCause.ModShutdown.
             AgoraRuntime.Detach();
 
             if (Settings != null)

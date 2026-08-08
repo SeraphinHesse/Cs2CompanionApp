@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.IO;
 using Newtonsoft.Json.Linq;
@@ -26,7 +31,7 @@ namespace Agora.Mod.Llm
     public static class FlavorSchema
     {
         /// <summary>The <c>schemaVersion</c> this provider speaks.</summary>
-        public const int SupportedSchemaVersion = 1;
+        public const int SupportedSchemaVersion = 2;
 
         /// <summary>Repo-relative path of the authoritative file.</summary>
         public const string RepoRelativePath = "data/schemas/politics_flavor.schema.json";
@@ -44,7 +49,7 @@ namespace Agora.Mod.Llm
   ""required"": [""schemaVersion"", ""generatedAtSimDate""],
 
   ""properties"": {
-    ""schemaVersion"": { ""type"": ""integer"", ""const"": 1 },
+    ""schemaVersion"": { ""type"": ""integer"", ""const"": 2 },
     ""generatedAtSimDate"": { ""type"": ""string"", ""pattern"": ""^\\d{4}-\\d{2}-\\d{2}$"" },
 
     ""partyFlavor"": {
@@ -89,8 +94,8 @@ namespace Agora.Mod.Llm
         ""properties"": {
           ""id"": { ""type"": ""string"" },
           ""outlet"": { ""type"": ""string"", ""maxLength"": 60 },
-          ""headline"": { ""type"": ""string"", ""maxLength"": 140 },
-          ""body"": { ""type"": ""string"", ""maxLength"": 900 },
+          ""headline"": { ""type"": ""string"", ""maxLength"": 90 },
+          ""body"": { ""type"": ""string"", ""maxLength"": 420 },
           ""tone"": { ""type"": ""string"", ""enum"": [""neutral"", ""supportive"", ""critical"", ""alarmed"", ""celebratory""] },
           ""refs"": {
             ""type"": ""object"",

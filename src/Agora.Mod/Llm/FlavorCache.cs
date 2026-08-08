@@ -83,6 +83,18 @@ namespace Agora.Mod.Llm
                 if (!File.Exists(path)) return null;
 
                 string json = File.ReadAllText(path, new UTF8Encoding(false));
+
+                // Before the validator, not after: a schema error is fatal to the whole document
+                // there, so an over-long article written by an older build would otherwise take
+                // every party name in the file down with it.
+                int fromVersion, pruned;
+                json = FlavorCacheMigration.UpgradeToCurrent(json, _log, out fromVersion, out pruned);
+                if (pruned > 0)
+                {
+                    _log.Warn("cached flavor upgraded from schemaVersion " + fromVersion +
+                              "; dropped " + pruned + " article(s) longer than the new limits");
+                }
+
                 var date = FlavorDocument.ParseSimDate(PeekDate(json));
                 var result = _validator.Validate(json, _catalog, date ?? default(Agora.Core.Contracts.SimDate));
 

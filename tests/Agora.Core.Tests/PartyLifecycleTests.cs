@@ -605,6 +605,28 @@ namespace Agora.Core.Tests
             Assert.NotEqual(RunSimulation(SaveA), RunSimulation(SaveB));
         }
 
+        /// <summary>
+        /// <see cref="PartyRegistry.Clone"/> is a hand-written field-by-field copy, and every
+        /// lifecycle pass clones before it mutates. A field left out of it is therefore not merely
+        /// missed once — it is cleared on every advance, which for the player's own edits reads as
+        /// "my rename came back a few months later" rather than as a bug in the clone.
+        /// </summary>
+        [Fact]
+        public void Clone_PreservesPlayerOverrides()
+        {
+            var source = new Party
+            {
+                Id = "party-01",
+                Name = "The Player's Own Name",
+                PlayerOverrides = PartyOverrides.NameLocked | PartyOverrides.ColorLocked
+            };
+
+            Party copy = PartyRegistry.Clone(source);
+
+            Assert.Equal(PartyOverrides.NameLocked | PartyOverrides.ColorLocked, copy.PlayerOverrides);
+            Assert.Equal(PartyOverrides.None, PartyRegistry.Clone(new Party()).PlayerOverrides);
+        }
+
         [Fact]
         public void Advance_DoesNotMutateItsInput()
         {

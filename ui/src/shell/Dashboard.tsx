@@ -5,6 +5,7 @@ import { DistrictsPanel } from "../panels/Districts";
 import { NewsPanel } from "../panels/News";
 import { SeatsPanel } from "../panels/Seats";
 import { ShellBoundary } from "./Boundary";
+import { SettingsPanel } from "./SettingsPanel";
 import { enabled$ } from "./bindings";
 import {
   AgoraTab,
@@ -13,7 +14,9 @@ import {
   activeTab$,
   closeDashboard,
   dashboardOpen$,
+  settingsOpen$,
   showTab,
+  toggleSettings,
 } from "./state";
 import styles from "./Shell.module.scss";
 
@@ -48,6 +51,7 @@ const DashboardInner = (): JSX.Element | null => {
   const enabled = useValue(enabled$);
   const open = useValue(dashboardOpen$);
   const tab = useValue(activeTab$);
+  const settingsOpen = useValue(settingsOpen$);
 
   // Every hook is above this line — neither the master toggle nor the open flag may change the
   // hook order.
@@ -78,6 +82,18 @@ const DashboardInner = (): JSX.Element | null => {
           })}
         </div>
 
+        {/* Not a fourth tab. The tab strip is political data and a queued plan takes the next slot
+            in it; the per-save settings are chrome and sit beside the close control. */}
+        <Button
+          variant="flat"
+          className={settingsOpen ? styles.settingsToggleOpen : styles.settingsToggle}
+          selected={settingsOpen}
+          onSelect={toggleSettings}
+          tooltipLabel="Settings for this city"
+        >
+          Settings
+        </Button>
+
         <Button
           variant="flat"
           className={styles.close}
@@ -87,6 +103,8 @@ const DashboardInner = (): JSX.Element | null => {
           &#215;
         </Button>
       </div>
+
+      {settingsOpen ? <SettingsPanel /> : null}
 
       {/*
         Keyed by tab so switching tabs remounts rather than reconciling one panel's tree into

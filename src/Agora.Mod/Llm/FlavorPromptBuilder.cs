@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -35,26 +40,75 @@ namespace Agora.Mod.Llm
         /// <summary>Districts named in the prompt, worst-off first. Whole-city prose does not need 60.</summary>
         public const int MaxDistrictsInPrompt = 12;
 
+        /// <summary>
+        /// What replaces the tail of an over-long city description. Written as an instruction rather
+        /// than a note, because the model reads everything in the prompt as one.
+        /// </summary>
+        private const string SituationTruncationNotice =
+            "- (the rest of the city description was omitted to fit the prompt; do not refer to it)\n";
+
+        /// <summary>
+        /// Assembles the prompt, keeping it inside <see cref="MaxPromptCharacters"/> by shortening the
+        /// city description and nothing else.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The cap used to be applied to the finished string. The schema is the last thing appended,
+        /// so on a city large enough to reach the cap the cut landed inside it — and a model handed
+        /// half a schema writes a document that fails validation every single time. The failure mode
+        /// was silent and scaled with the player's city, which is the worst combination available.
+        /// </para>
+        /// <para>
+        /// The situation block is the right thing to spend, because it is the only section whose value
+        /// degrades gracefully: a description missing its last few districts still describes the city,
+        /// whereas a truncated schema, roster or task instruction is simply broken. If the fixed
+        /// sections alone exceed the cap the prompt is allowed over it rather than losing the schema —
+        /// an oversized prompt costs tokens, a truncated schema costs the whole generation.
+        /// </para>
+        /// </remarks>
         public static string Build(FlavorRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
 
-            var sb = new StringBuilder(8192);
+            var head = new StringBuilder(2048);
+            AppendRole(head, request);
+            AppendRules(head);
 
-            AppendRole(sb, request);
-            AppendRules(sb);
-            AppendSituation(sb, request);
-            AppendRoster(sb, request);
-            AppendEvents(sb, request);
-            AppendTask(sb, request);
-            AppendSchema(sb);
+            var situation = new StringBuilder(4096);
+            AppendSituation(situation, request);
 
-            string prompt = sb.ToString();
-            if (prompt.Length > MaxPromptCharacters)
-            {
-                prompt = prompt.Substring(0, MaxPromptCharacters);
-            }
-            return prompt;
+            var tail = new StringBuilder(8192);
+            AppendRoster(tail, request);
+            AppendEvents(tail, request);
+            AppendTask(tail, request);
+            AppendSchema(tail);
+
+            int budget = MaxPromptCharacters - head.Length - tail.Length;
+
+            var sb = new StringBuilder(head.Length + situation.Length + tail.Length);
+            sb.Append(head);
+            sb.Append(situation.Length > budget ? TruncateSituation(situation.ToString(), budget) : situation.ToString());
+            sb.Append(tail);
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Cuts the city description down to <paramref name="budget"/> characters at a line boundary,
+        /// so the model never reads half a district record, and says so where the cut was made.
+        /// </summary>
+        private static string TruncateSituation(string situation, int budget)
+        {
+            // No room even for the notice: drop the block outright. AppendSituation's own "no
+            // measurements are available" wording is not substituted here, because that would be a
+            // second, quieter claim about the city rather than an admission that we cut it.
+            if (budget <= SituationTruncationNotice.Length + 1) return string.Empty;
+
+            int keep = budget - SituationTruncationNotice.Length;
+
+            int lastNewline = situation.LastIndexOf('\n', keep - 1);
+            if (lastNewline >= 0) keep = lastNewline + 1;
+
+            return situation.Substring(0, keep) + SituationTruncationNotice;
         }
 
         private static void AppendRole(StringBuilder sb, FlavorRequest request)
@@ -241,7 +295,12 @@ namespace Agora.Mod.Llm
             sb.Append("- ").Append(articles.ToString(CultureInfo.InvariantCulture));
             sb.Append(" articles from local outlets covering the city as described above. ");
             sb.Append("Vary the outlets and the tones. Each article's id must be unique and kebab-case. ");
-            sb.Append("Set refs only to IDs from the lists above.\n");
+            sb.Append("Set refs only to IDs from the lists above. ");
+            sb.Append("Headlines are at most ")
+              .Append(FlavorCacheMigration.HeadlineMaxLength.ToString(CultureInfo.InvariantCulture))
+              .Append(" characters and bodies at most ")
+              .Append(FlavorCacheMigration.BodyMaxLength.ToString(CultureInfo.InvariantCulture))
+              .Append(" - a longer one fails validation and the whole response is discarded.\n");
             if (request.Events.Count > 0)
             {
                 sb.Append("- eventProse for every event listed: how that event lands in THIS city specifically.\n");

@@ -108,21 +108,28 @@ const MandateItem = ({ mandate, lookups }: MandateItemProps) => {
         <div className={styles.metricRow}>
           <span className={styles.metricName}>{humanizeEnum(mandate.metric)}</span>
           <span className={styles.chipDim}>{humanizeEnum(mandate.direction)}</span>
-          <span className={styles.spacer} />
+        </div>
+
+        {/*
+          The percentage sits on the bar's own row rather than a line above it. A bar with its
+          number two rows away asks the reader to pair them up; this way the figure and the fill it
+          describes are read as one thing. `progress` is published — the panel does not work it out
+          from baseline and target.
+        */}
+        <div className={styles.progressRow}>
+          <div className={styles.progressTrack}>
+            <div
+              className={cx(
+                styles.progressFill,
+                stalled && styles.progressFillHeld,
+                !stalled && mandate.progress >= 1 && styles.progressFillDone,
+              )}
+              style={{ width: String(progressPercent) + "%" }}
+            />
+          </div>
           <span className={cx(styles.progressValue, stalled && styles.progressValueHeld)}>
             {formatPercent(mandate.progress)}
           </span>
-        </div>
-
-        <div className={styles.progressTrack}>
-          <div
-            className={cx(
-              styles.progressFill,
-              stalled && styles.progressFillHeld,
-              !stalled && mandate.progress >= 1 && styles.progressFillDone,
-            )}
-            style={{ width: String(progressPercent) + "%" }}
-          />
         </div>
 
         <div className={styles.numberRow}>

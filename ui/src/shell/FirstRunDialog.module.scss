@@ -1,0 +1,164 @@
+// The first-run region prompt, and the fallback its error boundary renders.
+//
+// Flexbox only — `display: grid` fails silently in Coherent Gameface. No `backdrop-filter` either,
+// so the scrim is a plain black wash and the dialog surface is the near-solid token; opacity is the
+// only lever there is for lifting a panel off a moving city.
+//
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+
+@use "./tokens" as *;
+
+// ---- the overlay ---------------------------------------------------------------------------------
+//
+// This renders through `Portal`, so it sits over the whole HUD rather than inside a hook point. The
+// scrim is fixed to the viewport and centres one child.
+
+.scrim {
+  position: fixed;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.65);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 620rem;
+  padding: 26rem 28rem 22rem 28rem;
+  background-color: $surface;
+  border: 1rem solid $line;
+  border-radius: 6rem;
+  color: $text;
+}
+
+.title {
+  display: flex;
+  font-size: 20rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+}
+
+.subtitle {
+  display: flex;
+  margin-top: 8rem;
+  color: $text-dim;
+  font-size: 12rem;
+  line-height: 17rem;
+}
+
+// ---- the two cards -------------------------------------------------------------------------------
+
+.choices {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-top: 20rem;
+}
+
+// The card is the game's own Button, so this styles a <button>: no padding assumptions, and the
+// column lives in `.choiceBody` inside it.
+.choice {
+  display: flex;
+  flex: 1 1 0;
+  // Equal halves of the row, with the gap expressed as a margin on both so neither card is wider.
+  margin: 0 5rem;
+  padding: 16rem 14rem;
+  background-color: $surface-raised;
+  border: 1rem solid $line;
+  border-radius: 5rem;
+  color: $text;
+}
+
+.choiceBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.choiceFlag {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.choiceLabel {
+  display: flex;
+  margin-top: 12rem;
+  font-size: 15rem;
+  font-weight: bold;
+}
+
+.choiceText {
+  display: flex;
+  margin-top: 6rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 16rem;
+  text-align: center;
+}
+
+// ---- state ----------------------------------------------------------------------------------------
+
+.working {
+  display: flex;
+  margin-top: 16rem;
+  color: $text-faint;
+  font-size: 11rem;
+}
+
+// A refusal the engine returned, in English. Never a code and never an exception message, so it is
+// prose of unpredictable length and must wrap rather than widen the dialog.
+.refusal {
+  display: flex;
+  margin-top: 16rem;
+  padding: 8rem 10rem;
+  background-color: $surface-inset;
+  border-left: 2rem solid $warn;
+  border-radius: 3rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 16rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// ---- FirstRunBoundary fallback ---------------------------------------------------------------------
+
+// Rendered inline at the hook point rather than through `Portal` — see FirstRunBoundary.tsx. It
+// therefore carries the hook point's own margin the way the toggle button beside it does.
+.failure {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 420rem;
+  margin: 8rem;
+  padding: 16rem 18rem;
+  background-color: $surface;
+  border: 1rem solid $line;
+  border-left: 2rem solid $bad;
+  border-radius: 5rem;
+  color: $text-dim;
+  font-size: 12rem;
+  line-height: 17rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.failureAction {
+  align-self: flex-end;
+  margin-top: 14rem;
+  padding: 4rem 14rem;
+  background-color: $surface-hover;
+  border-radius: 3rem;
+  color: $text;
+  font-size: 12rem;
+}

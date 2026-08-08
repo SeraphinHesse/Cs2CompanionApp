@@ -6,12 +6,8 @@
 // `rem` is the CS2 UI's scaling unit — the game scales it with the interface size setting, so a
 // rem-based control tracks the rest of the HUD instead of shrinking on a 4K screen.
 
-$text: #ffffff;
-$text-dim: rgba(255, 255, 255, 0.62);
-$surface: rgba(8, 10, 14, 0.86);
-$line: rgba(255, 255, 255, 0.12);
-$accent: #4ea3ff;
-$good: #4fbf7a;
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "./tokens" as *;
 
 // ---- the toggle (GameTopLeft) -----------------------------------------------------------------
 //
@@ -32,7 +28,7 @@ $good: #4fbf7a;
 
 .toggle {
   @include toggle-base;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: $surface;
 }
 
 .toggleOpen {
@@ -69,7 +65,7 @@ $good: #4fbf7a;
 .toggleDate {
   display: flex;
   margin-left: 8rem;
-  opacity: 0.7;
+  opacity: 0.72;
   font-variant-numeric: tabular-nums;
 }
 
@@ -128,6 +124,27 @@ $good: #4fbf7a;
   border-bottom: 2rem solid $accent;
 }
 
+// The per-save settings drawer's control. It lives beside the close button rather than in the tab
+// strip: the strip is political data and the next slot in it is spoken for.
+@mixin settings-toggle-base {
+  flex: 0 0 auto;
+  margin-left: 8rem;
+  padding: 2rem 8rem;
+  border-radius: 3rem;
+  font-size: 11rem;
+}
+
+.settingsToggle {
+  @include settings-toggle-base;
+  color: $text-dim;
+}
+
+.settingsToggleOpen {
+  @include settings-toggle-base;
+  background-color: rgba(78, 163, 255, 0.28);
+  color: $text;
+}
+
 .close {
   flex: 0 0 auto;
   margin-left: 10rem;
@@ -165,7 +182,7 @@ $good: #4fbf7a;
   display: block;
   min-width: 0;
   margin-top: 6rem;
-  opacity: 0.7;
+  opacity: 0.72;
   font-size: 11rem;
   overflow-wrap: break-word;
   word-wrap: break-word;

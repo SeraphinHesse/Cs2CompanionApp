@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -80,6 +85,27 @@ namespace Agora.Mod.Persistence
         /// </summary>
         public AgoraSettings Settings { get; set; }
 
+        /// <summary>
+        /// True when <see cref="Settings"/> is <c>new AgoraSettings()</c> rather than something read
+        /// from disk — no state file carried a settings block and there was no <c>settings.json</c>
+        /// either.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Runtime only. Not a persisted contract, and no schema version depends on it</b> — it
+        /// describes this load, not the save, and there is nowhere on disk it could be written that
+        /// would not immediately contradict itself.
+        /// </para>
+        /// <para>
+        /// It exists because "no prior state" is not the same question as "the player has never
+        /// chosen a theme": <see cref="Load"/> falls back to <c>settings.json</c> when there is no
+        /// state file, so a save that answered the first-run prompt and then crashed before its first
+        /// monthly tick has settings but no state. Asking only <see cref="HasState"/> would show that
+        /// player the prompt a second time and offer to throw their choice away.
+        /// </para>
+        /// </remarks>
+        public bool SettingsAreDefaults { get; set; }
+
         /// <summary>Sim date of <see cref="State"/>, or <c>default</c> when there is none.</summary>
         public SimDate SnapshotDate { get; set; }
 
@@ -161,6 +187,7 @@ namespace Agora.Mod.Persistence
                     result.Outcome = ReconciliationOutcome.FreshStart;
                     result.Explanation = "No save identity yet; nothing to load.";
                     result.Settings = new AgoraSettings();
+                    result.SettingsAreDefaults = true;
                     _log.Info("Sidecar: " + result.Explanation);
                     return result;
                 }
@@ -210,7 +237,10 @@ namespace Agora.Mod.Persistence
                     candidates = LoadReconciliation.Without(candidates, plan.Chosen);
                 }
 
-                result.Settings = ResolveSettings(result.State, directory, result.Warnings);
+                bool settingsAreDefaults;
+                result.Settings = ResolveSettings(result.State, directory, result.Warnings,
+                                                  out settingsAreDefaults);
+                result.SettingsAreDefaults = settingsAreDefaults;
 
                 string summary = "Sidecar: " + (result.Explanation ?? "loaded.");
 
@@ -241,7 +271,11 @@ namespace Agora.Mod.Persistence
                 result.Explanation = "Sidecar load failed outright; starting fresh.";
                 result.Warnings.Add(ex.Message);
 
-                if (result.Settings == null) result.Settings = new AgoraSettings();
+                if (result.Settings == null)
+                {
+                    result.Settings = new AgoraSettings();
+                    result.SettingsAreDefaults = true;
+                }
 
                 _log.Error("Sidecar: load failed; the political layer starts fresh for this session.", ex);
                 return result;
@@ -336,8 +370,15 @@ namespace Agora.Mod.Persistence
             return true;
         }
 
-        private AgoraSettings ResolveSettings(PoliticalState state, string directory, List<string> warnings)
+        /// <param name="areDefaults">
+        /// True only on the last branch, where nothing on disk had anything to say. See
+        /// <see cref="SidecarLoadResult.SettingsAreDefaults"/> for who asks and why.
+        /// </param>
+        private AgoraSettings ResolveSettings(PoliticalState state, string directory,
+                                              List<string> warnings, out bool areDefaults)
         {
+            areDefaults = false;
+
             if (state != null && state.Settings != null)
             {
                 return state.Settings;
@@ -351,6 +392,7 @@ namespace Agora.Mod.Persistence
             // Defaults, not a crash: a save with no settings file is a save that has never been
             // through a full Agora session, and StartYear 1990 / Proportional is the documented
             // default set (§3).
+            areDefaults = true;
             return new AgoraSettings();
         }
 

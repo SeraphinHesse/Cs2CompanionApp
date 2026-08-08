@@ -16,6 +16,12 @@ import { districts$, roster$ } from "./bindings";
 /** Used when a party id is empty or has aged out of the roster. */
 const NEUTRAL_COLOR = "#8a8f98";
 
+/**
+ * Shown wherever a party exists but has no usable name yet — either it has aged out of the roster
+ * or the flavor layer has not authored one. A raw id is never rendered to the player.
+ */
+const UNNAMED_PARTY = "Unnamed party";
+
 export interface Lookups {
   party(id: string): Agora.PartyBrief | undefined;
   /** Always a usable "#RRGGBB" — falls back to neutral rather than rendering a broken colour. */
@@ -55,11 +61,11 @@ export function useLookups(): Lookups {
         }
         const party = partiesById[id];
         if (!party) {
-          // A dissolved party can still be named by an old headline. Show the id rather than
-          // nothing, so the item does not silently lose its subject.
-          return id;
+          // A dissolved party can still be named by an old headline. Show the placeholder rather
+          // than nothing, so the item does not silently lose its subject.
+          return UNNAMED_PARTY;
         }
-        return party.shortName || party.name || id;
+        return party.shortName || party.name || UNNAMED_PARTY;
       },
       districtLabel(id: string) {
         if (!id) {

@@ -1,5 +1,6 @@
 using System;
 using Agora.Core.Contracts;
+using Agora.Mod.Core;
 using Agora.Mod.Time;
 using Colossal.Logging;
 using Colossal.Serialization.Entities;
@@ -174,6 +175,57 @@ namespace Agora.Mod.Persistence
         protected override void OnUpdate()
         {
             // Intentionally empty; see OnCreate.
+        }
+
+        /// <summary>
+        /// Forgets the previous save's identity so the incoming one mints or reads its own.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="EnsureIdentity"/> early-returns on a non-empty guid, and this system instance
+        /// survives "quit to menu, load another city" — so without this, city B whose save carries no
+        /// Agora block (a save made before the mod was installed, where <see cref="SetDefaults"/>
+        /// fires but the guid was already set) would keep city A's guid and write into city A's
+        /// sidecar directory.
+        /// </para>
+        /// <para>
+        /// Safe to do unconditionally: <c>GameManager</c> raises <c>onGamePreload</c> only from
+        /// <c>LoadSimulationData</c>, never from the save path, so this cannot orphan a sidecar by
+        /// clearing the guid out from under <see cref="PreSerialize"/>. <see cref="Deserialize"/> and
+        /// <see cref="SetDefaults"/> both run afterwards.
+        /// </para>
+        /// <para>
+        /// The runtime reset belongs here rather than only in <see cref="OnGameLoaded"/>'s handler
+        /// call: that call is skipped whenever <c>_store.Load</c> throws, and city A's political state
+        /// surviving that skip would be written into city B's sidecar directory by the next
+        /// <see cref="PreSerialize"/>. It is idempotent with the reset
+        /// <c>AgoraRuntime.OnSidecarLoaded</c> does first.
+        /// </para>
+        /// </remarks>
+        protected override void OnGamePreload(Purpose purpose, GameMode mode)
+        {
+            base.OnGamePreload(purpose, mode);
+
+            _saveGuid = Guid.Empty;
+            _loadedIdentityFormatVersion = IdentityFormatVersion;
+            PendingLoad = null;
+
+            // Guarded: a throw out of OnGamePreload disables the system for the rest of the process,
+            // which would silently stop sidecar writing entirely.
+            try
+            {
+                // SaveBoundary, not ModShutdown: the outgoing city's entities are still alive here —
+                // ClearSystem destroys them later, in the deserialize phase this callback precedes —
+                // so the slot table is live buffers, and a revert would work. It is skipped because
+                // nothing would ever see it: that city is discarded moments later, and its save file
+                // was written before this ran. See AgoraRuntime.ResetCause.
+                AgoraRuntime.ResetForNewSave(ResetCause.SaveBoundary);
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Error(ex, "Agora could not reset its per-save state before load; the " +
+                                       "political layer may carry state from the previous city.");
+            }
         }
 
         // ------------------------------------------------------------ save identity

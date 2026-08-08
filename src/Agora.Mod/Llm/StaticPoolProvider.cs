@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,8 +22,11 @@ namespace Agora.Mod.Llm
     /// <see cref="SeedStreams.RngFor"/> on <see cref="StreamNames.NameSelection"/>, keyed by the
     /// entity's own ID - never <c>System.Random</c>, never a hash code, never an index. Two players
     /// on the same save GUID at the same date get identical names, identical outlets and identical
-    /// articles (non-negotiable #2). That is not decoration either: §3 promises save-scumming
-    /// converges, and prose that reshuffled on reload would be the one visible thing that did not.
+    /// articles (non-negotiable #2). Names go further and drop the date entirely, keying on the
+    /// entity's founding date instead, so they survive regeneration; articles and event prose keep
+    /// the request date, because those are meant to move. That is not decoration either: §3 promises
+    /// save-scumming converges, and prose that reshuffled on reload would be the one visible thing
+    /// that did not.
     /// </para>
     ///
     /// <para>
@@ -144,9 +152,19 @@ namespace Agora.Mod.Llm
         {
             var array = new JArray();
 
-            // Sorted by PartyId so the de-duplication pass below is order-stable. Each party's own
-            // draws come from its own sub-stream, so adding a party cannot change another's name -
-            // only which of its own candidates survives de-duplication.
+            // Sorted by PartyId so the de-duplication pass below is order-stable.
+            //
+            // CALLER CONTRACT: pass the FULL roster, always. usedNames is allocated per Generate call
+            // (see BuildDocument), so uniqueness is only ever enforced against the parties present in
+            // *this* call - a party's final name is a function of its own stream AND of who else is in
+            // the request. Generating for a subset, e.g. only the parties still lacking a name, is
+            // therefore not an optimisation: it lets a newcomer take its first draw unchallenged, and
+            // that draw may be a name an existing party already holds. The next full-roster generate
+            // then resolves the clash by moving whichever of the two sorts later, which is either a
+            // rename the runtime's name lock is built to prevent or, if the newcomer sorted first, two
+            // parties wearing one name with nothing left to repair it. Party ids are handed out
+            // ascending (PartyRegistry.NextPartyId), so with the full roster a newly founded party
+            // sorts last and settles its own collisions without disturbing anyone already named.
             var parties = new List<PartyBrief>(request.Parties);
             parties.Sort((a, b) => string.CompareOrdinal(a.PartyId, b.PartyId));
 
@@ -162,7 +180,10 @@ namespace Agora.Mod.Llm
                 PartyBrief party = parties[i];
                 if (string.IsNullOrEmpty(party.PartyId)) continue;
 
-                var rng = SeedStreams.RngFor(_saveGuid, request.Date, StreamNames.NameSelection,
+                // Keyed on the party's founding date, not the request date. A name is identity, and a
+                // pool regenerated next month must produce the same one - seeding from request.Date
+                // renamed every party on every prose collection.
+                var rng = SeedStreams.RngFor(_saveGuid, party.FoundedDate, StreamNames.NameSelection,
                                              "party:" + party.PartyId);
 
                 string name = UniqueName(rng, adjectives, nouns, usedNames);
@@ -194,7 +215,8 @@ namespace Agora.Mod.Llm
                 FactionBrief faction = factions[i];
                 if (string.IsNullOrEmpty(faction.FactionId)) continue;
 
-                var rng = SeedStreams.RngFor(_saveGuid, request.Date, StreamNames.NameSelection,
+                // Founding date, for the same reason as parties above.
+                var rng = SeedStreams.RngFor(_saveGuid, faction.FoundedDate, StreamNames.NameSelection,
                                              "faction:" + faction.FactionId);
 
                 string name = UniqueName(rng, StaticPoolContent.FactionAdjectives,
@@ -274,9 +296,11 @@ namespace Agora.Mod.Llm
                         ["id"] = id,
                         ["outlet"] = Cap(outlet, 60),
                         ["headline"] = Cap(UniqueLine(rng, StaticPoolContent.DistrictHeadlines,
-                                                      "{district}", districtName, usedHeadlines), 140),
+                                                      "{district}", districtName, usedHeadlines),
+                                           FlavorCacheMigration.HeadlineMaxLength),
                         ["body"] = Cap(UniqueLine(rng, StaticPoolContent.DistrictBodies,
-                                                  "{district}", districtName, usedBodies), 900),
+                                                  "{district}", districtName, usedBodies),
+                                       FlavorCacheMigration.BodyMaxLength),
                         ["tone"] = tone,
                         ["refs"] = new JObject { ["districtId"] = district.Id }
                     };
@@ -288,9 +312,11 @@ namespace Agora.Mod.Llm
                         ["id"] = id,
                         ["outlet"] = Cap(outlet, 60),
                         ["headline"] = Cap(UniqueLine(rng, StaticPoolContent.CityHeadlines,
-                                                      "{mood}", mood, usedHeadlines), 140),
+                                                      "{mood}", mood, usedHeadlines),
+                                           FlavorCacheMigration.HeadlineMaxLength),
                         ["body"] = Cap(UniqueLine(rng, StaticPoolContent.CityBodies,
-                                                  "{mood}", mood, usedBodies), 900),
+                                                  "{mood}", mood, usedBodies),
+                                       FlavorCacheMigration.BodyMaxLength),
                         ["tone"] = tone
                     };
                 }

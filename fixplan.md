@@ -13,7 +13,7 @@ ratified contract, the change is routed through `/schema-change` and called out 
 
 ## 0. Summary of what is actually wrong
 
-Five reported issues resolve into **six workstreams**. Two of the reported issues (party naming,
+Five reported issues resolve into **seven workstreams** (W0–W6). Two of the reported issues (party naming,
 stale-state-across-cities) are each *several* independent bugs in different layers, which is why
 they looked unfixable from the outside.
 
@@ -144,17 +144,40 @@ every cached entry is dropped.
 
 ### The fix
 
-- [ ] Set `_flavor.Pool.Roster` at state-mint time, in `OnSidecarLoaded` immediately after
-      `RebuildFlavor()`. Build it with the existing `FillBriefs` — extract that call so mint and
-      wake share one path.
-- [ ] After any prose collection, sweep `_state.Parties` for an empty `Name` and fill from the pool
-      synchronously. A party must never reach a binding unnamed.
-- [ ] Names persist on `Party.Name` in the sidecar already, so once set they survive reload. Add a
-      determinism test: same save GUID + same date ⇒ byte-identical names.
-- [ ] Fix cache re-validation to use the union of the current catalog and the previously-seen id
-      set, so a fresh save does not discard its own cache.
-- [ ] Never render a raw id to the player. Where `name` is genuinely absent, show a themed
-      placeholder ("Unnamed list"), not `party-01`.
+- [x] Set `_flavor.Pool.Roster` at state-mint time, in `OnSidecarLoaded` immediately after
+      `RebuildFlavor()`. **Done** as `AgoraRuntime.SeedFlavorRoster`, also called before each
+      `CollectProse` so a party founded mid-game is in the roster the same month. `FillBriefs` needed
+      no extraction — it was already a standalone method and only wanted a second call site.
+- [x] After any prose collection, sweep `_state.Parties` for an empty `Name` and fill from the pool
+      synchronously. **Done** as `EnsureEveryPartyNamed`, called after `Replay(...)` on load (not in
+      the mint branch — replay itself can found parties) and after `ApplyProseNames` each month.
+- [x] **Reframed.** The stated test — same GUID + same date ⇒ identical names — is tautological and
+      already passed. The real defect, which this plan missed: `StaticPoolProvider` seeded each name
+      on the *request date*, so **every party was renamed every sim month**. Names now seed on the
+      party's `FoundedDate`, and the test that matters is same GUID + *different* dates ⇒ identical
+      names. See "names lock in" below.
+- [x] ~~Fix cache re-validation to use the union of the current catalog and the previously-seen id
+      set.~~ **Struck — false premise.** `RebuildFlavor()` runs *after* the state mint, so
+      `BuildFlavorCatalog()` already holds every party and faction id; and `FilterAgainstCatalog`
+      drops per-entry rather than failing the document. There is no "fresh save discards its own
+      cache" bug of the kind described. Replaced by a diagnostic log of the four catalog counts and a
+      `_lastSnapshot` fallback for a load that races the sensors.
+- [x] Never render a raw id to the player. **Done** across six sites in Seats, Districts and News.
+      Placeholder is **"Unnamed party"**, not "Unnamed list" — "list" is proportional-representation
+      vocabulary and reads wrong on a US-theme save, and the theme is not readable from the UI until
+      W3.
+
+**Also fixed, beyond the plan:** names now *lock*. `ApplyProseNames` writes `Name`/`ShortName` only
+when the current name is empty or the id is provisional (an in-memory set, cleared by
+`ResetForNewSave`, holding parties named by the canned pool). A canned name is a stopgap that one
+later CLI response may upgrade, exactly once; after that nothing renames a party. `Description` and
+`Slogan` keep refreshing — they are prose, not identity.
+
+**Review found one blocking defect, fixed:** the sweep originally generated over *only* the unnamed
+parties, but the pool's uniqueness set is per-`Generate`-call, so a subset draw could take a name an
+existing party already held — giving either an illegal rename or two parties permanently sharing a
+name (low tens of percent over a long NA save; that vocabulary is 96 names). The sweep now always
+generates over the full roster and writes only where the name is empty.
 
 ---
 
@@ -342,32 +365,61 @@ Not part of the five reported issues. Verified unless marked.
 
 **Correctness**
 
-- [ ] `FlavorPromptBuilder.cs:53` — prompt hard-truncated at 120k chars with the embedded JSON
+- [x] `FlavorPromptBuilder.cs:53` — prompt hard-truncated at 120k chars with the embedded JSON
       schema at the end, so a large city truncates mid-schema and every generation fails
-      validation. Truncate the situation block; never the schema.
-- [ ] `ClaudeResponseReader.cs:190` — the balanced-object scanner mishandles `\\` before a quote, so
-      a slogan containing a backslash truncates the JSON.
-- [ ] `AgoraRuntime.cs:538` — if `CollectProse` throws, `_lastAttemptDate` is never set and the
-      status line misreports.
+      validation. Truncate the situation block; never the schema. **Done:** only the situation
+      block is now trimmed (`TruncateSituation`), against a budget computed from the fixed sections.
+- [x] ~~`ClaudeResponseReader.cs:190` — the balanced-object scanner mishandles `\\` before a quote,
+      so a slogan containing a backslash truncates the JSON.~~ **Confirmed false report.** Verified
+      twice, most recently in the W0 review: the scanner handles an escaped backslash before a
+      closing quote correctly, and `ClaudeResponseReaderTests` pins that case. Struck rather than
+      deleted so it is not re-reported a third time.
+- [ ] `ClaudeResponseReader.cs:95` — **the real defect, in the same area.** The envelope unwrap hands
+      the CLI's whole stdout to `FlavorJsonReader.Parse`, which rejects trailing content
+      (`FlavorJsonReader.cs:81-85`). So any byte the CLI emits after the envelope object — a newline
+      of diagnostics, a second JSON line — makes `Parse` return null, `UnwrapEnvelope` concludes
+      "not an envelope", and `FirstBalancedObject` then extracts *the envelope itself* instead of the
+      flavor document. That reaches the validator as a document full of unknown fields and is
+      discarded, so the failure presents as a bad model response rather than as a parse seam that
+      never unwrapped. Pre-existing; not fixed in W0.
+- [x] `AgoraRuntime.cs:538` — if `CollectProse` throws, `_lastAttemptDate` is never set and the
+      status line misreports. **Done:** `_lastAttemptDate` and the version bump moved into a
+      `finally`, so any throw anywhere in the method still moves the status line.
 
 **Readability / affordance**
 
-- [ ] `SeatsPanel.tsx:452` — seat count and vote percentage rendered adjacent with no labels;
-      "25 / 45%" is ambiguous.
-- [ ] `ArticleReader.tsx:69` — no loading state; a not-yet-fetched body is indistinguishable from
-      an absent one.
-- [ ] `SeatsPanel.tsx:399` — stability and cohesion meters give no indication which direction is
-      good.
-- [ ] `DistrictDetail.tsx:214` — bare `TIE-BREAK` badge with no explanation.
-- [ ] `MandateTracker.tsx` — progress bar carries no inline percentage.
+- [x] `SeatsPanel.tsx:452` — seat count and vote percentage rendered adjacent with no labels;
+      "25 / 45%" is ambiguous. **Done:** a `ChipHeader` names the two columns once at the top, at
+      the same widths as the rows; the panel is too narrow to repeat units per row.
+- [x] `ArticleReader.tsx:69` — no loading state; a not-yet-fetched body is indistinguishable from
+      an absent one. **Done, differently than framed:** there is no not-yet-fetched state to render
+      — a map binding resolves inside its own subscribe trigger, so the payload is always C#'s final
+      answer for that id. The ambiguity was that an absent body rendered as a blank sheet; it now
+      falls back to the feed row's summary, or says the full text is unavailable.
+- [x] `SeatsPanel.tsx:399` — stability and cohesion meters give no indication which direction is
+      good. **Done:** each meter carries a plain-English reading (Fragile / Shaky / Steady / Strong)
+      alongside the number.
+- [x] `DistrictDetail.tsx:214` — bare `TIE-BREAK` badge with no explanation. **Done:** reads
+      "Too close to call - tie-break", with a tooltip saying the tie-break is seeded, not a coin flip.
+- [x] `MandateTracker.tsx` — progress bar carries no inline percentage. **Done:** the percentage
+      sits on the bar's own row, for progress and salience alike.
 - [ ] *(unverified)* Scrollable regions may render no visible scrollbar in Gameface. Confirm
       against `cs2/ui`'s `Scrollable` before adding a CSS indicator.
-- [ ] *(unverified)* `EventList.tsx:61` — check whether `humanizeEnum` output is genuinely
-      player-legible for every `origin` value.
+- [ ] **Found during W2.** "Never render a raw id" is broader than parties, and two non-party leaks
+      remain: `ui/src/panels/News/lookup.ts:74` — `districtLabel` falls back to a district id; and
+      `ui/src/panels/News/EventList.tsx:104` — `{event.title || event.archetypeId || event.id}` puts
+      an event archetype or instance id in a rendered title. Each needs its own placeholder wording,
+      so neither was folded into W2.
+- [x] *(was unverified)* `EventList.tsx:61` — check whether `humanizeEnum` output is genuinely
+      player-legible for every `origin` value. **Confirmed a real defect and fixed:** `humanizeEnum`
+      splits on inner capitals, which mangles the `origin` values; an explicit `ORIGIN_LABEL` map
+      now supplies the English, falling back to the raw value for an origin it has not been taught.
 
 **Housekeeping**
 
-- [ ] `docs/status.md` is stale by several milestones. Rewrite against reality.
+- [x] `docs/status.md` is stale by several milestones. Rewrite against reality. **Done:** rewritten
+      2026-08-08 against artifacts in the tree, with a per-milestone split between "code landed" and
+      "gate re-walked" rather than one claim standing for both.
 - [ ] A contract-drift review across the C#/TS binding boundary came back clean. Treat that as weak
       evidence, not proof — re-run it after W4 and W6 add bindings, since that is when drift
       appears.

@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
@@ -35,6 +40,13 @@ namespace Agora.Mod.Llm
 
         /// <summary>Existing name, when there is one worth keeping continuity with.</summary>
         public string CurrentName = string.Empty;
+
+        /// <summary>
+        /// When the party came into being. Not prompt material — the canned pool keys its name draw
+        /// on this rather than on the request date, so a party's name is a fixed function of its own
+        /// founding and does not change every time prose is regenerated.
+        /// </summary>
+        public SimDate FoundedDate;
     }
 
     /// <summary>One faction inside a party, as the prompt sees it.</summary>
@@ -46,6 +58,9 @@ namespace Agora.Mod.Llm
         public Issue CoreGrievance;
         public string StatusWord = string.Empty;
         public string CurrentName = string.Empty;
+
+        /// <summary>When the faction formed. Keys the canned pool's name draw; see <see cref="PartyBrief.FoundedDate"/>.</summary>
+        public SimDate FoundedDate;
     }
 
     /// <summary>One timeline event needing a local angle.</summary>

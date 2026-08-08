@@ -81,15 +81,24 @@ namespace Agora.Core.Contracts
     /// </summary>
     public sealed class AgoraSettings
     {
-        public int SchemaVersion { get; set; } = 1;
+        public int SchemaVersion { get; set; } = 2;
 
         /// <summary>Political start year. Default 1990, chosen at save creation, locked afterward (§3).</summary>
         public int StartYear { get; set; } = 1990;
 
-        /// <summary>Follows the map theme by default; overridable (§3).</summary>
+        /// <summary>
+        /// The save's region. Chosen by the player at first run and locked at the first election
+        /// (<see cref="ThemeLocked"/>). <c>Eu</c> is the initialiser value, not a decision: a save
+        /// that has never answered the first-run prompt reads as EU until it does.
+        /// </summary>
         public RegionTheme Theme { get; set; } = RegionTheme.Eu;
 
-        /// <summary>Derived from <see cref="Theme"/> unless the player overrides it.</summary>
+        /// <summary>
+        /// Derived from <see cref="Theme"/>, unconditionally, by
+        /// <see cref="RegionThemeRules.SystemFor"/>. There is no player override: this is a mirror of
+        /// the theme, kept as its own field because every election path reads it, and writing it to
+        /// anything else desynchronises the ballot from the parties contesting it.
+        /// </summary>
         public ElectoralSystem System { get; set; } = ElectoralSystem.Proportional;
 
         public LlmWakeCadence WakeCadence { get; set; } = LlmWakeCadence.Default;
@@ -112,6 +121,61 @@ namespace Agora.Core.Contracts
         /// dashboard still renders it, but nothing is applied to the city.
         /// </summary>
         public bool EffectsEnabled { get; set; } = true;
+
+        /// <summary>
+        /// True once the region theme is history. Set at the first election; before that the player
+        /// may still change their mind from the settings surface.
+        /// </summary>
+        public bool ThemeLocked { get; set; } = false;
+
+        /// <summary>
+        /// Pause the sim and raise a modal when a major news item lands — elections, coalition
+        /// formation or collapse, party founding or dissolution, timeline events at severity >= 3.
+        /// Default on.
+        /// </summary>
+        public bool PauseOnMajorNews { get; set; } = true;
+
+        /// <summary>
+        /// Raise a modal for <i>every</i> report, not just the major ones. Default off: on a large
+        /// city this interrupts constantly.
+        /// </summary>
+        public bool ShowAllReports { get; set; } = false;
+
+        /// <summary>
+        /// A field-by-field copy.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This object is shared <i>by reference</i> across an engine tick —
+        /// <c>PoliticalEngine.CloneState</c> copies the pointer, not the settings — because a tick
+        /// never changes a setting and copying one per month would be waste. Anything that <i>does</i>
+        /// change a setting therefore has to clone first, or it mutates the caller's input and breaks
+        /// the purity the whole engine is tested for. <c>PoliticalEngine.Retheme</c> is the first such
+        /// caller.
+        /// </para>
+        /// <para>
+        /// Deliberately here rather than in the engine: a new property added above and forgotten here
+        /// silently reverts to its default the first time a player changes their theme, and the two
+        /// places are one screen apart so that the omission is visible.
+        /// </para>
+        /// </remarks>
+        public AgoraSettings Clone()
+        {
+            return new AgoraSettings
+            {
+                SchemaVersion = SchemaVersion,
+                StartYear = StartYear,
+                Theme = Theme,
+                System = System,
+                WakeCadence = WakeCadence,
+                SnapshotRetention = SnapshotRetention,
+                Enabled = Enabled,
+                EffectsEnabled = EffectsEnabled,
+                ThemeLocked = ThemeLocked,
+                PauseOnMajorNews = PauseOnMajorNews,
+                ShowAllReports = ShowAllReports
+            };
+        }
     }
 
     /// <summary>
@@ -127,7 +191,7 @@ namespace Agora.Core.Contracts
     /// </summary>
     public sealed class PoliticalState
     {
-        public int SchemaVersion { get; set; } = 1;
+        public int SchemaVersion { get; set; } = 2;
 
         /// <summary>
         /// Agora's own save identity (§5). Written into the save via the serialization hooks, never

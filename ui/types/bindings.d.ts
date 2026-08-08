@@ -3730,6 +3730,25 @@ declare namespace Agora {
    */
   type FlavorErrorName = "" | "CliMissing" | "Timeout" | "BadJson" | "Disabled" | "Unknown";
 
+  /**
+   * What became of a write the panel requested. The CLOSED vocabulary every inbound `CallBinding`
+   * answers with — `agora.state.setSetting` today, the party editors W4 adds next. Mirrors
+   * `Agora.Core.Contracts.CommandOutcome`; a new reason is added THERE first.
+   *
+   * Engine-authored, always: never an exception message, never model output. `""` means accepted —
+   * `CommandOutcome.Ok` crosses as the empty string, the same falsy answer `FlavorErrorName` gives.
+   *
+   * - `""`             accepted, or already true; nothing needed to happen
+   * - `NoActiveSave`   no save is loaded, or the political layer never came up for this one
+   * - `UnknownKey`     this build does not recognise the setting or field name
+   * - `BadValue`       the name was recognised; the value was not legal for it
+   * - `ThemeLocked`    the save has held an election; the region theme is history
+   * - `Busy`           something the request would tear down is in flight — retry shortly
+   * - `Failed`         it failed for a reason the player cannot act on; see Agora.log
+   */
+  type CommandOutcomeName =
+    | "" | "NoActiveSave" | "UnknownKey" | "BadValue" | "ThemeLocked" | "Busy" | "Failed";
+
   // -- agora.state -----------------------------------------------------------------------------
 
   /**
@@ -3751,6 +3770,33 @@ declare namespace Agora {
     weeksToElection: number;
     /** "" when the city has no mayor (normal under a pure list system). */
     mayorPartyId: IdString;
+  }
+
+  /**
+   * `agora.state.settings` — ValueBinding, republished on the engine's cadence and immediately
+   * after any accepted `setSetting`. Per-save only; never global config (non-negotiable #10).
+   *
+   * Write through `agora.state.setSetting(key, value)` — a CallBinding returning a
+   * `CommandOutcomeName`. Keys: `"theme"` ("Eu" | "Na"), `"pauseOnMajorNews"`, `"showAllReports"`,
+   * `"effectsEnabled"` ("true" | "false"), and `"dismissFirstRun"` (value ignored). The call
+   * REQUESTS; the engine validates and decides. A panel must render the returned code and must
+   * never compute a rejection of its own.
+   *
+   * `isFirstRun` is deliberately not a field here — it is a lifecycle signal the sidecar never
+   * stores. Read `agora.state.isFirstRun` instead.
+   */
+  interface SettingsPayload {
+    schemaVersion: number;
+    startYear: number;
+    theme: RegionThemeName;
+    /** Derived from `theme`, unconditionally. Read-only: there is no key that writes it. */
+    system: ElectoralSystemName;
+    /** True once the theme is history — set at the first election. `setSetting("theme", …)` then
+     *  returns `"ThemeLocked"`. */
+    themeLocked: boolean;
+    pauseOnMajorNews: boolean;
+    showAllReports: boolean;
+    effectsEnabled: boolean;
   }
 
   // -- agora.parties ---------------------------------------------------------------------------
@@ -3775,6 +3821,12 @@ declare namespace Agora {
     foundedDate: SimDateString;
     /** "" while the party still exists. */
     dissolvedDate: SimDateString;
+    /** Player has renamed this party. `name`/`shortName` are player-owned, not flavor-owned. */
+    nameLocked: boolean;
+    /** Player has rewritten `description`/`slogan`. */
+    descriptionLocked: boolean;
+    /** Player has recoloured this party; `colorHex` is player-owned. */
+    colorLocked: boolean;
   }
 
   /**

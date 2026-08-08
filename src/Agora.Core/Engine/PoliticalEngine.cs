@@ -66,6 +66,12 @@ namespace Agora.Core.Engine
             EngineTuning t = tuning ?? EngineTuning.Default;
             AgoraSettings s = settings ?? new AgoraSettings();
 
+            // The system is a function of the theme and nothing else, so it is derived here rather
+            // than trusted from the settings object. Without this line an NA save kept the
+            // initialiser's Proportional and ran North American parties through a list election on
+            // three-year terms with no mayor — silently, since neither half complains.
+            s.System = RegionThemeRules.SystemFor(s.Theme);
+
             var state = new PoliticalState
             {
                 SaveGuid = saveGuid,
@@ -89,6 +95,152 @@ namespace Agora.Core.Engine
 
             state.Parties.Sort(PartyRegistry.CompareById);
             return state;
+        }
+
+        // ------------------------------------------------------------------ retheme
+
+        /// <summary>
+        /// Changes the save's region theme before its first election, regenerating everything whose
+        /// meaning depends on it (fixplan W3).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why this is not "swap the party list".</b> Party ids are positional and are reused
+        /// across themes with different meanings — EU <c>party-01</c> is the green brand, NA
+        /// <c>party-01</c> is the liberal one. Every list keyed by a party id therefore holds a
+        /// statement about a party that is about to stop existing, and not one of them fails loudly:
+        /// a stale <see cref="PoliticalState.CurrentVoteShares"/> or
+        /// <see cref="Bloc.PreviousVote"/> is a perfectly well-formed number attached to the wrong
+        /// brand. So all of it goes, and the list of what goes is exhaustive by design.
+        /// </para>
+        /// <para>
+        /// <b>Regeneration happens at <paramref name="startDate"/>, not at the state's current
+        /// date.</b> A party's <see cref="Party.FoundedDate"/> seeds its canned name, so regenerating
+        /// in month forty would give a rethemed save a different roster from one that chose the same
+        /// theme at frame zero. Using the save's political start date makes the two rosters
+        /// byte-identical, which is the property the parity test pins.
+        /// </para>
+        /// <para>
+        /// <b>That parity is the parties', not the factions'.</b> Factions are seeded from the party
+        /// set <i>and the bloc set</i>, and the blocs a month-forty retheme hands
+        /// <c>FactionModel.Generate</c> are the city's current demography, not the frame-zero
+        /// demography a natively-minted save was built from — so <c>IssueClimate.FromBlocs</c> differs
+        /// and the faction set is not the mint-time one. That is the intended behaviour rather than a
+        /// gap: a faction is a reading of who lives here now, and regenerating it from a four-year-old
+        /// city would be the stranger choice. The two only coincide when the blocs have not moved,
+        /// which is the case the faction test covers.
+        /// </para>
+        /// <para>
+        /// <b>Pure.</b> <paramref name="prior"/> is never mutated, and that includes its
+        /// <see cref="PoliticalState.Settings"/> — the settings object is shared by reference across
+        /// <c>CloneState</c>, so writing the new theme into it would reach straight back into the
+        /// caller's state. A fresh <see cref="AgoraSettings"/> is built instead.
+        /// </para>
+        /// </remarks>
+        /// <param name="prior">The state to reinterpret. Left exactly as it was found.</param>
+        /// <param name="theme">The theme the player picked.</param>
+        /// <param name="startDate">
+        /// The save's first political date — <c>January of AgoraSettings.StartYear</c>, the same value
+        /// <see cref="CreateInitialState"/> was given. Everything regenerated is seeded from it.
+        /// </param>
+        public static RethemeResult Retheme(PoliticalState? prior, RegionTheme theme, SimDate startDate,
+                                            EngineTuning? tuning)
+        {
+            if (prior == null) return new RethemeResult(CommandOutcome.Failed, null, false);
+
+            EngineTuning t = tuning ?? EngineTuning.Default;
+            AgoraSettings priorSettings = prior.Settings ?? new AgoraSettings();
+
+            // Asking for the theme the save already runs is not a change to refuse — it is a change
+            // that has already happened. Checked before the lock so that re-confirming your own theme
+            // after the first election reads as "yes, that is what you have" rather than as a refusal.
+            if (priorSettings.Theme == theme) return new RethemeResult(CommandOutcome.Ok, prior, false);
+
+            // ElectionHistory is the authority and ThemeLocked is the convenience. Both are checked so
+            // that a flag lost to a failed migration cannot open a hole in a rule the sidecar's own
+            // contents already settle: a save that has voted has a political history keyed to brands
+            // that must not be redefined under it.
+            if (prior.ElectionHistory.Count > 0 || priorSettings.ThemeLocked)
+                return new RethemeResult(CommandOutcome.ThemeLocked, prior, false);
+
+            AgoraSettings settings = priorSettings.Clone();
+            settings.Theme = theme;
+            settings.System = RegionThemeRules.SystemFor(theme);
+
+            PoliticalState state = CloneState(prior, prior.Date);
+            state.Settings = settings;
+
+            // Replaced, never merged: a party the old theme placed at party-03 and the new one places
+            // there too are different brands that happen to share a slot.
+            state.Parties = PartyRegistry.GenerateInitial(prior.SaveGuid, startDate, theme, t);
+
+            // Blocs survive — they are demography and know nothing about parties — but each one's
+            // memory of how it voted is a party-id vector, and CloneState shares the Bloc objects with
+            // the caller. So the blocs are copied here, shallowly, with that one field emptied.
+            state.Blocs = ClearPreviousVote(state.Blocs);
+
+            state.Factions = FactionModel.AppliesTo(settings)
+                ? FactionModel.Generate(state.Parties, state.Blocs, prior.SaveGuid, startDate, t)
+                : new List<Faction>();
+
+            FactionModel.ApplyFactionIds(state.Parties, state.Factions);
+
+            // The prose that date refers to described the old theme's brands and is discarded with
+            // them, so a date claiming it was produced is a claim about nothing. Nothing restores the
+            // payload from it today, which is exactly why it has to go now rather than when something
+            // does: a stale date here would be a lie waiting for its first reader.
+            state.LastFlavorDate = null;
+
+            state.CurrentVoteShares = new List<PartyVoteShare>();
+            state.CurrentDistrictStandings = new List<DistrictResult>();
+            state.RecentPolls = new List<PollResult>();
+            state.Government = null;
+            state.CoalitionHistory = new List<Coalition>();
+            state.Mandates = new List<Mandate>();
+            state.MayorPartyId = null;
+
+            // The term length changes with the system (3y ↔ 4y), so a date scheduled under the old one
+            // is wrong under the new one. Cleared rather than recomputed: Advance re-derives the first
+            // ballot from the start date once warmup is complete, and that is the only place that rule
+            // is allowed to live.
+            state.NextElectionDate = null;
+            state.IsCampaignSeason = false;
+            state.TermNumber = 1;
+
+            Normalize(state);
+            return new RethemeResult(CommandOutcome.Ok, state, true);
+        }
+
+        /// <summary>
+        /// Copies a bloc list with <see cref="Bloc.PreviousVote"/> emptied, leaving the originals
+        /// alone. Everything else about a bloc is demographic and theme-independent.
+        /// </summary>
+        private static List<Bloc> ClearPreviousVote(List<Bloc> blocs)
+        {
+            var copy = new List<Bloc>(blocs.Count);
+
+            for (int i = 0; i < blocs.Count; i++)
+            {
+                Bloc source = blocs[i];
+                if (source == null) continue;
+
+                copy.Add(new Bloc
+                {
+                    DistrictId = source.DistrictId,
+                    Key = source.Key,
+                    Population = source.Population,
+                    PopulationShare = source.PopulationShare,
+                    EligibleVoters = source.EligibleVoters,
+                    Weights = source.Weights,
+                    Ideal = source.Ideal,
+                    Happiness = source.Happiness,
+                    Discontent = source.Discontent,
+                    PreviousVote = new List<PartyVoteShare>(),
+                    HasCityFallbacks = source.HasCityFallbacks
+                });
+            }
+
+            return copy;
         }
 
         // ------------------------------------------------------------------ the tick

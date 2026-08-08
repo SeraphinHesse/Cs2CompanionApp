@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Agora.Core.Contracts
@@ -13,13 +14,38 @@ namespace Agora.Core.Contracts
     }
 
     /// <summary>
-    /// The regional flavour of the save. Selects which timeline catalogs load and which electoral
-    /// system is the default; overridable in per-save settings (§3).
+    /// The regional flavour of the save. Selects which timeline catalogs load, which naming
+    /// vocabulary the prose draws from, and — through <see cref="RegionThemeRules"/> — which
+    /// electoral system the save runs. Chosen by the player at first run (§3).
     /// </summary>
     public enum RegionTheme
     {
         Eu = 0,
         Na = 1
+    }
+
+    /// <summary>
+    /// What a <see cref="RegionTheme"/> implies. One function, so that the theme → system mapping
+    /// cannot be spelled twice and come to disagree with itself.
+    /// </summary>
+    /// <remarks>
+    /// It lives beside the two enums rather than in the engine because both sides of the boundary
+    /// need it: <c>PoliticalEngine</c> derives <see cref="AgoraSettings.System"/> from it at save
+    /// creation and at a retheme, and it is pure — no tuning, no seeds, no state.
+    /// </remarks>
+    public static class RegionThemeRules
+    {
+        /// <summary>
+        /// <see cref="RegionTheme.Na"/> runs first-past-the-post district races with a directly
+        /// elected mayor; everything else runs proportional list seats. There is no override: the
+        /// system is a property of the theme, not a separate choice (fixplan W3).
+        /// </summary>
+        public static ElectoralSystem SystemFor(RegionTheme theme)
+        {
+            return theme == RegionTheme.Na
+                ? ElectoralSystem.FirstPastThePost
+                : ElectoralSystem.Proportional;
+        }
     }
 
     /// <summary>
@@ -52,6 +78,29 @@ namespace Agora.Core.Contracts
         Dissolved = 2,
         Merged = 3,
         Revived = 4
+    }
+
+    /// <summary>
+    /// Party fields the player has taken ownership of. A locked field is never rewritten by flavor:
+    /// <see cref="IFlavorProvider"/> output for it is discarded, not merged.
+    ///
+    /// <para>A flag set rather than loose booleans on <see cref="Party"/>: it is one string on the
+    /// wire, it adds no <c>$defs</c> block to the state schema, and it matches
+    /// <see cref="LlmWakeCadence"/>, the flags enum already in this contract.</para>
+    ///
+    /// <para><b>Field mapping — this is the specification the enforcement point is written against.</b>
+    /// <see cref="NameLocked"/> covers <see cref="Party.Name"/> AND <see cref="Party.ShortName"/>;
+    /// <see cref="DescriptionLocked"/> covers <see cref="Party.Description"/> AND
+    /// <see cref="Party.Slogan"/>; <see cref="ColorLocked"/> covers <see cref="Party.ColorHex"/>.
+    /// Every flavor-owned string on <see cref="Party"/> is accounted for by exactly one flag.</para>
+    /// </summary>
+    [Flags]
+    public enum PartyOverrides
+    {
+        None = 0,
+        NameLocked = 1,
+        DescriptionLocked = 2,
+        ColorLocked = 4
     }
 
     /// <summary>
@@ -141,6 +190,13 @@ namespace Agora.Core.Contracts
 
         /// <summary>Number of times this brand has revived. Used for revival cooldown and prose.</summary>
         public int RevivalCount { get; set; }
+
+        /// <summary>
+        /// Which of this party's flavor-owned fields the player has taken over. Player-owned, not
+        /// engine-owned and not flavor-owned: nothing in Agora.Core writes it, and flavor must not
+        /// overwrite a field whose flag is set.
+        /// </summary>
+        public PartyOverrides PlayerOverrides { get; set; } = PartyOverrides.None;
     }
 
     /// <summary>

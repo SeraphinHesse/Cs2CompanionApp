@@ -135,6 +135,16 @@ namespace Agora.Mod.Llm
             get { lock (_gate) { return _lastGoodDocument; } }
         }
 
+        /// <summary>
+        /// True from <see cref="RequestFlavor"/> until the worker thread has finished everything it
+        /// intends to do, including the cache write.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately outlasts <see cref="State"/>: <see cref="Succeed"/> publishes the payload and
+        /// leaves <see cref="FlavorProviderState.Running"/> inside the lock, then writes the cache file
+        /// outside it, and only the worker's <c>finally</c> clears this flag. A caller that is about to
+        /// touch <c>flavor_cache.json</c> must gate on this, not on the state.
+        /// </remarks>
         public bool IsRunning
         {
             get { lock (_gate) { return _running; } }

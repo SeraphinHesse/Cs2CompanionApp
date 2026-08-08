@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 2**
+**schemaVersion: 4**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -9,6 +9,14 @@ must be listed here, and this file is the authority when the two sides disagree.
 **Frozen for M4.** Names and payload shapes in the *Registered bindings* table are law. Do not
 rename, do not add a field, do not reorder a sort key. If a panel needs something that is not here,
 report it — do not invent a binding name locally.
+
+**Unfrozen twice, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`) added three
+fields to `PartyBrief` on 2026-08-08 under `/schema-change`, which is the only route through the
+freeze: a version bump on this file, both sides moved in the same pass, and the reason written down.
+W3 then published `agora.state.settings` and `agora.state.isFirstRun` out of §8 and added
+`agora.state.setSetting`, the contract's first inbound `CallBinding` — three names that were
+**already reserved here**, so nothing was renamed and no existing payload moved. The freeze otherwise
+stands; these notes exist so the next reviewer reads authorised changes rather than violations.
 
 ---
 
@@ -75,8 +83,16 @@ These cross a Gameface bridge on every update. Keep them flat and bounded:
 | Cheap scalar, recomputed every UI tick | `GetterValueBinding<T>` + `AddUpdateBinding` | `bindValue` + `useValue` |
 | Payload pushed when the engine changes it | `ValueBinding<T>` + `AddBinding`, then `.Update(v)` | `bindValue` + `useValue` |
 | Per-key detail, fetched on demand | `GetterMapBinding<string,T>` + `AddBinding` | `bindMap` + `useMapValue` |
-| UI asks C# to do something | `TriggerBinding` + `AddBinding` | `bindTrigger` |
+| UI asks C# to do something, no answer needed | `TriggerBinding` + `AddBinding` | `bindTrigger` |
+| UI asks C# to do something **and needs the verdict** | `CallBinding<…,TResult>` + `AddBinding` | `call` |
 | UI-only state shared between panels | — | `bindLocalValue` — **never a round trip through C#** |
+
+A `CallBinding` returns a **`CommandOutcome` in wire form** (§4.6), never a payload and never a
+`bool`. The rule for choosing between the two inbound kinds: a trigger is right when the only
+possible failure is "the engine declined and that is fine" — `agora.news.wakeFlavor`, where a refused
+wake looks identical to a successful one that produced nothing. A call is required the moment the
+player must be told *why*, because a request that silently does not take is indistinguishable from a
+broken panel.
 
 Selection state (which district is open, which party is highlighted) is UI-only. Use
 `bindLocalValue`; do not add a binding for it.
@@ -85,8 +101,9 @@ Selection state (which district is open, which party is highlighted) is UI-only.
 
 ## 4. Registered bindings
 
-Direction is C# → UI for everything except the one trigger. "Cadence" is when the publisher calls
-`Update`, not how often the UI re-renders.
+Direction is C# → UI for everything except the two inbound bindings — `agora.news.wakeFlavor` (a
+trigger) and `agora.state.setSetting` (a call). Both are marked **UI → C#** in their own tables.
+"Cadence" is when the publisher calls `Update`, not how often the UI re-renders.
 
 ### 4.0 `agora.debug` — M0 pipeline proof (closed)
 
@@ -109,15 +126,47 @@ for anything that is *about* the political state; read it from here only to prov
 
 ### 4.1 `agora.state` — dashboard chrome
 
-| Binding | Kind | C# type | TS type | Cadence | Empty / loading | Since |
-|---|---|---|---|---|---|---|
-| `agora.state.enabled` | `GetterValueBinding<bool>` | `bool` | `boolean` | UI tick | `false` | M4 |
-| `agora.state.ready` | `GetterValueBinding<bool>` | `bool` | `boolean` | UI tick | `false` | M4 |
-| `agora.state.summary` | `ValueBinding<T>` | `AgoraStateSummary : IJsonWritable` | `Agora.StateSummary` | monthly + on election | `EMPTY_STATE_SUMMARY` | M4 |
+| Binding | Kind | Direction | C# type | TS type | Cadence | Empty / loading | Since |
+|---|---|---|---|---|---|---|---|
+| `agora.state.enabled` | `GetterValueBinding<bool>` | C# → UI | `bool` | `boolean` | UI tick | `false` | M4 |
+| `agora.state.ready` | `GetterValueBinding<bool>` | C# → UI | `bool` | `boolean` | UI tick | `false` | M4 |
+| `agora.state.summary` | `ValueBinding<T>` | C# → UI | `AgoraStateSummary : IJsonWritable` | `Agora.StateSummary` | monthly + on election | `EMPTY_STATE_SUMMARY` | M4 |
+| `agora.state.settings` | `ValueBinding<T>` | C# → UI | `SettingsPayload : IJsonWritable` | `Agora.SettingsPayload` | monthly + on every accepted `setSetting` | `EMPTY_SETTINGS` | W3 |
+| `agora.state.isFirstRun` | `GetterValueBinding<bool>` | C# → UI | `bool` | `boolean` | UI tick | `false` | W3 |
+| `agora.state.setSetting` | `CallBinding<string,string,string>` | **UI → C#** | `(key, value) => CommandOutcome` | `(key: string, value: string) => Promise<Agora.CommandOutcomeName>` | on click | n/a | W3 |
 
 `enabled` is the master toggle — when false a panel renders `null`, not a disabled shell. `ready` is
 true once the engine has published a political state at least once; until then panels render a
 skeleton, because every other binding in this contract is still at its empty value.
+
+`settings` is the per-save settings document, sidecar-backed and **never global config**
+(non-negotiable #10). It is a mirror: the panel renders it and writes through `setSetting`, never the
+other way round.
+
+`isFirstRun` is a **one-shot lifecycle signal** — this save has never chosen a region theme. True
+only when the sidecar carried neither a political state nor a settings document; it goes false the
+moment the theme is chosen or the dialog is dismissed, and it is never persisted. It is a getter, not
+a pushed value, because it must flip inside the same UI tick that answered the prompt — the sim is
+paused while the dialog is open and there is no engine tick to push on. It is deliberately **not** a
+field of `SettingsPayload`: putting a value the sidecar never stores inside the payload that mirrors
+the sidecar is how the two come to disagree.
+
+`setSetting` is the contract's first write channel. Keys, and their legal values:
+
+| Key | Value | Effect |
+|---|---|---|
+| `theme` | `"Eu"` \| `"Na"` | Regenerates the party registry, factions, standings, polls, government and mandates at the save's start date. Rejected with `ThemeLocked` once an election has been held; `Busy` while a prose generation is in flight. |
+| `pauseOnMajorNews` | `"true"` \| `"false"` | Per-save (W5). |
+| `showAllReports` | `"true"` \| `"false"` | Per-save (W5). |
+| `effectsEnabled` | `"true"` \| `"false"` | The per-save effect kill switch. |
+| `dismissFirstRun` | ignored | Clears `isFirstRun` without changing a setting. Not persisted. |
+
+Anything else returns `UnknownKey`. A theme change **destroys** the political state built under the
+old theme — party ids are reused across themes with different meanings, so nothing keyed to one can
+survive. That is why the guard is the election history rather than a flag, and why the panel must
+confirm before calling.
+
+Outcome codes are a closed set — see §4.6.
 
 ### 4.2 `agora.parties` — shared lookup table
 
@@ -125,6 +174,10 @@ skeleton, because every other binding in this contract is still at its empty val
 |---|---|---|---|---|---|---|
 | `agora.parties.roster` | `ValueBinding<T>` | `List<PartyBrief>` | `Agora.PartyBrief[]` | on party lifecycle change (rare) + monthly | `[]` | M4 |
 | `agora.parties.factions` | `ValueBinding<T>` | `List<FactionBrief>` | `Agora.FactionBrief[]` | on faction lifecycle change (rare) + monthly | `[]` | M4 |
+
+`PartyBrief` gained `nameLocked`, `descriptionLocked` and `colorLocked` in plan 0001, ahead of W4's
+party editing. The publisher fills them from `Party.PlayerOverrides` today; **no panel consumes them
+yet**, and rendering them is W4's work, not a gap to be filled opportunistically.
 
 **Every other payload in this contract identifies a party by `partyId` only.** Name, short name and
 colour are looked up here. Do not duplicate party metadata into seat rows, district rows or news
@@ -230,6 +283,27 @@ A mandate with `isMeasurementStalled === true` is **held, not failing**. Render 
 render its progress bar as falling behind, and never show it as `Defied` because the clock ran out
 while its metric was unreadable.
 
+### 4.6 Outcome codes — the closed set
+
+Every inbound `CallBinding` in this contract returns one of these, and only these. Mirrors
+`Agora.Core.Contracts.CommandOutcome`; the TypeScript union is `Agora.CommandOutcomeName`. A new
+reason is added to the **C# enum first**, then here, then to the `.d.ts` — W4's party editors extend
+this set rather than starting a parallel one.
+
+| Wire | Meaning |
+|---|---|
+| `""` | Accepted, or already true — nothing needed to happen. `Ok` crosses as the empty string, not as `"Ok"`, so the panel's test is a falsy check. |
+| `NoActiveSave` | No save is loaded, or the political layer never came up for this one. |
+| `UnknownKey` | This build does not recognise the setting or field name. |
+| `BadValue` | The name was recognised; the value was not legal for it. |
+| `ThemeLocked` | The save has held an election; the region theme is history. |
+| `Busy` | Something the request would tear down is in flight. Retry shortly. |
+| `Failed` | It failed for a reason the player cannot act on. The detail is in `Agora.log`. |
+
+**Engine-authored, always** — never an exception message, never `ex.Message`, never model output.
+Same rule and same reason as `flavorStatus.lastError` (§4.5): the panel switches on the value, and a
+string that varies with the machine cannot be switched on.
+
 ---
 
 ## 5. Payload shapes
@@ -244,8 +318,11 @@ Summarised here so a C# publisher author does not have to read TypeScript:
 ```
 StateSummary        schemaVersion, date, termNumber, system, theme, nextElectionDate,
                     isCampaignSeason, weeksToElection, mayorPartyId
+SettingsPayload     schemaVersion, startYear, theme, system, themeLocked, pauseOnMajorNews,
+                    showAllReports, effectsEnabled
 PartyBrief          id, name, shortName, colorHex, status, isIncumbent, isInGovernment,
-                    coreGrievance, foundedDate, dissolvedDate
+                    coreGrievance, foundedDate, dissolvedDate, nameLocked, descriptionLocked,
+                    colorLocked
 FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
                     tensionWithParty, status, coreGrievance
 PartyShare          partyId, share
@@ -294,6 +371,12 @@ FlavorStatus        lastFlavorDate, lastAttemptDate, isStale, providerAvailable,
 Render them; never parse them, never sort by them, never derive a number from them. Everything else
 is engine-owned.
 
+**Except where the player has taken over.** A `PartyBrief` field whose lock is set —
+`nameLocked` for `name`/`shortName`, `descriptionLocked`, `colorLocked` for `colorHex` — is
+**player-owned**, not flavor-owned. The UI must not offer to regenerate it without first offering
+"reset to generated", and must never present it as LLM output. A player who names their party and
+then sees it described as generated text has been told the mod is going to overwrite it.
+
 ---
 
 ## 6. Empty / loading values
@@ -307,6 +390,11 @@ panels are authored in parallel.
 const EMPTY_STATE_SUMMARY: Agora.StateSummary = {
   schemaVersion: 0, date: "", termNumber: 0, system: "Proportional", theme: "Eu",
   nextElectionDate: "", isCampaignSeason: false, weeksToElection: -1, mayorPartyId: "",
+};
+
+const EMPTY_SETTINGS: Agora.SettingsPayload = {
+  schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
+  themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
 };
 
 const EMPTY_CITY_INDICES: Agora.CityIndices = {
@@ -355,8 +443,14 @@ stays distinguishable from "there is no election".
 4. **Complex payloads implement `IJsonWritable`.** Do not hand-serialize to a JSON string and parse
    it on the JS side — that defeats the binding layer's change tracking.
 5. **Bindings are a view, never a channel for engine state.** The UI reads politics; it does not
-   compute or mutate it. A `TriggerBinding` may request an action; the engine decides what happens.
-   No panel recomputes a share, a seat count or an index — if a number is needed, it is published.
+   compute or mutate it. No panel recomputes a share, a seat count or an index — if a number is
+   needed, it is published.
+   **A write binding does not weaken this, because a call *requests*.** The engine validates,
+   decides, and says so in the return code (§4.6). Nothing the panel sends is state until the engine
+   has made it state, and **no panel may compute a rejection the C# side did not return** — greying a
+   control out because the panel believes the theme is locked is the same defect as recomputing a
+   seat count, and it will be wrong on the tick the two disagree. Disable a control from a *published*
+   value (`settings.themeLocked`); report a refusal from the *returned* code.
 6. **Update cost matters.** `GetterValueBinding` re-evaluates on the UI update tick — keep getters
    cheap, and never run an `EntityQuery` inside one. Cache in a simulation system, expose the cached
    field. Only scalars are getters; every payload is a pushed `ValueBinding` or an on-demand map.
@@ -384,7 +478,12 @@ gets an empty panel and no error.
 | `agora.districts.blocs` | the full 60-bloc breakdown behind a crosstab cell | M6 |
 | `agora.news.archive` | paged news archive beyond the 40-item feed | M6 |
 | `agora.news.markRead` | UI → C# read-state persistence | M6 |
-| `agora.state.settings` | per-save settings editor surface | M6 |
+
+**Moved out in W3, on 2026-08-08.** `agora.state.settings`, `agora.state.setSetting` and
+`agora.state.isFirstRun` were reserved here with `SettingsPayload`'s eight-field shape fixed in
+advance. All three are now **published** and live in §4.1; the shape they shipped with is the shape
+reserved here, unchanged. Reserving first and implementing second is what rule 1 asks for, and this
+is what it looks like when it works.
 
 ---
 

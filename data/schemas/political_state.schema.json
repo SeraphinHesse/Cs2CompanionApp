@@ -102,7 +102,11 @@
         "successorPartyId": { "type": ["string", "null"] },
         "factionIds": { "$ref": "#/$defs/idList" },
         "coreGrievance": { "$ref": "#/$defs/issue" },
-        "revivalCount": { "type": "integer", "minimum": 0 }
+        "revivalCount": { "type": "integer", "minimum": 0 },
+        "playerOverrides": {
+          "type": "string",
+          "$comment": "Flags enum, comma-separated member list. 'None' | any combination of 'NameLocked', 'DescriptionLocked', 'ColorLocked'. Player-owned: neither the engine nor the LLM writes it."
+        }
       }
     },
 
@@ -371,7 +375,7 @@
       "required": ["schemaVersion", "startYear", "theme", "system"],
       "$comment": "Per-save settings live here and nowhere else (non-negotiable #10). The only global settings are the master toggle and anything that must work before a save exists.",
       "properties": {
-        "schemaVersion": { "type": "integer", "const": 1 },
+        "schemaVersion": { "type": "integer", "const": 2 },
         "startYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
         "theme": { "type": "string", "enum": ["Eu", "Na"] },
         "system": { "type": "string", "enum": ["Proportional", "FirstPastThePost"] },
@@ -381,13 +385,16 @@
         },
         "snapshotRetention": { "type": "integer", "minimum": 1 },
         "enabled": { "type": "boolean" },
-        "effectsEnabled": { "type": "boolean" }
+        "effectsEnabled": { "type": "boolean" },
+        "themeLocked": { "type": "boolean" },
+        "pauseOnMajorNews": { "type": "boolean" },
+        "showAllReports": { "type": "boolean" }
       }
     }
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
+    "schemaVersion": { "type": "integer", "const": 2 },
     "saveGuid": {
       "type": "string",
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",

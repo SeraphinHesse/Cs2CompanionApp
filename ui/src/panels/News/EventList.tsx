@@ -1,6 +1,6 @@
 import styles from "./NewsPanel.module.scss";
 import { Lookups } from "./lookup";
-import { cx, formatSimDate, humanizeEnum, SEVERITY_STEPS } from "./format";
+import { cx, formatSimDate, SEVERITY_STEPS } from "./format";
 
 /**
  * Active timeline events — the world the headlines are reacting to.
@@ -20,6 +20,29 @@ const MAX_DISTRICT_CHIPS = 3;
 
 /** Tags shown on one event. The list is unbounded on the wire; the row is not. */
 const MAX_TAG_CHIPS = 4;
+
+/**
+ * `origin` in plain English.
+ *
+ * It was going through `humanizeEnum`, which inserts a space before an inner capital and therefore
+ * does nothing at all to any of the three values this enum has. The player was reading the raw
+ * member name: "Catalog", "Procedural", "Political". Two of those are engine vocabulary — "Catalog"
+ * means the curated real-world timeline in `data/timeline_*.json`, and "Procedural" means generated
+ * from a seeded archetype once that timeline runs out. Neither is guessable from the outside, so
+ * they are named for what they are instead of for where they came from.
+ *
+ * An unknown value falls through to the raw string rather than to a placeholder: a member added on
+ * the C# side should show up as itself, not silently render as something else.
+ */
+const ORIGIN_LABEL: { [origin: string]: string } = {
+  Catalog: "World news",
+  Procedural: "The wider world",
+  Political: "City politics",
+};
+
+function originLabel(origin: string): string {
+  return ORIGIN_LABEL[origin] || origin;
+}
 
 export const EventList = ({ events, lookups }: EventListProps) => {
   if (events.length === 0) {
@@ -58,7 +81,7 @@ const EventItem = ({ event, lookups }: EventItemProps) => {
       <div className={styles.metaRow}>
         {/* firedDate is when it landed on this city; date is the catalog date it belongs to. */}
         <span className={styles.metaDate}>{formatSimDate(event.firedDate || event.date)}</span>
-        <span className={styles.metaKind}>{humanizeEnum(event.origin)}</span>
+        <span className={styles.metaKind}>{originLabel(event.origin)}</span>
         <span className={styles.chip}>{event.region}</span>
         {event.durationMonths > 0 ? (
           <span className={styles.chip}>{String(event.durationMonths)} mo</span>

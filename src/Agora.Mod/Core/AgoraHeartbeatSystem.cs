@@ -1,6 +1,7 @@
 using System;
 using Agora.Core.Contracts;
 using Agora.Mod.Time;
+using Colossal.Serialization.Entities;
 using Game;
 
 namespace Agora.Mod.Core
@@ -63,6 +64,30 @@ namespace Agora.Mod.Core
                 AgoraMod.Log.Error(ex, "Agora heartbeat could not initialise; the political layer is " +
                                        "inactive for this session.");
             }
+        }
+
+        /// <summary>
+        /// Drops the cadence latches for the save that is loading.
+        /// </summary>
+        /// <remarks>
+        /// This system instance outlives an individual save — the world is re-used across "quit to
+        /// menu, load another city" — so <see cref="_lastTickedDay"/> still holds the date city A
+        /// stopped on. Load city B on that same in-game date and the gate in <see cref="OnUpdate"/>
+        /// sees no change and skips the tick entirely, leaving the political layer idle until the
+        /// date rolls over. <c>GameSystemBase.OnCreate</c> has already subscribed us to
+        /// <c>GameManager.onGamePreload</c>, so this needs no hook of its own; it is raised from
+        /// <c>LoadSimulationData</c> and therefore never during a save.
+        /// </remarks>
+        protected override void OnGamePreload(Purpose purpose, GameMode mode)
+        {
+            base.OnGamePreload(purpose, mode);
+
+            // Unconditional, and deliberately not gated on purpose or mode: a latch carried into the
+            // editor or the main menu is just as wrong as one carried into another city.
+            _lastTickedDay = default(SimDate);
+            _hasTicked = false;
+            _lastLoggedDay = default(SimDate);
+            _hasLogged = false;
         }
 
         protected override void OnUpdate()

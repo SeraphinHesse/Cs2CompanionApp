@@ -1,0 +1,118 @@
+// The two region flags, drawn in CSS.
+//
+// No image asset, deliberately. There are no images anywhere in this mod and no `coui://` reference
+// either, and `webpack.config.js` sets `publicPath` to `coui://ui-mods/` while emitting into
+// `Mods/<mod id>/` — the two do not agree, so an emitted asset URL is unlikely to resolve. The place
+// to find that out is not a modal that holds the simulation paused.
+//
+// Coherent Gameface supports the flex layout model only; `display: grid` fails silently. Absolute
+// positioning is fine and is what places the ring of European stars. The stripes and the American
+// canton are plain flex children, because a flex column of thirteen equal boxes is exactly what a
+// striped flag is.
+//
+// Geometry is `rem` — the CS2 interface unit, so the flags scale with the rest of the HUD.
+
+@use "sass:math";
+
+@use "./tokens" as *;
+
+$flag-width: 96rem;
+$flag-height: 64rem;
+
+@mixin flag-base {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  width: $flag-width;
+  height: $flag-height;
+  border-radius: 3rem;
+  border: 1rem solid $line-strong;
+  // The stripes and the canton are square-cornered children of a rounded box.
+  overflow: hidden;
+}
+
+// ---- Europe -------------------------------------------------------------------------------------
+
+.euFlag {
+  @include flag-base;
+  background-color: #003399;
+}
+
+// Twelve stars on a circle, at 30° intervals, first at twelve o'clock. Circles rather than
+// five-pointed stars: at 7rem a point is one pixel wide, and `clip-path` is not something to rely on
+// here. The ring is what makes the flag readable at this size, not the shape of each mark.
+$eu-ring-radius: 20rem;
+$eu-star-size: 7rem;
+
+@for $i from 0 through 11 {
+  $angle: $i * 30deg;
+
+  .euStar#{$i} {
+    position: absolute;
+    display: flex;
+    width: $eu-star-size;
+    height: $eu-star-size;
+    border-radius: $eu-star-size;
+    background-color: #ffcc00;
+    left: math.div($flag-width - $eu-star-size, 2) + $eu-ring-radius * math.sin($angle);
+    top: math.div($flag-height - $eu-star-size, 2) - $eu-ring-radius * math.cos($angle);
+  }
+}
+
+// ---- United States ------------------------------------------------------------------------------
+
+.usFlag {
+  @include flag-base;
+  background-color: #ffffff;
+}
+
+// Thirteen stripes. `flex: 1 1 0` rather than a height, so the set always fills the flag exactly
+// however the interface is scaled — thirteen does not divide 64 evenly and a rounded height would
+// leave a seam at the bottom.
+@mixin us-stripe {
+  display: flex;
+  flex: 1 1 0;
+  width: 100%;
+}
+
+.usStripeRed {
+  @include us-stripe;
+  background-color: #b22234;
+}
+
+.usStripeWhite {
+  @include us-stripe;
+  background-color: #ffffff;
+}
+
+// The canton covers the top seven stripes, which is 7/13 of the height.
+.usCanton {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  left: 0;
+  top: 0;
+  width: 40rem;
+  height: math.div($flag-height * 7, 13);
+  padding: 2rem 3rem;
+  background-color: #3c3b6e;
+}
+
+.usStarRow {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
+  width: 100%;
+}
+
+.usStar {
+  display: flex;
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 3rem;
+  background-color: #ffffff;
+}

@@ -36,6 +36,18 @@ namespace Agora.Mod.Llm
         public ClaudeCliProvider Cli => _cli;
 
         /// <summary>
+        /// Which layer produced the most recent non-null payload. A null poll leaves it alone, since
+        /// the caller is still holding the payload it describes.
+        /// </summary>
+        /// <remarks>
+        /// The layer is the only place that knows, and <see cref="FlavorPayload"/> deliberately
+        /// carries no provenance field — it is a prose contract, and this is a detail of who assembled
+        /// it. The runtime needs it to decide whether a name it just wrote is a canned stopgap that a
+        /// real document may still improve on, or the real document itself.
+        /// </remarks>
+        public FlavorPayloadSource LastPayloadSource { get; private set; } = FlavorPayloadSource.None;
+
+        /// <summary>
         /// Model prose wins when it is ready; canned prose fills every other poll. Null means the
         /// caller keeps what it already has.
         /// </summary>
@@ -44,10 +56,16 @@ namespace Agora.Mod.Llm
             if (_cli != null)
             {
                 FlavorPayload fresh = _cli.TryGetFlavor(snapshot, date);
-                if (fresh != null) return fresh;
+                if (fresh != null)
+                {
+                    LastPayloadSource = FlavorPayloadSource.Cli;
+                    return fresh;
+                }
             }
 
-            return _pool != null ? _pool.TryGetFlavor(snapshot, date) : null;
+            FlavorPayload canned = _pool != null ? _pool.TryGetFlavor(snapshot, date) : null;
+            if (canned != null) LastPayloadSource = FlavorPayloadSource.Pool;
+            return canned;
         }
 
         /// <summary>Starts a model generation. False when there is no CLI provider or one is in flight.</summary>
@@ -60,10 +78,36 @@ namespace Agora.Mod.Llm
         /// <summary>For the dashboard's status line.</summary>
         public FlavorProviderState State => _cli != null ? _cli.State : FlavorProviderState.Unavailable;
 
+        /// <summary>
+        /// True while the CLI worker thread is still on its feet — which outlasts
+        /// <see cref="FlavorProviderState.Running"/>.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="State"/> moves to <c>Succeeded</c> inside the lock that publishes the payload,
+        /// but the worker then writes <c>flavor_cache.json</c> outside that lock and only afterwards
+        /// clears its running flag. Anything that must not race the cache file — the retheme's delete,
+        /// above all — has to ask this rather than <see cref="State"/>, because between those two
+        /// points the provider looks idle and the file has not been written yet.
+        /// </remarks>
+        public bool IsGenerating => _cli != null && _cli.IsRunning;
+
         public void Dispose()
         {
             if (_cli != null) _cli.Dispose();
         }
+    }
+
+    /// <summary>Which half of <see cref="LayeredFlavorProvider"/> assembled a payload.</summary>
+    public enum FlavorPayloadSource
+    {
+        /// <summary>Nothing has been produced yet.</summary>
+        None = 0,
+
+        /// <summary>Authored by the model — or cached from an earlier model run, which is the same thing.</summary>
+        Cli = 1,
+
+        /// <summary>Canned prose from <see cref="StaticPoolProvider"/>.</summary>
+        Pool = 2
     }
 
     /// <summary>Standard construction, in one call.</summary>

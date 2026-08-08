@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useMapValue } from "cs2/api";
+import { Tooltip } from "cs2/ui";
 import { EMPTY_DISTRICT_DETAIL, districtCrosstab$, districtDetail$ } from "./bindings";
 import {
   BarSegment,
@@ -38,6 +39,27 @@ const WEALTH_COLORS = ["#6f8398", "#9db8d0", "#e0c489"];
 const EDUCATION_COLORS = ["#5c6a78", "#748b9a", "#8fa8ab", "#a9c1b4", "#c7dcc9"];
 
 const AGE_COLORS = ["#c9a06a", "#b98b8b", "#7f9fc0", "#8d8fa8"];
+
+/**
+ * `decidedByTieBreak` used to render as a bare "TIE-BREAK" chip, which names a thing without
+ * saying what it means or what it implies about the number sitting next to it. The badge now
+ * carries a phrase, with the rule behind a tooltip so the row stays one line.
+ */
+const TieBreakBadge = (): JSX.Element => (
+  <Tooltip
+    direction="up"
+    tooltip={
+      <div className={styles.tip}>
+        The top two parties finished too close to separate, so the seat went to the engine's
+        tie-break rather than to a lead. The tie-break is seeded, not a live coin flip: the same
+        save on the same date always resolves it the same way. Read the margin beside it as
+        effectively nothing.
+      </div>
+    }
+  >
+    <span className={styles.tieBadge}>Too close to call - tie-break</span>
+  </Tooltip>
+);
 
 export const DistrictDetailPane = (props: {
   districtId: string;
@@ -211,7 +233,7 @@ export const DistrictDetailPane = (props: {
         <CityValue field="margin" fallbacks={fallbacks}>
           <span className={styles.winnerMargin}>{points(detail.margin)}</span>
         </CityValue>
-        {detail.decidedByTieBreak ? <span className={styles.tieBadge}>TIE-BREAK</span> : null}
+        {detail.decidedByTieBreak ? <TieBreakBadge /> : null}
         {props.system === "FirstPastThePost" ? (
           <span className={styles.seatBadge}>{int(detail.seats)} seat</span>
         ) : null}

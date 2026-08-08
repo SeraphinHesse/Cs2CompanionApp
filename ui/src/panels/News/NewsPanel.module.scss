@@ -15,16 +15,8 @@
 //   * every scrolling region is `flex: 1 1 auto` over `min-height: 0`, or it will grow forever
 //     instead of scrolling.
 
-$text: #ffffff;
-$text-dim: rgba(255, 255, 255, 0.62);
-$text-faint: rgba(255, 255, 255, 0.4);
-$surface: rgba(8, 10, 14, 0.86);
-$surface-raised: rgba(255, 255, 255, 0.05);
-$line: rgba(255, 255, 255, 0.12);
-$accent: #4ea3ff;
-$good: #4fbf7a;
-$warn: #e0a33e;
-$bad: #e0603e;
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
 
 // Shared containment for any block of free text coming off the flavor layer.
 @mixin prose {
@@ -290,7 +282,7 @@ $bad: #e0603e;
 }
 
 .chipDim {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: $surface-inset;
   color: $text-faint;
 }
 
@@ -339,11 +331,11 @@ $bad: #e0603e;
   align-items: stretch;
   min-width: 0;
   padding: 8rem 10rem;
-  border-bottom: 1rem solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1rem solid $line-soft;
 }
 
 .feedItemReadable:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: $surface-raised;
 }
 
 .feedItemBody {
@@ -448,7 +440,7 @@ $bad: #e0603e;
   flex-direction: column;
   min-width: 0;
   padding: 8rem 10rem;
-  border-bottom: 1rem solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1rem solid $line-soft;
 }
 
 .eventTitle {
@@ -476,7 +468,7 @@ $bad: #e0603e;
   align-items: stretch;
   min-width: 0;
   padding: 8rem 10rem;
-  border-bottom: 1rem solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1rem solid $line-soft;
 }
 
 // A mandate whose metric is unreadable is HELD, not failing. It reads as paused, never as behind.
@@ -565,11 +557,23 @@ $bad: #e0603e;
   text-overflow: ellipsis;
 }
 
+// Bar and figure on one row, so the percentage is read as belonging to the fill beside it.
+.progressRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+}
+
 .progressValue {
   display: flex;
   flex: 0 0 auto;
+  justify-content: flex-end;
+  width: 34rem;
+  margin-left: 6rem;
   font-size: 12rem;
   font-weight: bold;
+  font-variant-numeric: tabular-nums;
 }
 
 .progressValueHeld {
@@ -580,10 +584,12 @@ $bad: #e0603e;
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  flex: 0 0 auto;
+  // Takes the slack in the row; min-width: 0 keeps it shrinkable beside the fixed figure.
+  flex: 1 1 auto;
+  min-width: 0;
   height: 5rem;
   border-radius: 3rem;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: $surface-track;
   overflow: hidden;
 }
 

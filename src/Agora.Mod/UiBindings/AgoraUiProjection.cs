@@ -44,6 +44,26 @@ namespace Agora.Mod.UiBindings
         }
 
         /// <summary>
+        /// The per-save settings, straight across. Null settings publish the contract's defaults
+        /// rather than nothing, so the panel never has to distinguish "not loaded" from "off".
+        /// </summary>
+        internal static SettingsPayload BuildSettings(Agora.Core.Contracts.AgoraSettings settings)
+        {
+            var payload = new SettingsPayload();
+            if (settings == null) return payload;
+
+            payload.SchemaVersion = settings.SchemaVersion;
+            payload.StartYear = settings.StartYear;
+            payload.Theme = settings.Theme.ToString();
+            payload.System = settings.System.ToString();
+            payload.ThemeLocked = settings.ThemeLocked;
+            payload.PauseOnMajorNews = settings.PauseOnMajorNews;
+            payload.ShowAllReports = settings.ShowAllReports;
+            payload.EffectsEnabled = settings.EffectsEnabled;
+            return payload;
+        }
+
+        /// <summary>
         /// Whole weeks from <paramref name="today"/> to the ballot, or -1 when none is scheduled.
         /// </summary>
         /// <remarks>
@@ -87,7 +107,10 @@ namespace Agora.Mod.UiBindings
                     IsInGovernment = party.IsInGovernment,
                     CoreGrievance = party.CoreGrievance.ToString(),
                     FoundedDate = party.FoundedDate,
-                    DissolvedDate = party.DissolvedDate
+                    DissolvedDate = party.DissolvedDate,
+                    NameLocked = (party.PlayerOverrides & PartyOverrides.NameLocked) != 0,
+                    DescriptionLocked = (party.PlayerOverrides & PartyOverrides.DescriptionLocked) != 0,
+                    ColorLocked = (party.PlayerOverrides & PartyOverrides.ColorLocked) != 0
                 });
             }
 

@@ -1,0 +1,70 @@
+// AGORA design tokens — the single source for surface, text, line, accent and status colours.
+//
+// Before this file each panel declared its own palette and none of them agreed: four surfaces at
+// four different opacities, the lowest of which was 0.62 over a moving city. A panel that wants a
+// colour takes it from here. Declaring a `$surface` of your own is a build failure — the guard in
+// `tools/css-presence.js` checks for it, because that is precisely how the four drifted apart.
+//
+// Consume it with `@use "…/shell/tokens" as *;` at the top of the panel stylesheet.
+//
+// Coherent Gameface has no `backdrop-filter`, so opacity is the only lever for separating the
+// dashboard from the city underneath it. The body surface is therefore near-solid and every raised
+// or inset surface is expressed as a white wash **relative to that body**, never as its own
+// absolute rgba. Change $surface and the whole stack moves with it.
+
+// ---- surfaces ---------------------------------------------------------------------------------
+
+/// Panel body and shell bar. The one absolute surface in the build.
+$surface: rgba(8, 10, 14, 0.94);
+
+/// Raised off the body: chips, readouts, notices.
+$surface-raised: rgba(255, 255, 255, 0.05);
+
+/// A shade below raised — a chip that is present but deliberately quiet.
+$surface-inset: rgba(255, 255, 255, 0.03);
+
+/// Row hover, and the resting fill of a selectable row.
+$surface-hover: rgba(255, 255, 255, 0.1);
+
+/// Track behind any progress or meter fill.
+$surface-track: rgba(255, 255, 255, 0.12);
+
+// ---- text -------------------------------------------------------------------------------------
+
+$text: #ffffff;
+
+/// Secondary text. 0.62 before W1 — legible on a screenshot, not on a city at speed 3.
+$text-dim: rgba(255, 255, 255, 0.72);
+
+/// Tertiary text: dates, unit labels, counts. 0.4 before W1.
+$text-faint: rgba(255, 255, 255, 0.55);
+
+// ---- lines ------------------------------------------------------------------------------------
+
+/// Section rules and panel dividers.
+$line: rgba(255, 255, 255, 0.12);
+
+/// Between two rows of the same list — present, but not a section break.
+$line-soft: rgba(255, 255, 255, 0.06);
+
+/// A border that is doing work: a selected row, an outlined control.
+$line-strong: rgba(255, 255, 255, 0.3);
+
+// ---- accent and status ------------------------------------------------------------------------
+
+$accent: #4ea3ff;
+$good: #4fbf7a;
+$warn: #e0a33e;
+$bad: #e0603e;
+
+// ---- city fallback ----------------------------------------------------------------------------
+//
+// `hasCityFallbacks` is a rendering obligation (ui_bindings.md §4.4), so its tint is a token and
+// not a per-file literal: a district figure wearing a city number must look the same everywhere.
+
+$fallback: rgba(255, 196, 96, 0.9);
+$fallback-line: rgba(255, 196, 96, 0.55);
+$fallback-wash: rgba(255, 196, 96, 0.12);
+
+/// Opacity applied to a whole block that fell back to a city number.
+$fallback-dim: 0.62;

@@ -57,6 +57,12 @@ const CHART_WIDTH = 296;
 /** Used when a party id has no roster entry — a party can be dissolved between two publishes. */
 const UNKNOWN_COLOR = "#78828f";
 
+/**
+ * Shown wherever a party exists but has no usable name yet — either it has no roster entry or the
+ * flavor layer has not authored one. A raw id is never rendered to the player.
+ */
+const UNNAMED_PARTY = "Unnamed party";
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -71,7 +77,7 @@ interface ChartRow {
   voteShare: number;
   passedThreshold: boolean;
   color: string;
-  /** shortName if the flavor layer has produced one, else name, else the raw id. */
+  /** shortName if the flavor layer has produced one, else name, else the placeholder. */
   label: string;
   inGovernment: boolean;
   isLead: boolean;
@@ -134,13 +140,23 @@ function governmentLabel(status: Agora.CoalitionStatusName): string {
   }
 }
 
+/**
+ * FLAVOR. A missing roster entry and an entry with empty names are different states in the data but
+ * read the same to the player, so both land on the placeholder.
+ */
+function partyLabel(party: Agora.PartyBrief | undefined): string {
+  if (!party) {
+    return UNNAMED_PARTY;
+  }
+  return party.shortName || party.name || UNNAMED_PARTY;
+}
+
 function toChartRow(
   row: Agora.SeatRow,
   party: Agora.PartyBrief | undefined,
   inGovernment: boolean,
   isLead: boolean
 ): ChartRow {
-  const label = party ? party.shortName || party.name || party.id : row.partyId;
   return {
     partyId: row.partyId,
     seats: row.seats,
@@ -148,7 +164,7 @@ function toChartRow(
     voteShare: row.voteShare,
     passedThreshold: row.passedThreshold,
     color: party && party.colorHex ? party.colorHex : UNKNOWN_COLOR,
-    label: label || "—",
+    label: partyLabel(party),
     inGovernment,
     isLead,
   };
@@ -284,11 +300,9 @@ export const SeatsPanel = () => {
 
   const mayorParty = mayor ? partyById[mayor.partyId] : undefined;
   const mayorColor = mayorParty && mayorParty.colorHex ? mayorParty.colorHex : UNKNOWN_COLOR;
-  const mayorPartyLabel = mayorParty
-    ? mayorParty.shortName || mayorParty.name || mayorParty.id
-    : mayor
-    ? mayor.partyId
-    : "";
+  // "" only when there is no mayor, or the mayor carries no party at all — both cases render no
+  // party text. A mayor whose party is unnamed or missing from the roster gets the placeholder.
+  const mayorPartyLabel = mayor && mayor.partyId ? partyLabel(mayorParty) : "";
 
   return (
     <div className={styles.panel}>
@@ -368,9 +382,12 @@ export const SeatsPanel = () => {
             {blocs.government.length === 0 ? (
               <span className={styles.chipEmpty}>None</span>
             ) : (
-              blocs.government.map(function (row) {
-                return <PartyChip key={row.partyId} row={row} />;
-              })
+              <>
+                <ChipHeader />
+                {blocs.government.map(function (row) {
+                  return <PartyChip key={row.partyId} row={row} />;
+                })}
+              </>
             )}
           </div>
         </div>
@@ -386,9 +403,12 @@ export const SeatsPanel = () => {
             {blocs.opposition.length === 0 ? (
               <span className={styles.chipEmpty}>None</span>
             ) : (
-              blocs.opposition.map(function (row) {
-                return <PartyChip key={row.partyId} row={row} />;
-              })
+              <>
+                <ChipHeader />
+                {blocs.opposition.map(function (row) {
+                  return <PartyChip key={row.partyId} row={row} />;
+                })}
+              </>
             )}
           </div>
         </div>
@@ -396,6 +416,10 @@ export const SeatsPanel = () => {
 
       {government ? (
         <div className={styles.meters}>
+          <div className={styles.metersHead}>
+            <span className={styles.metersTitle}>Government health</span>
+            <span className={styles.metersHint}>{METER_HINT}</span>
+          </div>
           <Meter label="Stability" value={government.stability} />
           <Meter label="Cohesion" value={government.cohesion} />
         </div>
@@ -427,7 +451,7 @@ export const SeatsPanel = () => {
             return (
               <span key={row.partyId} className={styles.footerItem}>
                 <span className={styles.footerSwatch} style={{ backgroundColor: row.color }} />
-                {row.label} {pct(row.voteShare)}
+                {row.label} {pct(row.voteShare)} of the vote
                 {row.passedThreshold ? "" : "*"}
               </span>
             );
@@ -443,6 +467,23 @@ export const SeatsPanel = () => {
 
 // -- small pieces --------------------------------------------------------------------------------
 
+/**
+ * Column headings for the party rows below.
+ *
+ * The two numbers on a row used to sit side by side with nothing to say what they were — "25 45%"
+ * reads as a ratio, a score, or one number over another. They are a seat count and a share of the
+ * vote, which are not the same quantity and can disagree sharply under either electoral system.
+ * The panel is too narrow (340rem, split into two columns) to repeat units on every row, so they
+ * are named once at the top of the column, aligned to the same widths.
+ */
+const ChipHeader = () => (
+  <div className={styles.chipHeader}>
+    <span className={styles.chipName} />
+    <span className={styles.chipSeats}>Seats</span>
+    <span className={styles.chipShare}>Vote</span>
+  </div>
+);
+
 const PartyChip = (props: { row: ChartRow }) => {
   const row = props.row;
   return (
@@ -455,6 +496,23 @@ const PartyChip = (props: { row: ChartRow }) => {
   );
 };
 
+/**
+ * Government stability and cohesion.
+ *
+ * Both are published in [0,1] and both are "higher is better", which the bar alone does not say —
+ * a half-full bar labelled "Stability" could as easily mean half-way to collapse. The direction is
+ * therefore written on the row: a plain-English reading of the value, plus the number.
+ */
+const METER_HINT = "higher is steadier";
+
+function meterReading(value: number): string {
+  const v = clamp01(value);
+  if (v >= 0.75) return "Strong";
+  if (v >= 0.5) return "Steady";
+  if (v >= 0.25) return "Shaky";
+  return "Fragile";
+}
+
 const Meter = (props: { label: string; value: number }) => {
   return (
     <div className={styles.meterRow}>
@@ -462,6 +520,7 @@ const Meter = (props: { label: string; value: number }) => {
       <div className={styles.meterTrack}>
         <div className={styles.meterFill} style={{ width: clamp01(props.value) * 100 + "%" }} />
       </div>
+      <span className={styles.meterReading}>{meterReading(props.value)}</span>
       <span className={styles.meterValue}>{pct(props.value)}</span>
     </div>
   );

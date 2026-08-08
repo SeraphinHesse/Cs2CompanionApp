@@ -123,4 +123,41 @@ namespace Agora.Core.Engine
         /// <summary>Non-fatal problems, in emission order. Log them; never throw on them.</summary>
         public List<string> Warnings { get; set; } = new List<string>();
     }
+
+    /// <summary>
+    /// What <see cref="PoliticalEngine.Retheme"/> decided. A request, an answer and — only when the
+    /// answer is yes and something actually moved — a new state.
+    /// </summary>
+    public sealed class RethemeResult
+    {
+        internal RethemeResult(CommandOutcome outcome, PoliticalState? state, bool changed)
+        {
+            Outcome = outcome;
+            State = state;
+            Changed = changed;
+        }
+
+        /// <summary>
+        /// <see cref="CommandOutcome.Ok"/> when the request was honoured — including the no-op case
+        /// where the save already runs the requested theme.
+        /// </summary>
+        public CommandOutcome Outcome { get; }
+
+        /// <summary>
+        /// The rethemed state on an accepted change; the caller's own <c>prior</c>, untouched, on a
+        /// no-op or a rejection; null only when <c>prior</c> itself was null.
+        /// </summary>
+        public PoliticalState? State { get; }
+
+        /// <summary>
+        /// True only when <see cref="State"/> is a new object the caller must adopt. False on a
+        /// rejection <i>and</i> on an accepted no-op, so one check covers "is there work to do".
+        /// </summary>
+        public bool Changed { get; }
+
+        public bool Accepted
+        {
+            get { return Outcome == CommandOutcome.Ok; }
+        }
+    }
 }

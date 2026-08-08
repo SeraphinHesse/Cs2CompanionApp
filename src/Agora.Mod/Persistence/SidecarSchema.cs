@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -89,9 +94,17 @@ namespace Agora.Mod.Persistence
     /// </para>
     ///
     /// <para>
-    /// <b>Currently every document is at version 1</b>, so the step tables are empty by design and
-    /// the interesting paths are the refusals: a document from a newer build is declined rather than
-    /// guessed at, and an unversioned one is assumed to be version 1 and stamped.
+    /// State, settings and the flavor cache are at version 2; timeline progress is still at 1, so its
+    /// table is empty. So is the flavor cache's, which is not an omission: nothing routes
+    /// <c>flavor_cache.json</c> through <see cref="Migrate"/> at all — <c>Agora.Mod/Llm</c> upgrades
+    /// it in <c>FlavorCacheMigration</c> and validates it against
+    /// <c>FlavorSchema.SupportedSchemaVersion</c>, and <see cref="CurrentFlavorCacheVersion"/> says
+    /// so at length. The refusals matter as much as the steps: a document from a newer
+    /// build is declined rather than guessed at, and an unversioned one is assumed to be version 1
+    /// — and then actually migrated, which is the part that is easy to get wrong. Stamping the
+    /// target version on an unversioned document without running the chain labels a v1 file as
+    /// current and makes it unrepairable, because nothing afterwards can tell it apart from a file
+    /// that was genuinely written by this build.
     /// </para>
     ///
     /// <para>
@@ -104,10 +117,37 @@ namespace Agora.Mod.Persistence
     {
         public const string VersionProperty = "schemaVersion";
 
-        public const int CurrentStateVersion = 1;
-        public const int CurrentSettingsVersion = 1;
+        public const int CurrentStateVersion = 2;
+        public const int CurrentSettingsVersion = 2;
+
+        /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
         public const int CurrentTimelineProgressVersion = 1;
-        public const int CurrentFlavorCacheVersion = 1;
+
+        /// <summary>
+        /// Not consulted by anything. <c>flavor_cache.json</c> is read by <c>Agora.Mod/Llm</c>, which
+        /// validates it against <c>FlavorSchema.SupportedSchemaVersion</c> and upgrades it through
+        /// <c>FlavorCacheMigration</c> rather than routing it through <see cref="Migrate"/> — so two
+        /// constants version one file and only the other one is read. The honest fix is to delete
+        /// this and <see cref="SidecarDocument.FlavorCache"/>, which is a follow-up rather than a
+        /// mid-migration edit.
+        ///
+        /// <para>
+        /// Kept in step with <c>FlavorSchema.SupportedSchemaVersion</c> and
+        /// <c>data/schemas/politics_flavor.schema.json</c>, never ahead of them: a reader who trusts
+        /// this constant must not be told a version the real authority has not reached.
+        /// </para>
+        ///
+        /// <para>
+        /// <see cref="FlavorCacheSteps"/> stays empty, and that is safe only because no caller passes
+        /// <see cref="SidecarDocument.FlavorCache"/> to <see cref="Migrate"/> — verified by a
+        /// repo-wide grep for <c>SidecarDocument.FlavorCache</c>, which finds this file and nothing
+        /// else. Whoever wires the flavor cache through <see cref="Migrate"/> must add a 1 -> 2 step
+        /// first: without one the loop returns <see cref="MigrationOutcome.NoPathForward"/> on every
+        /// existing cache and <c>IsLoadable</c> goes false, which surfaces as a load failure rather
+        /// than as an obviously missing step.
+        /// </para>
+        /// </summary>
+        public const int CurrentFlavorCacheVersion = 2;
 
         /// <summary>One in-place rewrite, from <see cref="FromVersion"/> to <c>FromVersion + 1</c>.</summary>
         public sealed class MigrationStep
@@ -124,12 +164,94 @@ namespace Agora.Mod.Persistence
             public Action<JObject> Apply { get; private set; }
         }
 
-        // Empty until a contract actually moves. Listed explicitly, one table per document, so that
-        // adding a step is a visible edit in a reviewed place rather than a conditional buried in a
-        // loader. Each list must be ordered by FromVersion ascending; Chain() asserts that by
-        // walking versions one at a time rather than trusting the order.
-        private static readonly List<MigrationStep> StateSteps = new List<MigrationStep>();
-        private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>();
+        /// <summary>
+        /// Brings one settings object — standalone <c>settings.json</c> or the block nested in a
+        /// state file — from v1 to v2. Idempotent: a property already present is left alone, so
+        /// running it twice cannot change a value the player set.
+        /// </summary>
+        internal static void UpgradeSettingsObjectToV2(JObject settings)
+        {
+            if (settings == null) return;
+
+            if (settings["themeLocked"] == null) settings["themeLocked"] = false;
+            if (settings["pauseOnMajorNews"] == null) settings["pauseOnMajorNews"] = true;
+            if (settings["showAllReports"] == null) settings["showAllReports"] = false;
+
+            settings[VersionProperty] = CurrentSettingsVersion;
+        }
+
+        /// <summary>
+        /// State v1 to v2: <c>parties[].playerOverrides</c>, plus the settings block nested at
+        /// <c>#/settings</c>.
+        /// </summary>
+        /// <remarks>
+        /// The nested settings block is here rather than in <see cref="SettingsSteps"/> because
+        /// <see cref="Migrate"/> reads and stamps only the <i>root</i> version, so the Settings step
+        /// table never sees settings that arrive inside a state file — and a save with a state file
+        /// never reads <c>settings.json</c> at all (<c>SidecarStore.ResolveSettings</c> prefers the
+        /// state's own block). Both paths call
+        /// <see cref="UpgradeSettingsObjectToV2"/> so there is one implementation, not two.
+        /// </remarks>
+        private static void MigrateStateV1ToV2(JObject root)
+        {
+            // Parties: absent playerOverrides means "the player has taken nothing over". They could
+            // not have locked a field on a build that had no lock UI.
+            var parties = root["parties"] as JArray;
+            if (parties != null)
+            {
+                foreach (JToken token in parties)
+                {
+                    var party = token as JObject;
+                    if (party == null) continue;
+                    if (party["playerOverrides"] == null) party["playerOverrides"] = "None";
+                }
+            }
+
+            var settings = root["settings"] as JObject;
+            if (settings == null)
+            {
+                // A state file with no settings block. ResolveSettings would fall back to defaults
+                // anyway; writing them here makes the file self-describing instead of relying on
+                // that fallback, and matches what `new AgoraSettings()` produces.
+                settings = new JObject();
+                root["settings"] = settings;
+                settings["startYear"] = 1990;
+                settings["theme"] = "Eu";
+                settings["system"] = "Proportional";
+                settings["wakeCadence"] = "Yearly, Election, Manual";
+                settings["snapshotRetention"] = 25;
+                settings["enabled"] = true;
+                settings["effectsEnabled"] = true;
+            }
+
+            UpgradeSettingsObjectToV2(settings);
+
+            // A refinement available only in this document: the theme locks at the first election,
+            // and a save that has already held one is past that point. The standalone settings.json
+            // step cannot make this call — it cannot see election history — so it leaves the flag
+            // false and the runtime re-locks at the next election check.
+            var history = root["electionHistory"] as JArray;
+            if (history != null && history.Count > 0) settings["themeLocked"] = true;
+        }
+
+        // One table per document, so that adding a step is a visible edit in a reviewed place rather
+        // than a conditional buried in a loader. Each list must be ordered by FromVersion ascending;
+        // the step loop asserts that by walking versions one at a time rather than trusting the
+        // order. Timeline progress has not moved, so its table is empty; the flavor cache has moved to
+        // 2 but is never migrated through here, so its table is empty for the reason spelled out on
+        // CurrentFlavorCacheVersion.
+        private static readonly List<MigrationStep> StateSteps = new List<MigrationStep>
+        {
+            new MigrationStep(1, "added party playerOverrides and the three per-save UI settings",
+                MigrateStateV1ToV2)
+        };
+
+        private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>
+        {
+            new MigrationStep(1, "added themeLocked, pauseOnMajorNews, showAllReports",
+                root => UpgradeSettingsObjectToV2(root))
+        };
+
         private static readonly List<MigrationStep> TimelineProgressSteps = new List<MigrationStep>();
         private static readonly List<MigrationStep> FlavorCacheSteps = new List<MigrationStep>();
 
@@ -174,19 +296,22 @@ namespace Agora.Mod.Persistence
             int version;
             bool hadVersion = TryReadVersion(root, out version);
 
-            if (!hadVersion)
-            {
-                // Deliberately generous. The alternative — refusing to load — would strand any save
-                // written before the field became mandatory, and version 1 is by definition the
-                // shape that predates versioning.
-                root[VersionProperty] = target;
-                return new MigrationResult(MigrationOutcome.AssumedVersionOne, 1, target,
-                    "No schemaVersion; assumed 1 and stamped as " + Format(target) + ".");
-            }
+            // Deliberately generous. The alternative — refusing to load — would strand any save
+            // written before the field became mandatory, and version 1 is by definition the shape
+            // that predates versioning. The generosity has to include actually migrating the thing:
+            // an unversioned document is a v1 document, so it falls through to the chain below
+            // rather than being stamped current on the spot.
+            bool assumed = !hadVersion;
+            if (assumed) version = 1;
 
             if (version == target)
             {
-                return new MigrationResult(MigrationOutcome.Current, version, target, null);
+                if (assumed) root[VersionProperty] = target;
+
+                return new MigrationResult(
+                    assumed ? MigrationOutcome.AssumedVersionOne : MigrationOutcome.Current,
+                    version, target,
+                    assumed ? "No schemaVersion; assumed 1 and stamped as " + Format(target) + "." : null);
             }
 
             if (version > target)
@@ -226,7 +351,10 @@ namespace Agora.Mod.Persistence
                 root[VersionProperty] = current;
             }
 
-            return new MigrationResult(MigrationOutcome.Upgraded, version, target,
+            return new MigrationResult(
+                assumed ? MigrationOutcome.AssumedVersionOne : MigrationOutcome.Upgraded,
+                version, target,
+                (assumed ? "No schemaVersion; assumed 1. " : "") +
                 "Upgraded schemaVersion " + Format(version) + " -> " + Format(target) +
                 (applied.Count == 0 ? "." : ": " + string.Join(", ", applied.ToArray())));
         }

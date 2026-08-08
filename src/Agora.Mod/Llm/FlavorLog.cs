@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 
 namespace Agora.Mod.Llm
@@ -6,7 +11,7 @@ namespace Agora.Mod.Llm
     /// The logging seam for the flavor pipeline.
     ///
     /// <para>
-    /// Everything in <c>Llm/</c> except <see cref="ColossalFlavorLog"/> logs through this interface
+    /// Everything in <c>Llm/</c> except <c>ColossalFlavorLog</c> logs through this interface
     /// rather than through <c>Colossal.Logging</c> directly. That is deliberate: the parsing,
     /// validation, prompt assembly and CLI-location logic touch no game type at all, so keeping the
     /// only game reference behind one two-line adapter means those classes stay constructible — and
@@ -32,46 +37,5 @@ namespace Agora.Mod.Llm
         public void Warn(string message) { }
         public void Error(string message, Exception exception = null) { }
         public void Debug(string message) { }
-    }
-
-    /// <summary>
-    /// Routes to the mod's single <c>Colossal.Logging</c> logger (see <c>src/CLAUDE.md</c>).
-    ///
-    /// <para>
-    /// The whole flavor pipeline runs on a background thread, and non-negotiable #7 says a broken LLM
-    /// must never take the sim with it. A logger that throws would do exactly that, so every call is
-    /// swallowed.
-    /// </para>
-    /// </summary>
-    public sealed class ColossalFlavorLog : IFlavorLog
-    {
-        private const string Prefix = "llm: ";
-
-        public static readonly ColossalFlavorLog Instance = new ColossalFlavorLog();
-
-        public void Info(string message)
-        {
-            try { AgoraMod.Log.Info(Prefix + message); } catch { }
-        }
-
-        public void Warn(string message)
-        {
-            try { AgoraMod.Log.Warn(Prefix + message); } catch { }
-        }
-
-        public void Error(string message, Exception exception = null)
-        {
-            try
-            {
-                if (exception == null) AgoraMod.Log.Error(Prefix + message);
-                else AgoraMod.Log.Error(exception, Prefix + message);
-            }
-            catch { }
-        }
-
-        public void Debug(string message)
-        {
-            try { AgoraMod.Log.Debug(Prefix + message); } catch { }
-        }
     }
 }

@@ -1,94 +1,131 @@
 # AGORA — Status
 
-**Current milestone:** M0 · Bootstrap
-**Updated:** 2026-07-30
+**Current milestone:** M6 · The Spectacle (in progress) — with a **fix-plan pass** (`fixplan.md`)
+running ahead of it against defects found in the first real play session.
+**Updated:** 2026-08-08
+
+> This file was stale by several milestones until 2026-08-08. It had been left reading
+> "M0 · Bootstrap, in-game verification pending" long after the mod was deployed, loading, ticking
+> and rendering. Statuses below are keyed to artifacts that exist in the tree; where a milestone's
+> **gate** has not been formally re-walked since the code landed, it says so rather than claiming a
+> pass.
 
 ---
 
-## M0 · Bootstrap
+## Where the build actually is
 
-| Task | Status |
-|---|---|
-| Repo scaffold + folder structure | ✅ |
-| Root router `CLAUDE.md` + per-folder contexts | ✅ |
-| Scout report 0001 (API index) | ✅ |
-| Scout report 0002 (modding toolchain build surface) | ✅ |
-| `tools/` — verify-setup, api-query, decompile | ✅ |
-| `Agora.Core` + determinism kernel | ✅ |
-| `Agora.Core.Tests` determinism suite | ✅ |
-| `Agora.Mod` — `IMod`, settings, day heartbeat | ✅ |
-| `Agora.Mod` — UI binding system | ✅ |
-| `ui/` React panel — source + build | ✅ bundle builds and deploys |
-| Skills (§9) | ✅ |
-| Agent definitions (§10) | ✅ |
-| **Modding toolchain installed** | ✅ all 15 `CSII_*` set, 12 Entities analyzers present |
-| Toolchain build integration (`Mod.props` / `Mod.targets`) | ✅ |
-| Deploy to local `Mods/` folder | ✅ `…\Mods\Agora.Mod\` |
-| `refsrc/` decompiled reference tree | ✅ 5,209 `.cs` files |
-| In-game verification | ⬜ **the only thing left in M0** |
+The mod **deploys, loads in-game, ticks the heartbeat, and renders three dashboard panels**
+(`council`, `districts`, `news` — see `TAB_ORDER` in `ui/src/shell/state.ts:21`). The engine,
+elections, government, flavor and effects layers are all implemented in `Agora.Core` /
+`Agora.Mod`.
 
-**Verified so far.** A single `dotnet build Agora.sln` succeeds with 0 warnings and 0 errors and
-deploys **both halves** of the mod to `…\Mods\Agora.Mod\`: `Agora.Mod.dll`, `Agora.Core.dll`,
-`Agora.Mod.mjs`, `Agora.Mod.css`. Fallback mode (`-p:UseCsiiToolchain=false`) also builds clean.
-`dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` passes 22/22 in ~40 ms with no game
-assemblies involved — the check that the Core/Mod split is real. The deployed
-`Agora.Mod.dll` was confirmed by metadata inspection to be `.NETFramework,v4.8` and to expose
-`AgoraMod : IMod`, `AgoraHeartbeatSystem : GameSystemBase`, and `AgoraDebugUISystem : UISystemBase`.
+| Milestone | Code | Gate |
+|---|---|---|
+| **M0 · Bootstrap** | ✅ | ✅ **passed 2026-07-30** (see `politicsmodplan.md` §11) |
+| **M1 · Time & Truth** | ✅ `AgoraTimeService`, `AgoraStartYearSystem`, `StartYearDelivery`, `SimClockMath`, sensors, sidecar IO | ⚠️ save→quit→load ×10 desync check not re-walked since W0's per-save bug was found |
+| **M2 · The Engine** | ✅ blocs, affinity, turnout, parties, factions, polling, indices, dashboard | ⚠️ not re-walked |
+| **M3 · The Voice** | ✅ `IFlavorProvider`, `ClaudeCliProvider`, `LayeredFlavorProvider`, static pool fallback, prompt builder, schema validation, flavor cache | ⚠️ fail-closed path implemented; **prose quality is a known defect** — see W2/W5 |
+| **M4a · Elections** | ✅ `Engine/Elections/Proportional` + `Fptp`, polling, manifestos | ⚠️ not re-walked |
+| **M4b · Government** | ✅ `Engine/Government/Coalitions` + `Mandates`, party lifecycle | ⚠️ not re-walked |
+| **M5 · The World** | ✅ effect palette + dispatcher + resolver + schedule + validation; `Agora.Mod/Effects` ledger and application system; `data/timeline_eu.json`, `timeline_na.json`, `timeline_global.json` | ⚠️ 1990→2008 run not re-walked |
+| **M6 · The Spectacle** | 🟡 partial — crosstab explorer, mandate tracker, news archive present; **political map overlay and election-night broadcast mode not built** | ⬜ |
 
-**First in-game evidence, 2026-07-30 01:32.** The game was launched to the settings screen only, with
-no city loaded and **without** the dev flags:
+**Test suite.** `tests/Agora.Core.Tests` now carries 25 test files and 1033 tests, spanning
+determinism, blocs, affinity, turnout, polling, indices, both electoral systems, coalitions,
+mandates, factions, party lifecycle, the effect palette and application, the per-save reset seam,
+the scheduler, sim-clock math, start-year planning, the shipped timeline/tuning catalogs, and the
+LLM response path — the CLI reader, the prompt builder, and the schema/numeric validation that
+enforces non-negotiable #1. It still runs with **no copy of the game installed** — that constraint
+is the test that the Core/Mod split is real.
 
-```
-Modding.log  Loaded Agora.Mod,  Version=1.0.0.0 in 49.8005ms
-Modding.log  Loaded Agora.Core, Version=1.0.0.0 in 0.4558ms
-Modding.log  Registered UI Module {"m_ModuleId":"Agora.Mod","m_Author":"Serph", …}
-             from [assetdb://user/Mods/Agora.Mod/Agora.Mod.mjs]
-Agora.log    Agora loading. / Agora asset: …\Mods\Agora.Mod\Agora.Mod.dll / Agora loaded.
-Agora.log    Agora unloading.        (clean dispose, both assemblies, no exception)
-```
+Build: `dotnet build Agora.sln` · UI: `cd ui && npm run build` ·
+Test: `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`
 
-So both halves load, and **neither dev flag is needed for that** — they only add the dev menu and the
-UI debugger. Alongside ~20 other installed mods, with no conflict.
+---
 
-**Still unverified:** the heartbeat has never fired, the panel has never rendered, and the toggle has
-never been flipped. All three need a loaded, unpaused city.
+## Active work — `fixplan.md`
 
-Run `.\tools\verify-setup.ps1 -Build` for the current state of all preconditions.
+The first play session against a loaded city produced five reported issues, which resolved into
+seven workstreams — two of the five were several independent bugs each. `fixplan.md` is the
+authority; this is the tracker.
 
-### M0 gate — manual checklist
+| WS | What | Phase | Status |
+|---|---|---|---|
+| **W0** | Per-save reset seam — three layers retain the previous city's state across a main-menu round trip. The only *data-corrupting* bug of the seven. | 1 | ✅ code complete, review passed · **ECS half needs the manual walkthrough** |
+| **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed |
+| **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed) · **needs the manual walkthrough** |
+| **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ⬜ |
+| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | ⬜ |
+| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop `ApplyProseNames` clobbering them. | 4 | ⬜ |
+| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ⬜ |
+| — | Backlog (correctness + affordance) | 6 | 🟡 phase-1 items done; `ClaudeResponseReader.cs:95` envelope unwrap + scrollbar check still open |
 
-- [x] Agora appears in the game's mod list
-- [x] Options page renders with readable labels (not raw keys) — two toggles seen
-- [x] UI module registers and the bundle is found by the asset database
-- [ ] Master toggle flips without exception
-- [ ] `Logs\Agora.log` shows exactly one heartbeat line per in-game day
-- [ ] Debug panel renders and its day counter ticks with the sim clock
-- [ ] Toggling the mod off mid-session stops the heartbeat, with no exceptions
+**Phase 1 is code complete and through the checklist gate** (`dotnet build` 0/0 · 1033 tests ·
+`npm run check` clean). Nothing is committed. Four review-blocking defects were found and fixed, and
+the review passes corrected **eight** places where `fixplan.md` describes code that does not exist —
+see `docs/plans/0001-batched-schema-change.md` §9 and `docs/plans/0002-w6-parties-tab.md` for the
+list. Two of those change work not yet started: W4's stated enforcement point never writes
+`ColorHex`, and W5's article-limit tightening would discard every cached party name unless the cache
+load prunes over-length articles only.
 
-The last four need a city **loaded and unpaused** — the heartbeat is driven by the sim clock, so
-nothing is logged on the main menu.
+**Schema bumps are batched, and the batch has landed.** `docs/plans/0001-batched-schema-change.md`
+is complete and reviewed across all three chunks: per-save settings (`ThemeLocked`,
+`PauseOnMajorNews`, `ShowAllReports`), `Party.PlayerOverrides`, and the article length limits, in
+one sidecar migration rather than three. Sidecar state and settings are now **schemaVersion 2**,
+`politics_flavor` is **2**, and the binding contract is **3**.
 
-**Where to look.** `Colossal.Logging` gives every logger its own file, so Agora's output does **not**
-go to `Player.log` — grepping that file for "Agora" returns nothing even on a healthy run. Ours is:
+Two defects in the migration engine were found and fixed that nothing in `fixplan.md` anticipated:
+`SidecarSchema.Migrate` stamped the *target* version on an unversioned document without running a
+single step — silent, unrepairable data loss the moment a step existed — and the `settings` block
+nested inside a state file was never reachable by the settings step table at all. A third, caught in
+review, was a one-sided bump of `CurrentFlavorCacheVersion` ahead of the schema it versions.
 
-```
-%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II\Logs\Agora.log
-```
+The article tightening (headline 140→90, body 900→420) ships with `FlavorCacheMigration`, which
+prunes only over-length articles at cache load and never truncates. Without it the first reload
+after the update would have discarded every cached party name and resurrected the `party-01` bug W2
+exists to fix — a consequence `fixplan.md` did not mention.
 
-`Logs\Modding.log` is the other one worth reading: it records assembly load times, UI module
-registration, and dispose. A mod that fails to load says so there, not in `Agora.log`.
+### The walkthrough that gates the fix plan
+
+> Load city A (EU). Play a year. Rename a party and recolour it. Quit to main menu. Create city B
+> and choose US. Confirm: US-flavoured party names, no city A prose anywhere, effects ledger empty,
+> heartbeat ticking on day one. Return to city A. Confirm the rename and the colour survived.
+
+Nothing in `fixplan.md` is complete until that passes **without restarting the game**.
 
 ---
 
 ## Blocked / needs a decision
 
-1. **Nothing blocks the M0 gate.** It needs a human at the keyboard: set the Steam launch options to
-   `--developerMode --uiDeveloperMode`, load a city, and walk the checklist above.
-2. **Effect palette rescope.** Scout 0001 §3 found no enum support for RCI demand, rent/land value,
-   birth rate, or subsidies, and district scope has only 14 modifiers. `politicsmodplan.md` §7 needs
-   a pass before M5.
-3. **`politicsmodplan.md` §14 open decisions** remain open: NA primaries, timeline jitter, snapshot
+1. **M6 scope.** The political map overlay and election-night broadcast mode are the two remaining
+   M6 tasks and neither is started. The overlay's fallback (a stylized district map inside the
+   dashboard) has not been chosen against yet.
+2. ~~**W6 additional content**~~ — **decided 2026-08-08.** Five of the six are in: manifesto-vs-platform,
+   poll trend sparkline, coalition relations, party history strip, mandate scorecard. Bloc support
+   breakdown declined. Coalition relations uses the **live-ranking** design (a public RNG-free
+   `RankCandidates` in `Agora.Core`) — no schema change, no save growth; `fixplan.md:322`'s claim
+   that it was "already computed" was wrong. See `docs/plans/0002-w6-parties-tab.md` §H0.
+3. **Effect palette rescope.** Scout 0001 §3 found no enum support for RCI demand, rent/land value,
+   birth rate, or subsidies, and district scope has only 14 modifiers. The palette shipped against
+   that gap list; `politicsmodplan.md` §7 still reflects the pre-rescope intent.
+4. **`politicsmodplan.md` §14 open decisions** remain open: NA primaries, timeline jitter, snapshot
    retention, post-2026 authorship, unrest ceiling.
+
+---
+
+## Where to look when something breaks
+
+`Colossal.Logging` gives every logger its own file, so Agora's output does **not** go to
+`Player.log` — grepping that file for "Agora" returns nothing even on a healthy run. Ours is:
+
+```
+%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II\Logs\Agora.log
+```
+
+`Logs\Modding.log` is the other one worth reading: assembly load times, UI module registration, and
+dispose. A mod that fails to load says so there, not in `Agora.log`.
+
+Run `.\tools\verify-setup.ps1 -Build` for the current state of all build preconditions.
 
 ## Known toolchain quirks (all worked around; see `docs/scout/0002-modding-toolchain.md`)
 
@@ -101,8 +138,4 @@ registration, and dispose. A mod that fails to load says so there, not in `Agora
   existing — it will skip silently forever.
 - A shell opened **before** the toolchain install sees no `CSII_*` variables. `Mod.props` dodges this
   by reading the registry directly; our own scripts check both.
-
-## Next milestone
-
-**M1 · Time & Truth** — `AgoraTimeService`, the clock patch (gated on a complete date-surface
-enumeration from Scout 0002), sensor pass 1, sidecar IO, determinism test suite.
+- Gameface has **no `backdrop-filter`** — panel opacity is the only legibility lever (W1).

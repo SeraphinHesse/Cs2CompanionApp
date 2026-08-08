@@ -1,7 +1,8 @@
 // Flex only - no CSS grid in Gameface. The list is a fixed-width column beside a flexible detail
 // pane; min-height: 0 on the scroll child is what lets it actually scroll inside a flex column.
 
-$fallback-tint: rgba(255, 196, 96, 0.9);
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
 
 .list {
   display: flex;
@@ -10,7 +11,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
   width: 168rem;
   min-height: 0;
   margin-right: 10rem;
-  border-right: 1rem solid rgba(255, 255, 255, 0.12);
+  border-right: 1rem solid $line;
   padding-right: 8rem;
 }
 
@@ -36,7 +37,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
   display: flex;
   font-size: 11rem;
   font-variant-numeric: tabular-nums;
-  opacity: 0.55;
+  opacity: 0.72;
 }
 
 .scroll {
@@ -62,7 +63,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
   background-color: rgba(255, 255, 255, 0.04);
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: $surface-hover;
   }
 }
 
@@ -124,9 +125,9 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
   flex: 0 0 auto;
   margin-left: 4rem;
   padding: 0 3rem;
-  border: 1rem solid $fallback-tint;
+  border: 1rem solid $fallback;
   border-radius: 2rem;
-  color: $fallback-tint;
+  color: $fallback;
   font-size: 8rem;
   letter-spacing: 1rem;
   line-height: 12rem;
@@ -150,7 +151,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
 
 .rowMetaFallback {
   @include meta-base;
-  opacity: 0.45;
+  opacity: $fallback-dim;
   font-style: italic;
 }
 
@@ -162,7 +163,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
 .rowSep {
   display: flex;
   margin: 0 3rem;
-  opacity: 0.4;
+  opacity: 0.55;
 }
 
 .rowMargin {
@@ -178,7 +179,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
   margin-top: 1rem;
   font-size: 9rem;
   font-variant-numeric: tabular-nums;
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .emptyRow {
@@ -186,7 +187,7 @@ $fallback-tint: rgba(255, 196, 96, 0.9);
   padding: 6rem 4rem;
   font-size: 10rem;
   line-height: 1.4;
-  opacity: 0.6;
+  opacity: 0.72;
 }
 
 .tip {

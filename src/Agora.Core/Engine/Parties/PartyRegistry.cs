@@ -178,7 +178,12 @@ namespace Agora.Core.Engine.Parties
                 SuccessorPartyId = source.SuccessorPartyId,
                 FactionIds = new List<string>(source.FactionIds),
                 CoreGrievance = source.CoreGrievance,
-                RevivalCount = source.RevivalCount
+                RevivalCount = source.RevivalCount,
+
+                // Player-owned, so easy to forget in a field-by-field copy — and dropping it here
+                // silently un-locks a party the player renamed, which reads as the rename simply
+                // coming back a few months later.
+                PlayerOverrides = source.PlayerOverrides
             };
         }
 

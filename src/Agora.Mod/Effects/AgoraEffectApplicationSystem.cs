@@ -114,7 +114,10 @@ namespace Agora.Mod.Effects
 
         protected override void OnDestroy()
         {
-            // Leaving a modifier behind would poison a save Agora is no longer part of.
+            // Leaving a modifier behind would poison a save Agora is no longer part of. Usually a
+            // no-op by the time it runs — AgoraRuntime.Detach reverts while the world is unambiguously
+            // alive — but this is the only revert on a path where the world is torn down without
+            // IMod.OnDispose ever running, so it stays.
             TryRevertAll();
             base.OnDestroy();
         }
@@ -426,6 +429,51 @@ namespace Agora.Mod.Effects
                 AgoraMod.Log.Warn("effects: could not revert modifiers cleanly: " + ex.Message);
                 _slots.Clear();
             }
+        }
+
+        /// <summary>
+        /// Drops the slot table and the missing-district log without touching the world. This is the
+        /// per-save half of <see cref="Agora.Mod.Core.AgoraRuntime.ResetForNewSave"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Not <see cref="TryRevertAll"/>, and not a substitute for it.</b> On
+        /// <c>ResetCause.SaveBoundary</c> — and only there — the revert is skipped as unobservable
+        /// rather than impossible. The outgoing city's entities are still alive when that reset runs
+        /// (<c>onGamePreload</c> precedes the deserialize phase <c>ClearSystem</c> destroys them in),
+        /// so a revert would resolve every key and hand every buffer back — into a world destroyed
+        /// moments later, whose save file was already written. What that save carries is reconciled on
+        /// the next load by <c>ModifierAggregate.IsCarriedOver</c>, which the revert cannot affect.
+        /// </para>
+        /// <para>
+        /// <b>On the <c>ResetCause.ModShutdown</c> path the same revert is the whole point</b>: the
+        /// city stays open and the player keeps whatever is left in those buffers.
+        /// <c>AgoraRuntime.ResetForNewSave</c> calls
+        /// <see cref="TryRevertAll"/> before this on that path, because this method dropping the table
+        /// first is exactly what disarms the revert in <see cref="OnDestroy"/> — it early-returns on
+        /// an empty table.
+        /// </para>
+        /// <para>
+        /// <c>_loggedMissingDistricts</c> goes with the slots: it is a once-per-id warning suppressor,
+        /// and keeping it would silence the first genuine warning about the new city's districts.
+        /// </para>
+        /// </remarks>
+        public void ForgetTrackedSlots()
+        {
+            _slots.Clear();
+            _writtenThisPass.Clear();
+            _stale.Clear();
+            _districtEntities.Clear();
+            _loggedMissingDistricts.Clear();
+
+            // The fallback index holds the old city's district entities by id. RefreshDistrictIndex
+            // rebuilds it before the next resolve, but a stale handle table surviving a save boundary
+            // is the shape of bug this method exists to remove, so it does not get to survive one.
+            _fallbackResolver.Rebuild(_districtEntities);
+
+            // The suspend latch describes the previous save's master-toggle state; leaving it set
+            // would skip the revert-once pass if the new save loads with effects already off.
+            _suspended = false;
         }
 
         // --- Slot bookkeeping --------------------------------------------------------------------

@@ -156,6 +156,42 @@ namespace Agora.Mod.UiBindings
         }
     }
 
+    /// <summary>
+    /// The per-save settings document, mirrored for the settings surface and the first-run dialog
+    /// (<c>docs/contracts/ui_bindings.md</c> §4.1).
+    /// </summary>
+    /// <remarks>
+    /// Exactly the eight fields plan 0001 §8 fixed, and no more. <c>isFirstRun</c> is deliberately
+    /// <b>not</b> among them: it is a lifecycle signal the sidecar never stores, and folding it in
+    /// would put a value with no persisted counterpart inside the payload that mirrors the persisted
+    /// document. It ships as <c>agora.state.isFirstRun</c> instead.
+    /// </remarks>
+    public sealed class SettingsPayload : IJsonWritable
+    {
+        public int SchemaVersion;
+        public int StartYear;
+        public string Theme = "Eu";
+        public string System = "Proportional";
+        public bool ThemeLocked;
+        public bool PauseOnMajorNews = true;
+        public bool ShowAllReports;
+        public bool EffectsEnabled = true;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.SettingsPayload");
+            UiJson.Number(writer, "schemaVersion", SchemaVersion);
+            UiJson.Number(writer, "startYear", StartYear);
+            UiJson.Text(writer, "theme", Theme);
+            UiJson.Text(writer, "system", System);
+            UiJson.Flag(writer, "themeLocked", ThemeLocked);
+            UiJson.Flag(writer, "pauseOnMajorNews", PauseOnMajorNews);
+            UiJson.Flag(writer, "showAllReports", ShowAllReports);
+            UiJson.Flag(writer, "effectsEnabled", EffectsEnabled);
+            writer.TypeEnd();
+        }
+    }
+
     // ---------------------------------------------------------------------------- agora.parties
 
     /// <summary>
@@ -175,6 +211,12 @@ namespace Agora.Mod.UiBindings
         public Agora.Core.Contracts.SimDate? FoundedDate;
         public Agora.Core.Contracts.SimDate? DissolvedDate;
 
+        // Projected from Party.PlayerOverrides. A set flag means the field beside it is player-owned
+        // rather than flavor-owned, so the UI must never present it as generated text.
+        public bool NameLocked;
+        public bool DescriptionLocked;
+        public bool ColorLocked;
+
         public void Write(IJsonWriter writer)
         {
             writer.TypeBegin("agora.PartyBrief");
@@ -188,6 +230,9 @@ namespace Agora.Mod.UiBindings
             UiJson.Text(writer, "coreGrievance", CoreGrievance);
             UiJson.Date(writer, "foundedDate", FoundedDate);
             UiJson.Date(writer, "dissolvedDate", DissolvedDate);
+            UiJson.Flag(writer, "nameLocked", NameLocked);
+            UiJson.Flag(writer, "descriptionLocked", DescriptionLocked);
+            UiJson.Flag(writer, "colorLocked", ColorLocked);
             writer.TypeEnd();
         }
     }

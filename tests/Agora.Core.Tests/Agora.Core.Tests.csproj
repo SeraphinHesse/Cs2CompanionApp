@@ -16,6 +16,19 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+
+    <!--
+      Newtonsoft, only so the linked LLM files below compile here. Agora.Mod itself references the
+      copy that ships with the game (src/Agora.Mod/CLAUDE.md: do not add a JSON dependency) — this
+      package reference is confined to the test project, which has no game to take one from, and
+      never reaches the deployed mod.
+
+      Pinned to the version the game ships (…\Cities2_Data\Managed\Newtonsoft.Json.dll is 13.0.2),
+      not the newest patch. These tests exist to assert what the deployed mod does; a parser
+      behaviour difference between two patch releases would let them assert something else while
+      still passing, which is the one failure the link-by-compile arrangement is here to prevent.
+    -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,19 +36,63 @@
   </ItemGroup>
 
   <!--
-    Four Agora.Mod files compiled in BY LINK, not by project reference.
+    Twenty-four Agora.Mod files compiled in BY LINK, not by project reference.
 
     politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
     this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
     Agora.Mod, which cannot be project-referenced: it needs the game installed and this suite must
     not.
 
-    All four files are deliberately free of every Game.*, Colossal.* and Unity.* type (they use only
-    System.* and Agora.Core), so linking them keeps the property this suite exists to protect: it
-    still builds and passes on a machine with no copy of Cities: Skylines II. Adding a file here that
-    does reference the game will fail this project's build immediately, which is the guard — and if a
-    game type is ever added to one of these four, that is the alarm we want, because it means logic
-    the tests cover has drifted out of their reach.
+    The response reader and the JSON parser it sits on are here for a different reason: extracting
+    the flavor document out of whatever the CLI printed is pure string work with a history of
+    off-by-one bugs (a slogan containing a brace or a backslash used to truncate the document), and
+    it is exactly the kind of thing that must be covered by a suite that runs without launching the
+    game. The prompt builder is the same argument from the other end — its cap logic silently
+    decides what the model is allowed to read, and the sections it must never cut are the ones that
+    fail invisibly when they are. FlavorRequest, FlavorCatalog, FlavorSchema and FlavorLog come with
+    it because they are what it is written against; ColossalFlavorLog, the one game-facing type in
+    Llm/, is deliberately in a file of its own so that it does not.
+
+    FlavorCacheMigration is here for the sharpest reason of the lot. It is the only thing standing
+    between a tightened article limit and the loss of every cached party name, because a schema error
+    is fatal to the whole flavor document while a pruned article costs one story — and the difference
+    between those two outcomes is invisible in the code and obvious in a fixture. It was written
+    against System.* and Newtonsoft only, as a design constraint rather than a happy accident, so
+    that it could be linked here.
+
+    The validation chain — FlavorValidator, JsonSchemaSubsetValidator, NumericFieldScanner and the
+    FlavorDocument they hand off to — is the strongest reason of all, and it was the last to be
+    linked. The numeric sweep is the sole executable enforcement of non-negotiable #1: no number
+    entering engine state may originate from LLM output. tests/CLAUDE.md suite 2 already asks for
+    "a numeric field smuggled into politics_flavor.json fails the build", and that sentence is only
+    true if the sweep is compiled here and exercised here. Leaving the rule to be enforced by an
+    assembly the test suite cannot load is how #1 comes to be enforced by nobody.
+
+    The canned pool — StaticPoolProvider and the word lists in StaticPoolContent — is here because a
+    party's name is identity that persists for the life of a save, and the draw that produces it is
+    the one place where a wrong seed component is invisible in a screenshot and obvious only over
+    time. It was keyed on the request date once, which renamed every party every sim month; the
+    regression guard for that is a test that generates twice at different dates and compares, and it
+    can only exist if the provider compiles here.
+
+    The sidecar — SidecarSchema and the five files it loads beside — is here because
+    /schema-change step 5 says an untested migration is a guess, and until now no test project could
+    see a line of the migration engine. Non-negotiable #6 is the reason it matters more than most:
+    "load must never desync", which in practice means a migration must be idempotent and must not
+    drop a field the running build has not heard of. Neither property is visible by reading the
+    code; both are trivial to assert against a fixture at the old version. SidecarStore comes with
+    SidecarSchema because the round trip a player actually performs — a v1 file on disk, loaded,
+    migrated, materialised, saved, loaded again — runs through the store, and a step that is correct
+    in isolation but wrong in that sequence is the failure the fixture-only test would miss.
+    AgoraSidecarSystem, the one game-facing type in Persistence/, is deliberately in a file of its
+    own so that it does not come along.
+
+    All twenty-four files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
+    use only System.*, Newtonsoft and Agora.Core), so linking them keeps the property this suite
+    exists to protect: it still builds and passes on a machine with no copy of Cities: Skylines II.
+    Adding a file here that does reference the game will fail this project's build immediately, which
+    is the guard — and if a game type is ever added to one of these twenty-four, that is the alarm
+    we want, because it means logic the tests cover has drifted out of their reach.
 
     Everything is in THIS project rather than in a sibling test project so that the one gate command
     in CLAUDE.md — dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj — runs all of it. A
@@ -46,6 +103,26 @@
     <Compile Include="..\..\src\Agora.Mod\Effects\EffectLedger.cs" Link="ModEffects\EffectLedger.cs" />
     <Compile Include="..\..\src\Agora.Mod\Time\SimClockMath.cs" Link="ModTime\SimClockMath.cs" />
     <Compile Include="..\..\src\Agora.Mod\Time\StartYearDelivery.cs" Link="ModTime\StartYearDelivery.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\SidecarSchema.cs" Link="ModPersistence\SidecarSchema.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\AgoraJson.cs" Link="ModPersistence\AgoraJson.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\AtomicFile.cs" Link="ModPersistence\AtomicFile.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\SidecarPaths.cs" Link="ModPersistence\SidecarPaths.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\LoadReconciliation.cs" Link="ModPersistence\LoadReconciliation.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\SidecarStore.cs" Link="ModPersistence\SidecarStore.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorJsonReader.cs" Link="ModLlm\FlavorJsonReader.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeResponseReader.cs" Link="ModLlm\ClaudeResponseReader.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorLog.cs" Link="ModLlm\FlavorLog.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorCatalog.cs" Link="ModLlm\FlavorCatalog.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorSchema.cs" Link="ModLlm\FlavorSchema.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorCacheMigration.cs" Link="ModLlm\FlavorCacheMigration.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorRequest.cs" Link="ModLlm\FlavorRequest.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorPromptBuilder.cs" Link="ModLlm\FlavorPromptBuilder.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorDocument.cs" Link="ModLlm\FlavorDocument.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\JsonSchemaSubsetValidator.cs" Link="ModLlm\JsonSchemaSubsetValidator.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\NumericFieldScanner.cs" Link="ModLlm\NumericFieldScanner.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorValidator.cs" Link="ModLlm\FlavorValidator.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolContent.cs" Link="ModLlm\StaticPoolContent.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolProvider.cs" Link="ModLlm\StaticPoolProvider.cs" />
   </ItemGroup>
 
 </Project>

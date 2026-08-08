@@ -17,6 +17,44 @@ using CoreSettings = Agora.Core.Contracts.AgoraSettings;
 namespace Agora.Mod.Core
 {
     /// <summary>
+    /// Which world <see cref="AgoraRuntime.ResetForNewSave"/> is running against. The two cases clear
+    /// the same fields and differ in exactly one respect — whether the city holding Agora's modifier
+    /// buffers is one the player will still be looking at afterwards, and so whether handing those
+    /// buffers back is observable or merely work done on a world about to be thrown away.
+    /// </summary>
+    /// <remarks>
+    /// This is an argument rather than something the reset infers because it cannot be inferred. Both
+    /// cases run against a live world with live entities — the difference is what happens to that
+    /// world next, which nothing reachable from here reports. It has no default value for the same
+    /// reason: a new call site must answer the question rather than inherit whichever answer happened
+    /// to be written first.
+    /// </remarks>
+    public enum ResetCause
+    {
+        /// <summary>
+        /// A different city is loading, or the open one is being closed. The outgoing city's entities
+        /// are <i>still alive</i> at this point — <c>GameManager.LoadSimulationData</c> raises
+        /// <c>onGamePreload</c> and only then starts the deserialize phase that <c>ClearSystem</c>
+        /// destroys them in (<c>SystemOrder</c> registers it
+        /// <c>UpdateBefore&lt;ClearSystem&gt;(SystemUpdatePhase.Deserialize)</c>) — so a revert here
+        /// would succeed. It is skipped because it would be unobservable: everything it wrote would go
+        /// into a world destroyed moments later, and the outgoing save on disk was already written
+        /// before this ran (<c>onGamePreload</c> is raised only from the load path, never the save
+        /// path), so the revert cannot change what that save carries. What is baked into it is
+        /// reconciled on the next load by <c>ModifierAggregate.IsCarriedOver</c>, either way.
+        /// </summary>
+        SaveBoundary,
+
+        /// <summary>
+        /// Agora is going away while the city stays open — mod unload, master toggle off. Every
+        /// tracked slot is still a live modifier buffer holding our contribution, and it has to be
+        /// given back before the table is dropped: what is left behind here is what the player is
+        /// left with.
+        /// </summary>
+        ModShutdown
+    }
+
+    /// <summary>
     /// The composition root: the one place the five layers written by separate packets — time,
     /// sensors, persistence, effects, flavor — are joined to each other.
     ///
@@ -49,6 +87,33 @@ namespace Agora.Mod.Core
     /// </summary>
     public static class AgoraRuntime
     {
+        /// <summary>
+        /// Guards the lifecycle entry points — <see cref="Attach"/>, <see cref="Detach"/>,
+        /// <see cref="ResetForNewSave"/>, <see cref="SetSetting"/>. Deliberately <b>not</b> taken by
+        /// <see cref="Tick"/>, which is the largest writer of this type's fields.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>That is safe, and the reason is that every one of those callers is the Unity main
+        /// thread.</b> <c>GameManager</c> is a <c>MonoBehaviour</c>: its <c>Update</c> runs
+        /// <c>UpdateWorld</c> → <c>UpdateSystem.Update(SystemUpdatePhase.MainLoop)</c> → <c>UIUpdateSystem</c>
+        /// → <c>Update(SystemUpdatePhase.UIUpdate)</c>, and then <c>UpdateUI</c> →
+        /// <c>UIManager.Update</c> → <c>UIView.Update</c> → <c>View.Advance</c>, which is where a
+        /// <c>CallBinding</c> from the dashboard is dispatched. Its <c>LateUpdate</c> runs
+        /// <c>LateUpdateWorld</c> → <c>Update(SystemUpdatePhase.LateUpdate)</c> → <c>SimulationSystem</c>
+        /// → <c>Update(SystemUpdatePhase.GameSimulation)</c>, where <see cref="Tick"/> is reached.
+        /// Unity calls both on the main thread, in that order, in the same frame. So <c>UIUpdate</c>,
+        /// the binding dispatch and <c>GameSimulation</c> are one thread, and this lock is decorative
+        /// with respect to <c>_state</c>, <c>_flavorPayload</c> and <c>_pendingWake</c>.
+        /// </para>
+        /// <para>
+        /// It is kept because it costs an uncontended monitor and it is the honest place to start if
+        /// that ever stops being true. The one field that genuinely crosses threads is inside
+        /// <see cref="ClaudeCliProvider"/>, which has its own lock and is not reached through this one.
+        /// Anything added here that is written off the main thread needs saying so out loud, because
+        /// nothing else in this file expects it.
+        /// </para>
+        /// </remarks>
         private static readonly object Gate = new object();
 
         private static World _world;
@@ -57,6 +122,7 @@ namespace Agora.Mod.Core
         private static AgoraDistrictSensorSystem _districts;
         private static AgoraSidecarSystem _sidecar;
         private static AgoraStartYearSystem _startYear;
+        private static AgoraEffectApplicationSystem _effectApplication;
 
         private static EngineTuning _tuning;
         private static LayeredFlavorProvider _flavor;
@@ -77,10 +143,40 @@ namespace Agora.Mod.Core
         private static bool _pendingWake;
         private static FlavorProviderState _lastFlavorState = FlavorProviderState.Idle;
 
+        /// <summary>
+        /// Parties whose current name came from the canned pool and may still be improved on once by
+        /// a real CLI document. In memory only, deliberately: nothing about it is worth persisting.
+        ///
+        /// <para>
+        /// It needs no persisted flag and no provenance field on the payload because a second
+        /// pool-sourced write rewrites the identical string and cannot be observed — but that holds
+        /// only while every pool caller generates over the <b>full roster</b>. The pool's name for a
+        /// party is a function of (save GUID, founding date, party ID) <i>and of the other parties in
+        /// the same <c>Generate</c> call</i>, because de-duplication is per call; see
+        /// <see cref="StaticPoolProvider"/>. Narrow the request to the unnamed parties and the pool
+        /// hands a newcomer a name an incumbent already holds, which the next full-roster document
+        /// then resolves by moving one of them. So <see cref="EnsureEveryPartyNamed"/> passes every
+        /// party and applies only the empty ones.
+        /// </para>
+        ///
+        /// <para>
+        /// Only a CLI document can actually change a name, and the set is what lets it do so exactly
+        /// once. Both doors that can write a canned name — <see cref="EnsureEveryPartyNamed"/> and a
+        /// pool-sourced payload arriving through <see cref="CollectProse"/> — put the party in here,
+        /// so a splinter born on a month the CLI was late is not stuck with a stopgap for the save.
+        /// After a reload the set is empty and every name arrives non-empty from the sidecar,
+        /// so <see cref="ApplyProseNames"/> declines every rename from then on. It is not a cache and
+        /// it is not a leak; an empty set is the correct state for a resumed save.
+        /// </para>
+        /// </summary>
+        private static readonly HashSet<string> _provisionalNamePartyIds =
+            new HashSet<string>(StringComparer.Ordinal);
+
         private static SimDate _lastTick;
         private static bool _hasTicked;
         private static bool _attached;
         private static bool _saveActive;
+        private static bool _isFirstRun;
 
         /// <summary>
         /// How many past snapshots the engine is handed for its trend legs. The widest window the
@@ -106,6 +202,23 @@ namespace Agora.Mod.Core
         public static bool IsSaveActive
         {
             get { return _saveActive; }
+        }
+
+        /// <summary>
+        /// True when this save has never chosen a region theme: it arrived with no political state
+        /// <i>and</i> with settings the store had to invent. Published as
+        /// <c>agora.state.isFirstRun</c>, and the first-run dialog is the only thing that reads it.
+        /// </summary>
+        /// <remarks>
+        /// One-shot and in-memory. It is cleared the moment the theme is chosen or the dialog is
+        /// dismissed, so a player who answered the prompt is not asked again in the same session —
+        /// and after a reload the settings on disk answer for them. Both halves of the condition are
+        /// needed: state alone would re-prompt a save whose choice was written but whose first
+        /// monthly tick never ran.
+        /// </remarks>
+        public static bool IsFirstRun
+        {
+            get { return _isFirstRun; }
         }
 
         /// <summary>The tuning in force. Never null once <see cref="Attach"/> has run.</summary>
@@ -193,9 +306,24 @@ namespace Agora.Mod.Core
         }
 
         /// <summary>True while a generation is in flight. The wake control is disabled meanwhile.</summary>
+        /// <remarks>
+        /// Three terms rather than one, and the third is the one that matters.
+        /// <see cref="_pendingWake"/> covers only a wake the player asked for — a scheduled yearly or
+        /// election wake never sets it — and <see cref="FlavorProviderState.Running"/> is dropped by
+        /// the CLI worker <i>before</i> it writes <c>flavor_cache.json</c>. Between those two moments
+        /// the first two terms are both false while a file the retheme is about to delete has not been
+        /// written yet, which is exactly the window <see cref="SetTheme"/> must refuse in.
+        /// <see cref="LayeredFlavorProvider.IsGenerating"/> is the flag that stays up until the worker
+        /// has finished with the disk.
+        /// </remarks>
         public static bool PendingWake
         {
-            get { return _pendingWake || (_flavor != null && _flavor.State == FlavorProviderState.Running); }
+            get
+            {
+                if (_pendingWake) return true;
+                if (_flavor == null) return false;
+                return _flavor.State == FlavorProviderState.Running || _flavor.IsGenerating;
+            }
         }
 
         /// <summary>True when a CLI provider exists and has not written the machine off.</summary>
@@ -288,6 +416,10 @@ namespace Agora.Mod.Core
                     _sidecar = world.GetOrCreateSystemManaged<AgoraSidecarSystem>();
                     _startYear = world.GetOrCreateSystemManaged<AgoraStartYearSystem>();
 
+                    // Held only so ResetForNewSave can reach it. It is registered in an update phase
+                    // by AgoraMod.OnLoad, so this resolves rather than creates in practice.
+                    _effectApplication = world.GetOrCreateSystemManaged<AgoraEffectApplicationSystem>();
+
                     // Effects: build the palette from the tuning we actually loaded, not from the
                     // compiled default the application system would otherwise settle for, and give it
                     // a resolver that speaks the sensor layer's district ids. Without the second line
@@ -324,18 +456,26 @@ namespace Agora.Mod.Core
         /// Drops every per-save reference. The world itself is not torn down here — the ECS systems
         /// outlive a save and are re-used when the next city loads.
         /// </summary>
+        /// <remarks>
+        /// Detach is <see cref="ResetForNewSave"/> plus the world-level references. It used to clear a
+        /// subset of what that method clears, which is the shape that produced the three-copy bug:
+        /// two reset paths, one an incomplete superset of the other, and no way to tell from either
+        /// site which fields the other had forgotten. There is one list of per-save state now.
+        ///
+        /// <para>
+        /// <b><see cref="ResetCause.ModShutdown"/>, and it is not a formality.</b> The city is still
+        /// open and the player keeps looking at it, so the reset must hand those buffers back before
+        /// it forgets which ones they were. The load path skips the revert not because the buffers are
+        /// unreachable there — they are not — but because that city is about to be destroyed; see
+        /// <see cref="ResetCause"/>. Passing the wrong value here leaves the player's city carrying
+        /// Agora's last numbers with no mod left to remove them.
+        /// </para>
+        /// </remarks>
         public static void Detach()
         {
             lock (Gate)
             {
-                DisposeFlavor();
-
-                _saveActive = false;
-                _hasTicked = false;
-                _saveSettings = null;
-                _state = null;
-                _manualWakeRequested = false;
-                _snapshotHistory.Clear();
+                ResetForNewSave(ResetCause.ModShutdown);
 
                 if (_sidecar != null)
                 {
@@ -343,7 +483,10 @@ namespace Agora.Mod.Core
                     _sidecar.StateProvider = null;
                 }
 
-                AgoraEffects.Shutdown();
+                // No second AgoraEffects.Shutdown here: ResetForNewSave shuts the effect layer down
+                // first thing and only rebuilds it on the ResetCause.SaveBoundary path, so on this one
+                // it is already down and stays down. Re-initialising it just to tear it down again ran
+                // LogCoverage on every teardown, which is a palette report nobody reads at exit.
 
                 // Assigning null restores EngineTuning.Default rather than leaving the sensors holding
                 // a tuning whose save has been closed.
@@ -355,7 +498,121 @@ namespace Agora.Mod.Core
                 _districts = null;
                 _sidecar = null;
                 _startYear = null;
+                _effectApplication = null;
                 _attached = false;
+            }
+        }
+
+        /// <summary>
+        /// Drops every trace of the save that was open and rebuilds the per-save machinery for the
+        /// one that is loading. The world, the systems and the tuning survive; nothing that describes
+        /// a city does.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why this exists as one call.</b> CS2 re-uses the ECS world across "quit to menu, load
+        /// another city", so every static and every system instance here outlives a save. Three layers
+        /// held city A's state into city B before this: the prose fields below, the effect ledger
+        /// (<see cref="Attach"/> early-returns on the same world, so <see cref="AgoraEffects.Initialize"/>
+        /// never ran again) and the application system's slot table. Resetting them from three places
+        /// is how it came to be three bugs, so there is one seam and <see cref="OnSidecarLoaded"/>
+        /// calls it first.
+        /// </para>
+        /// <para>
+        /// Distinct from <see cref="Detach"/>: that additionally drops the world-level references and
+        /// leaves the runtime unattached, which is right at process exit and wrong at a save boundary.
+        /// </para>
+        /// <para>
+        /// <b>Why <paramref name="cause"/> has no default.</b> One assumption in here — that nobody
+        /// will ever see the city behind the effect layer's slot table again — is true at the load
+        /// boundary and false at shutdown, and a shared path carried it silently to the second call
+        /// site once already. See <see cref="ResetCause"/>. Every caller states which world it is
+        /// resetting against, because neither this method nor the effect system can work it out.
+        /// </para>
+        /// </remarks>
+        /// <param name="cause">Which of the two worlds this reset is running against.</param>
+        public static void ResetForNewSave(ResetCause cause)
+        {
+            lock (Gate)
+            {
+                DisposeFlavor();
+
+                _saveActive = false;
+                _saveSettings = null;
+                _isFirstRun = false;
+                _state = null;
+                _startDate = default(SimDate);
+                _snapshotHistory.Clear();
+                _manualWakeRequested = false;
+                _lastSnapshot = null;
+
+                // The prose block. Every one of these was surviving a load, and together they are what
+                // showed the player city A's articles and party names inside city B — _lastFlavorState
+                // most quietly of all, since a provider that happened to be in the same state in both
+                // cities would suppress the transition check in Tick and drop a completed generation.
+                _flavorPayload = null;
+                _lastFlavorDate = null;
+                _lastAttemptDate = null;
+                _pendingWake = false;
+                _lastFlavorState = FlavorProviderState.Idle;
+
+                // City B's party ids are not city A's, but an id that collided would arrive here
+                // already marked provisional and let a stopgap name be overwritten in a save that
+                // never had one. Carrying it across a save boundary is exactly the class of bug this
+                // method exists for.
+                _provisionalNamePartyIds.Clear();
+
+                // Cadence. A city loaded on the month city A last ticked would otherwise be treated as
+                // already ticked for that month.
+                _lastTick = default(SimDate);
+                _hasTicked = false;
+
+                // Sensors cache per sim day against a world that has just been replaced.
+                if (_snapshots != null) _snapshots.Invalidate();
+
+                // The ledger, rebuilt rather than merely cleared: Shutdown releases the palette, and
+                // IsInitialised reporting false is what stops the application system writing anything
+                // in the window between here and the re-Initialize below.
+                AgoraEffects.Shutdown();
+
+                // Rebuilt only for a save that is arriving. Nothing arrives after ModShutdown, and
+                // Initialize logs the palette coverage report, so doing it there is a line in
+                // Agora.log for a palette that is about to be released again.
+                if (cause == ResetCause.SaveBoundary && _tuning != null && _time != null)
+                {
+                    AgoraEffects.Initialize(_tuning, _time);
+                    AgoraEffects.DistrictResolver = _districts != null
+                        ? new SensorDistrictResolver(_districts)
+                        : null;
+                }
+
+                // The per-save kill-switch (#10). OnSidecarLoaded overwrites it a few lines later with
+                // the incoming save's own setting; this line is what stops city A's choice standing in
+                // for city B's on any path that reaches here without a sidecar to read.
+                AgoraEffects.EffectsEnabled = true;
+
+                if (_effectApplication != null)
+                {
+                    // The one branch in this method, and the reason ResetCause exists. On
+                    // SaveBoundary the old city's entities are still alive — ClearSystem runs later,
+                    // in the deserialize phase onGamePreload precedes — so the revert would work; it
+                    // is skipped because nothing would ever see it. That world is destroyed moments
+                    // later, and its save file was written before this ran, so what it carries is
+                    // fixed and gets reconciled on the next load by IsCarriedOver. On ModShutdown the
+                    // city stays open and every one of those slots is a live buffer still carrying
+                    // our contribution, so it is handed back here, while there is still an entity
+                    // manager to hand it back to.
+                    //
+                    // Not left to AgoraEffectApplicationSystem.OnDestroy: that revert opens with an
+                    // empty-table early-return, so anything that drops the table first silently
+                    // disarms it. Reverting before the drop is what makes disabling Agora leave a
+                    // stock city (non-negotiable #4 in spirit, and TryRevertAll's own contract).
+                    if (cause == ResetCause.ModShutdown) _effectApplication.TryRevertAll();
+
+                    _effectApplication.ForgetTrackedSlots();
+                }
+
+                _stateVersion++;
             }
         }
 
@@ -369,13 +626,23 @@ namespace Agora.Mod.Core
         {
             try
             {
+                // First line, before any restore work: everything below writes per-save state, and a
+                // reset that ran afterwards would undo it. See ResetForNewSave for what it covers.
+                // SaveBoundary: this is the load path, one step behind OnGamePreload's own reset, so
+                // the slot table it would revert is already empty — and any key that did survive
+                // would name an entity of the outgoing city, which ClearSystem destroyed between that
+                // reset and this one.
+                ResetForNewSave(ResetCause.SaveBoundary);
+
                 _saveSettings = (result != null && result.Settings != null)
                     ? result.Settings
                     : new CoreSettings();
 
-                // Sensors cache per day and the world underneath them has just been replaced. Not
-                // invalidating here would let the new city inherit the previous one's rents.
-                if (_snapshots != null) _snapshots.Invalidate();
+                // "Never chosen a theme", which is a narrower question than "has no state" — a save
+                // can have answered the prompt and then been closed before its first monthly tick
+                // wrote a state file. Asking both is what stops that player being re-prompted and
+                // offered the chance to discard their own choice. See IsFirstRun.
+                _isFirstRun = result == null || (!result.HasState && result.SettingsAreDefaults);
 
                 ConfigureClock();
 
@@ -386,9 +653,6 @@ namespace Agora.Mod.Core
                 // the save's start year: the year is a per-save setting, and the day-of-month must not
                 // matter to a month-granular calendar.
                 _startDate = new SimDate(_saveSettings.StartYear, 1, 1);
-
-                _snapshotHistory.Clear();
-                _manualWakeRequested = false;
 
                 // Restore, or mint. A save that carried state resumes from it; one that did not is
                 // starting its politics now, which is also what a save created before Agora was
@@ -413,7 +677,11 @@ namespace Agora.Mod.Core
 
                 RebuildFlavor();
 
-                _hasTicked = false;
+                // The pool cannot see the registry through IFlavorProvider — it is handed a snapshot
+                // and a date only — so the roster has to be pushed at it. Doing it here rather than
+                // waiting for the first wake is what lets the very first poll name anybody.
+                SeedFlavorRoster(_state.Date);
+
                 _saveActive = true;
                 _stateVersion++;
 
@@ -423,6 +691,23 @@ namespace Agora.Mod.Core
                 }
 
                 if (result != null && result.MonthsToReplay > 0) Replay(result.MonthsToReplay);
+
+                // Last, and after the replay: a catch-up can found parties, and a party reaching the
+                // dashboard without a name is the one thing this whole path exists to prevent. The
+                // canned pool answers synchronously, so there is no frame in which the UI sees a blank.
+                //
+                // Its own catch, not the outer one: that one clears _saveActive, and a cosmetic naming
+                // step must not be able to switch the political layer off for the session. A party
+                // with no name is a blemish; a save with no politics is the mod not running.
+                try
+                {
+                    EnsureEveryPartyNamed(_state.Date);
+                }
+                catch (Exception nameEx)
+                {
+                    AgoraMod.Log.Warn("Agora flavor: naming the unnamed parties failed (" + nameEx.Message +
+                                      "); they stay unnamed until the next prose collection.");
+                }
             }
             catch (Exception ex)
             {
@@ -442,10 +727,27 @@ namespace Agora.Mod.Core
             _startYear.Configure(StartYearDeliveryMode.RewriteGameEpoch, _saveSettings.StartYear, null);
         }
 
+        /// <summary>
+        /// Drops the flavor provider and builds a new one for the current theme. The load path's
+        /// entry point; the retheme runs the two halves separately so that it can delete the cache
+        /// between them.
+        /// </summary>
         private static void RebuildFlavor()
         {
             DisposeFlavor();
+            CreateFlavor(mayCaptureSnapshot: true);
+        }
 
+        /// <summary>
+        /// Constructs the provider for the current theme. Assumes any previous one has already been
+        /// disposed.
+        /// </summary>
+        /// <param name="mayCaptureSnapshot">
+        /// Whether the catalog this is validated against may run the sensors. See
+        /// <see cref="BuildFlavorCatalog"/> — false on the UI update tick.
+        /// </param>
+        private static void CreateFlavor(bool mayCaptureSnapshot)
+        {
             Guid saveGuid = SaveGuid;
             if (saveGuid == Guid.Empty)
             {
@@ -472,7 +774,18 @@ namespace Agora.Mod.Core
             // The ids the engine currently recognises. This is the input to cache re-validation, so it
             // has to describe the state we just restored: an empty catalog means "trust nothing
             // cached" and would throw away every name the last session generated.
-            _flavor = FlavorProviders.Create(saveGuid, _saveSettings.Theme, directory, BuildFlavorCatalog());
+            FlavorCatalog catalog = BuildFlavorCatalog(mayCaptureSnapshot);
+
+            // Logged because the failure mode is silent: a catalog that came out short drops cached
+            // entries one at a time, and the player sees names quietly revert with nothing in the log
+            // to say why. Four counts here turn that into a one-line diagnosis.
+            AgoraMod.Log.Info("Agora flavor: cache re-validation catalog — " +
+                              catalog.PartyCount + " parties, " +
+                              catalog.FactionCount + " factions, " +
+                              catalog.DistrictCount + " districts, " +
+                              catalog.EventCount + " events.");
+
+            _flavor = FlavorProviders.Create(saveGuid, _saveSettings.Theme, directory, catalog);
         }
 
         private static void DisposeFlavor()
@@ -489,6 +802,279 @@ namespace Agora.Mod.Core
             }
 
             _flavor = null;
+        }
+
+        // ------------------------------------------------------------------ per-save settings
+
+        /// <summary>
+        /// Writes the per-save settings to <c>settings.json</c> on their own, without waiting for the
+        /// player to save the game.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Until this existed, <see cref="SidecarStore.SaveSettings"/> had no caller anywhere: settings
+        /// reached disk only as a side effect of <see cref="SidecarStore.SaveState"/>, i.e. only on a
+        /// game save. A theme chosen and then lost to a crash would have come back as the other theme
+        /// with a different set of parties, which is the worst possible way to lose one setting.
+        /// </para>
+        /// <para>
+        /// Every failure is swallowed. A settings write is a convenience — the value is already live in
+        /// memory and <see cref="SidecarStore.SaveState"/> will write it again — and a full disk must
+        /// not be able to take a session down from inside the UI update loop.
+        /// </para>
+        /// </remarks>
+        private static void PersistSettings()
+        {
+            try
+            {
+                if (_sidecar == null || _sidecar.Store == null) return;
+
+                Guid saveGuid = SaveGuid;
+                if (saveGuid == Guid.Empty) return;
+
+                _sidecar.Store.SaveSettings(saveGuid, SaveSettings);
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Warn("Agora could not write settings.json (" + ex.Message + "); the " +
+                                  "setting is live for this session and will be written with the save.");
+            }
+        }
+
+        /// <summary>
+        /// Locks the region theme once the save has held its first election, and says so once.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately here and not inside <c>PoliticalEngine.RunElection</c> or
+        /// <c>Advance</c>: both are documented pure, and <see cref="PoliticalState.Settings"/> is
+        /// shared by reference across the engine's clone, so a write there would reach back into the
+        /// caller's input. <see cref="PoliticalState.ElectionHistory"/> is the authority for the same
+        /// reason <c>Retheme</c> reads it — a flag can be lost, a held election cannot.
+        /// </remarks>
+        private static void LockThemeIfElectionHeld()
+        {
+            if (_state == null || _saveSettings == null) return;
+            if (_saveSettings.ThemeLocked) return;
+            if (_state.ElectionHistory.Count == 0) return;
+
+            _saveSettings.ThemeLocked = true;
+
+            // Normally the same object — the engine's clone shares the settings reference — but a
+            // retheme replaces it, so the two are re-synchronised rather than assumed equal.
+            if (_state.Settings != null) _state.Settings.ThemeLocked = true;
+
+            PersistSettings();
+            _stateVersion++;
+
+            AgoraMod.Log.Info("Agora: region theme " + _saveSettings.Theme + " locked at the first " +
+                              "election; it is history from here.");
+        }
+
+        /// <summary>
+        /// The one inbound write channel: applies a per-save setting the dashboard asked for, or says
+        /// why it did not. Backs <c>agora.state.setSetting</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Synchronous on purpose. It runs from a <c>CallBinding</c> on the UI phase, which keeps
+        /// ticking while the sim is paused — and <c>GameSimulation</c> does not, so deferring the work
+        /// to the next engine tick would mean a player who chose a theme at speed zero saw nothing
+        /// happen at all.
+        /// </para>
+        /// <para>
+        /// No ECS work happens here for the same reason the getters do none (<c>ui_bindings.md</c> §7
+        /// rule 6): this is the UI update tick. Where a snapshot is needed, the one the sensors
+        /// already captured is used — which is why <see cref="BuildFlavorCatalog"/> takes a flag
+        /// rather than deciding for itself. <c>AgoraSnapshotSystem.Capture</c> is not a getter: on a
+        /// day it has not yet sampled it runs every sensor family's query, so the retheme path passes
+        /// false and lives with <see cref="_lastSnapshot"/>.
+        /// </para>
+        /// </remarks>
+        /// <returns>
+        /// <see cref="CommandOutcome.Ok"/> when the value took. Every other member is a short
+        /// engine-authored reason; no exception text ever reaches the panel.
+        /// </returns>
+        public static CommandOutcome SetSetting(string key, string value)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (!_attached || !_saveActive || _state == null || _saveSettings == null)
+                        return CommandOutcome.NoActiveSave;
+
+                    switch (key)
+                    {
+                        case "theme":
+                            return SetTheme(value);
+
+                        case "pauseOnMajorNews":
+                            return SetFlag(value, v => _saveSettings.PauseOnMajorNews = v);
+
+                        case "showAllReports":
+                            return SetFlag(value, v => _saveSettings.ShowAllReports = v);
+
+                        case "effectsEnabled":
+                            return SetFlag(value, v =>
+                            {
+                                _saveSettings.EffectsEnabled = v;
+
+                                // The same second write the load path makes: the per-save switch lives
+                                // in the settings object, but the effect layer reads its own copy, and
+                                // a value set in only one of the two is a kill switch that does not
+                                // kill anything (non-negotiable #10, and OnSidecarLoaded).
+                                AgoraEffects.EffectsEnabled = v;
+                            });
+
+                        case "dismissFirstRun":
+                            // Not a setting and not persisted — the player closed the prompt. It is
+                            // here because it is a one-shot lifecycle signal on the same object, and
+                            // giving it a binding of its own would be a second write channel for one
+                            // boolean that is never written to disk.
+                            _isFirstRun = false;
+                            _stateVersion++;
+                            return CommandOutcome.Ok;
+
+                        default:
+                            return CommandOutcome.UnknownKey;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Whatever it was stays in the log. An escaping exception here is inside the UI
+                    // update loop, and the panel gets a code it can render rather than a stack trace.
+                    AgoraMod.Log.Error(ex, "Agora: setting '" + (key ?? "(null)") + "' could not be " +
+                                           "applied; the previous value stands.");
+                    return CommandOutcome.Failed;
+                }
+            }
+        }
+
+        /// <summary>Parses a boolean, applies it, persists and republishes. Rejects anything else.</summary>
+        private static CommandOutcome SetFlag(string value, Action<bool> apply)
+        {
+            bool parsed;
+            if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)) parsed = true;
+            else if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)) parsed = false;
+            else return CommandOutcome.BadValue;
+
+            apply(parsed);
+            PersistSettings();
+            _stateVersion++;
+            return CommandOutcome.Ok;
+        }
+
+        /// <summary>
+        /// Changes the save's region theme, if the engine allows it, and rebuilds everything downstream
+        /// of the party registry it just replaced.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The order below is not interchangeable, and the first step is the subtle one. The old
+        /// provider is disposed <i>before</i> the cache file is deleted, because the CLI worker writes
+        /// <c>flavor_cache.json</c> after it has already left
+        /// <see cref="FlavorProviderState.Running"/>; deleting first would let a generation that was
+        /// finishing write the old theme's prose back on top of the delete, and every id in it
+        /// validates against the new catalog. <see cref="ClaudeCliProvider.Dispose"/> joins the worker,
+        /// so once <see cref="DisposeFlavor"/> returns the write has landed and the delete removes it.
+        /// The join is bounded, which is why <see cref="PendingWake"/> also refuses the command while
+        /// the worker is on its feet — the ordering alone is not a guarantee.
+        /// </para>
+        /// <para>
+        /// After that: the new provider is constructed against the new catalog, the roster is re-seeded
+        /// because the canned pool learns the registry from nowhere else, and the synchronous namer
+        /// runs last because it is what puts a name on a party before the next frame renders it.
+        /// </para>
+        /// </remarks>
+        private static CommandOutcome SetTheme(string value)
+        {
+            RegionTheme theme;
+            if (string.Equals(value, "Eu", StringComparison.OrdinalIgnoreCase)) theme = RegionTheme.Eu;
+            else if (string.Equals(value, "Na", StringComparison.OrdinalIgnoreCase)) theme = RegionTheme.Na;
+            else return CommandOutcome.BadValue;
+
+            // Refused rather than queued. A retheme disposes the flavor provider and deletes its cache
+            // file, and doing either with a claude subprocess in flight races the runner's own
+            // completion path — Dispose's join is bounded at two seconds and can return with the worker
+            // still alive, so the ordering below is a guard and not a proof. PendingWake stays true
+            // until the worker has finished with the disk, which is later than the state says. The
+            // player can press the button again in a few seconds.
+            if (theme != _saveSettings.Theme && PendingWake) return CommandOutcome.Busy;
+
+            RegionTheme previous = _saveSettings.Theme;
+            RethemeResult retheme = PoliticalEngine.Retheme(_state, theme, _startDate, Tuning);
+
+            if (!retheme.Accepted) return retheme.Outcome;
+
+            if (retheme.Changed)
+            {
+                _state = retheme.State;
+                _saveSettings = _state.Settings;
+
+                // Every one of these is keyed to a party id whose meaning just changed. The ids
+                // themselves are unchanged — party-01 exists under both themes — so nothing downstream
+                // would ever reject them; they have to be dropped here or not at all.
+                _provisionalNamePartyIds.Clear();
+                _flavorPayload = null;
+                _lastFlavorDate = null;
+                _lastAttemptDate = null;
+                _pendingWake = false;
+                _lastFlavorState = FlavorProviderState.Idle;
+
+                // Dispose, then delete, then create — see the remarks. Disposing first is what stops a
+                // finishing generation writing the file back after the delete.
+                DisposeFlavor();
+
+                // The file, not just the provider. flavor_cache.json names party-01 and the new
+                // catalog contains party-01, so the catalog filter has no reason to drop it and the
+                // old theme's prose would be restored verbatim onto the new theme's parties.
+                DeleteFlavorCache();
+
+                // No fresh sensor capture: this runs on the UI update tick. The catalog's district
+                // half comes from the last reading the sensors took (ui_bindings.md §7 rule 6).
+                CreateFlavor(mayCaptureSnapshot: false);
+                SeedFlavorRoster(_state.Date);
+                EnsureEveryPartyNamed(_state.Date);
+
+                PersistSettings();
+
+                AgoraMod.Log.Info("Agora: region theme changed from " + previous + " to " + theme +
+                                  "; regenerated " + _state.Parties.Count + " parties at " +
+                                  _startDate + ".");
+            }
+
+            // Cleared on a no-op too: the player answered the prompt either way.
+            _isFirstRun = false;
+            _stateVersion++;
+            return CommandOutcome.Ok;
+        }
+
+        /// <summary>
+        /// Removes <c>flavor_cache.json</c>. Called on an accepted retheme, and nowhere else — the
+        /// cache is the only thing that survives a provider rebuild, and its contents are keyed to
+        /// party ids that have just been redefined.
+        /// </summary>
+        private static void DeleteFlavorCache()
+        {
+            try
+            {
+                if (_sidecar == null || _sidecar.Store == null) return;
+
+                Guid saveGuid = SaveGuid;
+                if (saveGuid == Guid.Empty) return;
+
+                string path = Path.Combine(_sidecar.Store.DirectoryFor(saveGuid), FileFlavorCache.FileName);
+                if (!File.Exists(path)) return;
+
+                File.Delete(path);
+                AgoraMod.Log.Info("Agora flavor: discarded the cached prose; it described the previous " +
+                                  "theme's parties under the same ids.");
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Warn("Agora flavor: could not delete the stale prose cache (" + ex.Message +
+                                  "); it may restore the previous theme's names on the next load.");
+            }
         }
 
         // ------------------------------------------------------------------ cadence
@@ -597,6 +1183,15 @@ namespace Agora.Mod.Core
             _manualWakeRequested = false;
             _stateVersion++;
 
+            // After the assignment, because the flag is decided by the state that just came back.
+            LockThemeIfElectionHeld();
+
+            // Refreshed every month rather than only on a wake: a splinter or a new entry founded by
+            // the tick above is not in the roster the last RequestFlavor left behind, and the pool
+            // writes about the roster it was handed. Cheap — it walks the registry and allocates
+            // briefs, nothing more.
+            SeedFlavorRoster(today);
+
             // The canned pool answers immediately and the CLI overwrites it later, so polling here
             // is what gets party names onto a brand-new save's very first dashboard frame.
             CollectProse(today, snapshot);
@@ -682,7 +1277,8 @@ namespace Agora.Mod.Core
                     ArchetypeId = party.ArchetypeId,
                     CoreGrievance = party.CoreGrievance,
                     StatusWord = party.Status.ToString(),
-                    CurrentName = party.Name
+                    CurrentName = party.Name,
+                    FoundedDate = party.FoundedDate
                 });
             }
 
@@ -696,7 +1292,8 @@ namespace Agora.Mod.Core
                     ArchetypeId = faction.ArchetypeId,
                     CoreGrievance = faction.CoreGrievance,
                     StatusWord = faction.Status.ToString(),
-                    CurrentName = faction.Name
+                    CurrentName = faction.Name,
+                    FoundedDate = faction.FoundedDate
                 });
             }
 
@@ -716,6 +1313,129 @@ namespace Agora.Mod.Core
         }
 
         /// <summary>
+        /// Tells the canned pool who exists. <see cref="IFlavorProvider.TryGetFlavor"/> hands it only
+        /// a snapshot and a date, so without this the pool has no way to learn the registry and every
+        /// poll returns articles about nobody.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not a <c>RequestFlavor</c> call: that is the CLI's trigger, and firing a
+        /// subprocess on every load and every month boundary is not what "the roster moved" warrants.
+        /// </remarks>
+        private static void SeedFlavorRoster(SimDate date)
+        {
+            if (_state == null) return;
+            if (_flavor == null || _flavor.Pool == null) return;
+
+            var request = new FlavorRequest
+            {
+                Date = date,
+                Theme = _saveSettings != null ? _saveSettings.Theme : RegionTheme.Eu,
+                Snapshot = _lastSnapshot
+            };
+
+            FillBriefs(request, _state);
+            _flavor.Pool.Roster = request;
+        }
+
+        /// <summary>
+        /// Gives every still-unnamed party a name, synchronously, from the canned pool.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The CLI is the preferred source, but it answers in tens of seconds and may never answer at
+        /// all, and a party has to be on the ballot with a name the moment it exists. So the pool is
+        /// asked directly — <c>Generate</c> is synchronous and has no once-per-date guard. If the pool
+        /// is unavailable the names stay empty and the dashboard shows its placeholder; failing closed
+        /// here is the same rule as #7.
+        /// </para>
+        /// <para>
+        /// <b>The request carries the whole roster, named parties included, and that is not
+        /// redundant.</b> The pool de-duplicates names per <c>Generate</c> call, so a request narrowed
+        /// to the unnamed would let a splinter draw a name an incumbent already holds — invisible
+        /// until the next full-roster document either renamed the splinter or, if it sorted first,
+        /// left the two sharing a name for good. Generating over everyone and writing only the empty
+        /// ones costs one extra pass over a handful of briefs and makes this path produce exactly the
+        /// names the monthly document would. Factions and events are still dropped: this method is
+        /// about the ballot, they are drawn after the parties and so cannot move a party name, and
+        /// generating prose nobody
+        /// reads is work done on the sim thread for nothing.
+        /// </para>
+        /// </remarks>
+        private static void EnsureEveryPartyNamed(SimDate date)
+        {
+            if (_state == null) return;
+            if (_flavor == null || _flavor.Pool == null) return;
+
+            var request = new FlavorRequest
+            {
+                Date = date,
+                Theme = _saveSettings != null ? _saveSettings.Theme : RegionTheme.Eu,
+                ArticleCount = 1
+            };
+
+            FillBriefs(request, _state);
+            request.Factions.Clear();
+            request.Events.Clear();
+
+            // The roster stays whole — see the remarks. All this decides is whether there is anything
+            // to write, so that the common case (everybody named) costs no generation at all.
+            bool anyUnnamed = false;
+            for (int i = 0; i < request.Parties.Count; i++)
+            {
+                if (string.IsNullOrEmpty(request.Parties[i].CurrentName)) { anyUnnamed = true; break; }
+            }
+
+            if (!anyUnnamed) return;
+
+            FlavorDocument document;
+            try
+            {
+                document = _flavor.Pool.Generate(request);
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Warn("Agora flavor: the canned pool threw while naming parties (" +
+                                  ex.Message + "); they stay unnamed for now.");
+                return;
+            }
+
+            if (document == null) return;
+
+            FlavorPayload payload = document.ToPayload(date);
+            int named = 0;
+
+            for (int i = 0; i < payload.Parties.Count; i++)
+            {
+                PartyFlavor flavor = payload.Parties[i];
+                if (flavor == null || string.IsNullOrEmpty(flavor.PartyId)) continue;
+
+                for (int p = 0; p < _state.Parties.Count; p++)
+                {
+                    Party party = _state.Parties[p];
+                    if (string.CompareOrdinal(party.Id, flavor.PartyId) != 0) continue;
+                    if (!string.IsNullOrEmpty(party.Name)) break;
+                    if (string.IsNullOrEmpty(flavor.Name)) break;
+
+                    party.Name = flavor.Name;
+                    if (!string.IsNullOrEmpty(flavor.ShortName)) party.ShortName = flavor.ShortName;
+                    if (!string.IsNullOrEmpty(flavor.Description)) party.Description = flavor.Description;
+                    if (!string.IsNullOrEmpty(flavor.Slogan)) party.Slogan = flavor.Slogan;
+
+                    _provisionalNamePartyIds.Add(party.Id);
+                    named++;
+                    break;
+                }
+            }
+
+            if (named > 0)
+            {
+                AgoraMod.Log.Info("Agora flavor: named " + named + " part" + (named == 1 ? "y" : "ies") +
+                                  " from the canned pool at " + date + ".");
+                _stateVersion++;
+            }
+        }
+
+        /// <summary>
         /// Takes whatever prose is available and applies the parts that belong on engine objects.
         /// </summary>
         /// <remarks>
@@ -729,39 +1449,59 @@ namespace Agora.Mod.Core
         {
             if (_flavor == null) return;
 
-            FlavorPayload payload;
             try
             {
-                payload = _flavor.TryGetFlavor(snapshot, today);
-            }
-            catch (Exception ex)
-            {
-                AgoraMod.Log.Warn("Agora flavor poll failed (" + ex.Message + "); keeping the last good prose.");
-                return;
-            }
+                FlavorPayload payload;
+                try
+                {
+                    payload = _flavor.TryGetFlavor(snapshot, today);
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Warn("Agora flavor poll failed (" + ex.Message + "); keeping the last good prose.");
+                    return;
+                }
 
-            _lastAttemptDate = today;
+                if (payload == null) return;
 
-            if (payload == null)
+                _flavorPayload = payload;
+                _lastFlavorDate = today;
+                _pendingWake = false;
+
+                if (_state != null)
+                {
+                    // Canned prose can name a party through this door too — a splinter founded between
+                    // wakes, on a month the CLI was late. Such a name is as provisional as one written
+                    // by EnsureEveryPartyNamed, and marking it so is what lets the model's document
+                    // still claim it later.
+                    ApplyProseNames(payload, _flavor.LastPayloadSource == FlavorPayloadSource.Pool);
+
+                    // After, not before: a party the payload did not cover — a splinter founded this
+                    // month, or one the CLI's cached document predates — still needs a name before
+                    // this method's version bump republishes the panel.
+                    EnsureEveryPartyNamed(today);
+
+                    _state.LastFlavorDate = today;
+                }
+            }
+            finally
             {
+                // In a finally, not on the success path: the status line reports when prose was last
+                // *attempted*, so an attempt that threw — anywhere in this method, not only inside
+                // TryGetFlavor — must still move it. Leaving it behind reads to the player as "never
+                // tried" and hides a provider that is failing every cycle. The version bump is here
+                // for the same reason: the panel republishes on it and would otherwise keep showing
+                // the previous attempt's date.
+                _lastAttemptDate = today;
                 _stateVersion++;
-                return;
             }
-
-            _flavorPayload = payload;
-            _lastFlavorDate = today;
-            _pendingWake = false;
-
-            if (_state != null)
-            {
-                ApplyProseNames(payload);
-                _state.LastFlavorDate = today;
-            }
-
-            _stateVersion++;
         }
 
-        private static void ApplyProseNames(FlavorPayload payload)
+        /// <param name="provisional">
+        /// True when the payload came from the canned pool, in which case any name it writes joins the
+        /// set of names a later model document is still allowed to replace. False locks on write.
+        /// </param>
+        private static void ApplyProseNames(FlavorPayload payload, bool provisional)
         {
             for (int i = 0; i < payload.Parties.Count; i++)
             {
@@ -773,8 +1513,27 @@ namespace Agora.Mod.Core
                     Party party = _state.Parties[p];
                     if (string.CompareOrdinal(party.Id, flavor.PartyId) != 0) continue;
 
-                    if (!string.IsNullOrEmpty(flavor.Name)) party.Name = flavor.Name;
-                    if (!string.IsNullOrEmpty(flavor.ShortName)) party.ShortName = flavor.ShortName;
+                    // The name lock. Identity is written once and then left alone: a party the player
+                    // has been reading about for ten years must not be re-christened because a fresh
+                    // document happened to draw a different adjective. The one exception is a name the
+                    // canned pool wrote as a stopgap — that one yields to the first real document,
+                    // once, and is locked from then on.
+                    bool mayRename = string.IsNullOrEmpty(party.Name) ||
+                                     _provisionalNamePartyIds.Contains(party.Id);
+
+                    if (mayRename && !string.IsNullOrEmpty(flavor.Name))
+                    {
+                        party.Name = flavor.Name;
+                        if (!string.IsNullOrEmpty(flavor.ShortName)) party.ShortName = flavor.ShortName;
+
+                        // Canned prose leaves the door open; a model document closes it.
+                        if (provisional) _provisionalNamePartyIds.Add(party.Id);
+                        else _provisionalNamePartyIds.Remove(party.Id);
+                    }
+
+                    // Description and slogan are prose, not identity. They are allowed to move with
+                    // the politics, and a party whose platform shifted saying the same thing forever
+                    // is the worse failure.
                     if (!string.IsNullOrEmpty(flavor.Description)) party.Description = flavor.Description;
                     if (!string.IsNullOrEmpty(flavor.Slogan)) party.Slogan = flavor.Slogan;
                     break;
@@ -854,6 +1613,11 @@ namespace Agora.Mod.Core
             _hasTicked = true;
             _stateVersion++;
 
+            // A catch-up can run an election, and that is the moment the theme stops being a choice.
+            // The monthly tick's own call would not cover it: a save loaded years late locks here or
+            // not at all until the next month boundary.
+            LockThemeIfElectionHeld();
+
             AgoraMod.Log.Info("Agora: replayed " + replayed + " month(s) up to " + _state.Date +
                               (truncated ? " (clamped to scheduler.catchUpMaxMonths)." : ".") +
                               " Replayed months were scored against the present city; effects were not applied.");
@@ -898,7 +1662,15 @@ namespace Agora.Mod.Core
         /// The id set the flavor provider's output is validated against: everything the engine
         /// currently knows about. An id outside this set is a hallucination and is rejected.
         /// </summary>
-        private static FlavorCatalog BuildFlavorCatalog()
+        /// <param name="mayCaptureSnapshot">
+        /// Whether this call is allowed to ask the sensors for a fresh reading. Only the district ids
+        /// come from a snapshot, and <see cref="AgoraSnapshotSystem.Capture"/> is not a getter — on a
+        /// day it has not yet sampled it runs the <c>EntityQuery</c> of all six sensor families and
+        /// moves the trend history. That is wanted on the deserialize side and forbidden on the UI
+        /// update tick (<c>ui_bindings.md</c> §7 rule 6), so the caller states which it is rather than
+        /// this deciding. False falls back on <see cref="_lastSnapshot"/> alone.
+        /// </param>
+        private static FlavorCatalog BuildFlavorCatalog(bool mayCaptureSnapshot)
         {
             if (_state == null) return FlavorCatalog.Empty;
 
@@ -914,7 +1686,13 @@ namespace Agora.Mod.Core
             // Districts come from the sensors rather than from state: the player can rename or add one
             // between ticks, and prose about a district that exists is not a hallucination.
             var districtIds = new List<string>();
-            CitySnapshot snapshot = CaptureSnapshot();
+
+            // A load can reach here before the sensor systems have run once, and a fresh capture then
+            // returns null. Falling back on the last reading rather than accepting an empty district
+            // set matters: an empty set is indistinguishable from "this city has no districts", and it
+            // would drop every cached article that referenced one. The retheme path takes the fallback
+            // on its own: it has no capture to fall back from.
+            CitySnapshot snapshot = (mayCaptureSnapshot ? CaptureSnapshot() : null) ?? _lastSnapshot;
             if (snapshot != null)
             {
                 for (int i = 0; i < snapshot.Districts.Count; i++) districtIds.Add(snapshot.Districts[i].Id);

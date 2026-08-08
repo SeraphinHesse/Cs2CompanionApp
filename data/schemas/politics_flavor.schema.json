@@ -10,7 +10,7 @@
   "required": ["schemaVersion", "generatedAtSimDate"],
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
+    "schemaVersion": { "type": "integer", "const": 2 },
     "generatedAtSimDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
 
     "partyFlavor": {
@@ -55,8 +55,8 @@
         "properties": {
           "id": { "type": "string" },
           "outlet": { "type": "string", "maxLength": 60 },
-          "headline": { "type": "string", "maxLength": 140 },
-          "body": { "type": "string", "maxLength": 900 },
+          "headline": { "type": "string", "maxLength": 90 },
+          "body": { "type": "string", "maxLength": 420 },
           "tone": { "type": "string", "enum": ["neutral", "supportive", "critical", "alarmed", "celebratory"] },
           "refs": {
             "type": "object",

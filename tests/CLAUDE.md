@@ -1,6 +1,10 @@
 # tests/ — the determinism and simulation suites
 
-`Agora.Core.Tests` targets `net8.0` and references **only** `Agora.Core`. It must pass on a machine
+`Agora.Core.Tests` targets `net8.0`, project-references `Agora.Core`, and additionally compiles by
+`<Compile Link>` a fixed list of `Agora.Mod` files that name no game type (plus a `Newtonsoft.Json`
+package reference pinned to the game's shipped 13.0.2, purely so those files compile here) — see the
+comments in `Agora.Core.Tests.csproj` for which and why. The invariant is unchanged and is what
+matters: the suite loads no `Game.*`, `Colossal.*` or `Unity.*` assembly and must pass on a machine
 with no copy of Cities: Skylines II installed. If a test needs the game, it is not a test — it is a
 manual gate item, and belongs in `docs/status.md`.
 

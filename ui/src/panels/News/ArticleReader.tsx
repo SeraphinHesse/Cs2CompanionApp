@@ -28,15 +28,22 @@ interface ArticleReaderProps {
 }
 
 export const ArticleReader = ({ headline, lookups, onClose }: ArticleReaderProps) => {
-  // The declared overload returns V, but a map value can genuinely be absent for a frame after
-  // subscribing, so the empty value from the contract is used as the floor.
+  // There is no "still fetching" state to render here, and nothing below may pretend otherwise.
+  // A map binding resolves inside its own subscribe trigger — the game's binding throws outright
+  // if C# has not answered by the time subscribe returns — and `headline.id` is fixed for the life
+  // of this component, since the feed that could change it is unmounted while the reader is open.
+  // So `article` is always C#'s final answer for this id. `id: ""` is that answer for an id the
+  // projection cannot resolve (an unknown key returns the empty value, contract §6), and it is
+  // reachable in normal play: AgoraNewsUISystem republishes every subscribed key on publish and
+  // article ids are per-generation, so a flavor wake can retire the open piece under the reader.
+  // The declared overload returns V; the empty value is kept as a floor rather than trusted away.
   const fetched = useMapValue(article$, headline.id) as Agora.NewsArticle | undefined;
   const article: Agora.NewsArticle = fetched || EMPTY_NEWS_ARTICLE;
 
   const paragraphs = useMemo(() => splitParagraphs(article.body), [article.body]);
 
-  // Fall back to the feed row's own strings while the body is still in flight, so opening an
-  // item never shows a blank sheet.
+  // Fall back to the feed row's own strings whenever the article payload is the empty one, so a
+  // piece that has been retired from prose still opens as a readable sheet rather than a blank.
   const title = article.headline || headline.headline || "Untitled report";
   const outlet = article.outletName || headline.outletName;
   const date = article.date || headline.date;
@@ -73,6 +80,8 @@ export const ArticleReader = ({ headline, lookups, onClose }: ArticleReaderProps
               </div>
             ))
           ) : (
+            // No body came back. The feed row's own summary stands in so the sheet is never
+            // blank, and says plainly when there is nothing further to read.
             <div className={styles.articlePara}>
               {headline.summary || "The full text of this piece is not available."}
             </div>

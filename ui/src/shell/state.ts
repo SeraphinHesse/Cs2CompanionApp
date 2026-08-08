@@ -34,12 +34,32 @@ export const dashboardOpen$ = bindLocalValue<boolean>(false);
 
 export const activeTab$ = bindLocalValue<AgoraTab>("council");
 
+/**
+ * Whether the settings drawer under the tab bar is showing.
+ *
+ * View state, like the two above it — the settings it *contains* are per-save and live in the
+ * sidecar, but "is the drawer open" resets every session and never crosses the bridge. It is not a
+ * fourth tab: a queued plan puts Parties in that slot, and this is chrome, not political data.
+ */
+export const settingsOpen$ = bindLocalValue<boolean>(false);
+
 export function toggleDashboard(): void {
   dashboardOpen$.update(!dashboardOpen$.value);
 }
 
 export function closeDashboard(): void {
   dashboardOpen$.update(false);
+  // Closing the dashboard closes the drawer with it, so reopening lands on the panels rather than on
+  // whatever was last being configured.
+  settingsOpen$.update(false);
+}
+
+export function toggleSettings(): void {
+  settingsOpen$.update(!settingsOpen$.value);
+}
+
+export function closeSettings(): void {
+  settingsOpen$.update(false);
 }
 
 /** Selecting a tab also opens the dashboard, so the tab strip works as a shortcut from closed. */
