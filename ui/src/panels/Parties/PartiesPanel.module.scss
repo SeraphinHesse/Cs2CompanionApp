@@ -1,0 +1,133 @@
+// Panel 26 — Parties. Flex only; Coherent Gameface has no CSS grid and fails silently on it.
+//
+// The geometry matches the Districts panel exactly - 640rem by 620rem - so the shell's panel slot
+// does not resize when the player moves between the two tabs.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 640rem;
+  max-height: 620rem;
+  padding: 8rem 10rem 10rem 10rem;
+  margin: 8rem;
+  background-color: $surface;
+  border-radius: 4rem;
+  color: $text;
+  font-size: 12rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-bottom: 8rem;
+  padding-bottom: 5rem;
+  border-bottom: 1rem solid $line;
+}
+
+.title {
+  display: flex;
+  font-weight: bold;
+  font-size: 13rem;
+  letter-spacing: 2rem;
+  opacity: 0.85;
+}
+
+.headerMeta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.headerDate {
+  display: flex;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-faint;
+}
+
+.headerSystem {
+  display: flex;
+  margin-left: 8rem;
+  padding: 1rem 5rem;
+  border-radius: 8rem;
+  background-color: $surface-track;
+  color: $text-dim;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.detailColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.detailScroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.emptyPane {
+  display: flex;
+  flex: 1 1 auto;
+  padding: 12rem 8rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.45;
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  padding: 14rem 10rem;
+}
+
+.skeletonTitle {
+  display: flex;
+  font-size: 13rem;
+  font-weight: bold;
+  margin-bottom: 4rem;
+  color: $text-dim;
+}
+
+.skeletonBody {
+  display: flex;
+  font-size: 11rem;
+  line-height: 1.4;
+  color: $text-dim;
+}
+
+.boundary {
+  display: flex;
+  flex-direction: column;
+  padding: 12rem 10rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.4;
+}
+
+.boundaryDetail {
+  display: flex;
+  margin-top: 5rem;
+  color: $text-faint;
+  font-size: 10rem;
+}

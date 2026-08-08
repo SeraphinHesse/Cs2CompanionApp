@@ -1,0 +1,222 @@
+// Panel 26 — Parties, the detail pane. Flex only - Gameface has no CSS grid and fails silently on
+// it. `gap` is avoided throughout; spacing is done with margins.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 4rem;
+}
+
+// -- header (the seam W4 builds its rename and recolour controls into) -----------------------------
+
+.paneHead {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 6rem;
+}
+
+.headSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 12rem;
+  height: 12rem;
+  margin: 3rem 7rem 0 0;
+  border-radius: 3rem;
+}
+
+.headTitleBlock {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.headName {
+  display: flex;
+  font-size: 17rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headChips {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.headShort {
+  display: flex;
+  margin-right: 6rem;
+  font-size: 10rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-faint;
+}
+
+.headChip {
+  display: flex;
+  margin: 1rem 4rem 1rem 0;
+  padding: 0 5rem;
+  border: 1rem solid $line-strong;
+  border-radius: 8rem;
+  color: $text-dim;
+  font-size: 9rem;
+  line-height: 14rem;
+  white-space: nowrap;
+}
+
+// -- notices and prose ------------------------------------------------------------------------------
+
+.notice {
+  display: flex;
+  margin-bottom: 6rem;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+  color: $text-dim;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.note {
+  display: flex;
+  margin: 2rem 0 4rem 0;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.slogan {
+  display: flex;
+  margin-bottom: 4rem;
+  color: $text-dim;
+  font-size: 12rem;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.description {
+  display: flex;
+  margin-bottom: 4rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.45;
+}
+
+.line {
+  display: flex;
+  margin-bottom: 2rem;
+  font-size: 11rem;
+  line-height: 1.4;
+}
+
+.lineDim {
+  display: flex;
+  margin-bottom: 2rem;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+// -- section chrome -----------------------------------------------------------------------------------
+
+.sectionTitle {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin: 8rem 0 5rem 0;
+  padding-bottom: 3rem;
+  border-bottom: 1rem solid $line;
+}
+
+.sectionTitleText {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: 8rem;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-dim;
+}
+
+.sectionNote {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10rem;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// -- stat cells ----------------------------------------------------------------------------------------
+
+.statRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-right: 10rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+}
+
+.statLabel {
+  display: flex;
+  font-size: 10rem;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@mixin stat-value-base {
+  display: flex;
+  font-size: 14rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.statValue {
+  @include stat-value-base;
+}
+
+.statValueGood {
+  @include stat-value-base;
+  color: $good;
+}
+
+.statValueBad {
+  @include stat-value-base;
+  color: $bad;
+}
+
+.statSub {
+  display: flex;
+  min-height: 12rem;
+  font-size: 9rem;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

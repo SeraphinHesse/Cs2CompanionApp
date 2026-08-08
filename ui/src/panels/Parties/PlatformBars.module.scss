@@ -1,0 +1,181 @@
+// Panel 26 — Parties, the centre-zero issue bars. Flex only; Coherent Gameface has no CSS grid and
+// fails silently on it, and nothing here is absolutely positioned either: the track grows outwards
+// from a centre rule that is itself a flex child, so the two halves stay honest at any width.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+$bar-label-width: 92rem;
+$bar-readout-width: 44rem;
+// The label's and the readout's gutters, and the width of the centre rule. The pole strip above the
+// rows has to reproduce all three or the "less" / "more" captions sit a few rem inside the track
+// edges they are labelling.
+$bar-gutter: 6rem;
+$bar-centre-width: 1rem;
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+// -- the "less / more" strip above the six rows ----------------------------------------------------
+
+.poleRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 2rem;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-faint;
+}
+
+// Geometry copied from the row below, child for child: same label width plus the same gutter, then
+// two equal halves either side of a spacer the width of the centre rule, then the readout width
+// plus its gutter. Anything less and the captions do not line up with the track they describe.
+.poleSpacer {
+  display: flex;
+  flex: 0 0 $bar-label-width;
+  width: $bar-label-width;
+  margin-right: $bar-gutter;
+}
+
+.poleLow {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.poleCentreSpacer {
+  display: flex;
+  flex: 0 0 $bar-centre-width;
+  width: $bar-centre-width;
+}
+
+.poleHigh {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.poleReadoutSpacer {
+  display: flex;
+  flex: 0 0 $bar-readout-width;
+  width: $bar-readout-width;
+  margin-left: $bar-gutter;
+}
+
+// -- one row ---------------------------------------------------------------------------------------
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-bottom: 3rem;
+}
+
+.label {
+  display: flex;
+  flex: 0 0 $bar-label-width;
+  width: $bar-label-width;
+  margin-right: $bar-gutter;
+  font-size: 10rem;
+  color: $text-dim;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 9rem;
+  border-radius: 2rem;
+  background-color: $surface-track;
+  overflow: hidden;
+}
+
+// The two halves are equal and independent: a stance of -0.4 fills four tenths of the LEFT half,
+// growing right-to-left towards the centre rule, and leaves the right half empty.
+@mixin half-base {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.halfLow {
+  @include half-base;
+  justify-content: flex-end;
+}
+
+.halfHigh {
+  @include half-base;
+  justify-content: flex-start;
+}
+
+.centreRule {
+  display: flex;
+  flex: 0 0 $bar-centre-width;
+  width: $bar-centre-width;
+  background-color: $line-strong;
+}
+
+.fill {
+  display: flex;
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+.readout {
+  display: flex;
+  flex: 0 0 $bar-readout-width;
+  width: $bar-readout-width;
+  margin-left: $bar-gutter;
+  justify-content: flex-end;
+  font-size: 10rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-dim;
+  white-space: nowrap;
+}
+
+// -- tooltip -----------------------------------------------------------------------------------------
+
+.tip {
+  display: flex;
+  flex-direction: column;
+  max-width: 240rem;
+}
+
+.tipTitle {
+  display: flex;
+  margin-bottom: 3rem;
+  font-weight: bold;
+}
+
+.tipBody {
+  display: flex;
+  line-height: 1.35;
+}
+
+.tipPoles {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4rem;
+}
+
+.tipPole {
+  display: flex;
+  line-height: 1.3;
+  color: $text-dim;
+}

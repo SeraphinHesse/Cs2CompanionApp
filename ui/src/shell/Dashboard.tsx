@@ -3,6 +3,7 @@ import { Button } from "cs2/ui";
 
 import { DistrictsPanel } from "../panels/Districts";
 import { NewsPanel } from "../panels/News";
+import { PartiesPanel } from "../panels/Parties";
 import { SeatsPanel } from "../panels/Seats";
 import { ShellBoundary } from "./Boundary";
 import { SettingsPanel } from "./SettingsPanel";
@@ -35,8 +36,12 @@ import styles from "./Shell.module.scss";
  * is reading the news.
  */
 
+// Every entry in TAB_ORDER needs a case here. The default falls through to the Council panel, so a
+// missing case is not a blank tab - it is the wrong panel, silently, with no error to find.
 function renderTab(tab: AgoraTab): JSX.Element {
   switch (tab) {
+    case "parties":
+      return <PartiesPanel />;
     case "districts":
       return <DistrictsPanel />;
     case "news":
@@ -82,8 +87,8 @@ const DashboardInner = (): JSX.Element | null => {
           })}
         </div>
 
-        {/* Not a fourth tab. The tab strip is political data and a queued plan takes the next slot
-            in it; the per-save settings are chrome and sit beside the close control. */}
+        {/* Not a fifth tab. The tab strip is political data - Council, Parties, Districts, News -
+            and the per-save settings are chrome, so they sit beside the close control instead. */}
         <Button
           variant="flat"
           className={settingsOpen ? styles.settingsToggleOpen : styles.settingsToggle}

@@ -1,0 +1,265 @@
+/**
+ * Formatting, issue-axis constants and label helpers for the Parties panel.
+ *
+ * Nothing here computes politics. Contract rule 5: the UI reads politics, it never derives it —
+ * every share, position and count is published by the engine and only re-expressed for a human here
+ * (a ratio rendered as a percentage, a signed difference rendered with its sign).
+ *
+ * There is no shared runtime module between panels, by design (contract §6), so the few helpers
+ * that also exist in the Districts panel are copied rather than imported.
+ */
+
+export const NO_VALUE = "-";
+
+export function clamp01(v: number): number {
+  if (!isFinite(v)) {
+    return 0;
+  }
+  if (v < 0) {
+    return 0;
+  }
+  if (v > 1) {
+    return 1;
+  }
+  return v;
+}
+
+/** A [0,1] share as a percentage. The engine never pre-multiplies by 100 (contract section 2). */
+export function pct(value: number, digits: number = 0): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return NO_VALUE;
+  }
+  return (value * 100).toFixed(digits) + "%";
+}
+
+/** A [0,1] difference as percentage points. */
+export function points(value: number, digits: number = 1): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return NO_VALUE;
+  }
+  return (value * 100).toFixed(digits) + " pts";
+}
+
+/**
+ * A signed [0,1] difference as percentage points, with the sign always shown. A movement of zero
+ * reads "0.0 pts" rather than "+0.0 pts": the engine publishes an exact zero when there is nothing
+ * to compare, and a plus sign in front of it would read as a gain.
+ */
+export function signedPoints(value: number, digits: number = 1): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return NO_VALUE;
+  }
+  const text = (Math.abs(value) * 100).toFixed(digits) + " pts";
+  if (value > 0) {
+    return "+" + text;
+  }
+  if (value < 0) {
+    return "-" + text;
+  }
+  return text;
+}
+
+/**
+ * Thousands separators without Intl — Gameface's JS runtime is embedded and its locale data is not
+ * something this mod should depend on. English only (non-negotiable 10), so the separator is ",".
+ */
+export function int(value: number): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return NO_VALUE;
+  }
+  const rounded = Math.round(value);
+  const negative = rounded < 0;
+  let digits = String(Math.abs(rounded));
+  let out = "";
+  while (digits.length > 3) {
+    out = "," + digits.slice(digits.length - 3) + out;
+    digits = digits.slice(0, digits.length - 3);
+  }
+  out = digits + out;
+  return negative ? "-" + out : out;
+}
+
+/** A [0,1] share as a CSS width. Widths below a hair are still given a sliver so a tiny bar shows. */
+export function widthPct(share: number): string {
+  const v = clamp01(share);
+  return (v * 100).toFixed(3) + "%";
+}
+
+const NEUTRAL_RGB = "150, 152, 162";
+
+const UNKNOWN_COLOR = "#9698a2";
+
+/** Engine-owned, from the tuned palette. A party with no colour degrades to grey, never to a hole. */
+export function partyColor(colorHex: string): string {
+  return colorHex || UNKNOWN_COLOR;
+}
+
+/** "#RRGGBB" to an rgba() string. An unparsable colour degrades to neutral grey, never to nothing. */
+export function hexToRgba(hex: string, alpha: number): string {
+  const a = clamp01(alpha);
+  const match = /^#?([0-9a-fA-F]{6})$/.exec(hex || "");
+  if (!match) {
+    return "rgba(" + NEUTRAL_RGB + ", " + a.toFixed(3) + ")";
+  }
+  const packed = parseInt(match[1], 16);
+  const r = (packed >> 16) & 255;
+  const g = (packed >> 8) & 255;
+  const b = packed & 255;
+  return "rgba(" + r + ", " + g + ", " + b + ", " + a.toFixed(3) + ")";
+}
+
+// -- party labels ---------------------------------------------------------------------------------
+
+/**
+ * Shown wherever a party exists but has no usable name yet — the flavor layer has not authored one.
+ * A raw id is never rendered to the player.
+ */
+const UNNAMED_PARTY = "Unnamed party";
+
+/** FLAVOR. Render it, never parse it, never sort by it. */
+export function partyLabel(name: string, shortName: string): string {
+  return name || shortName || UNNAMED_PARTY;
+}
+
+/** FLAVOR, as above. */
+export function partyShortLabel(shortName: string, name: string): string {
+  return shortName || name || UNNAMED_PARTY;
+}
+
+/** "A", "A and B", "A, B and C". English only (non-negotiable 10), so the conjunction is fixed. */
+export function joinNames(names: string[]): string {
+  if (names.length === 0) {
+    return "";
+  }
+  if (names.length === 1) {
+    return names[0];
+  }
+  return names.slice(0, names.length - 1).join(", ") + " and " + names[names.length - 1];
+}
+
+/**
+ * The pane's one-line faction summary. Names are FLAVOR and come from `agora.parties.factions`; a
+ * faction id is never rendered, so a faction the flavor layer has not named yet is counted but not
+ * listed. The EU theme models no factions at all, which the sentence states in words rather than
+ * leaving an empty box behind a heading.
+ */
+export function factionSentence(count: number, names: string[]): string {
+  if (count <= 0) {
+    return "No internal factions are modelled inside this party.";
+  }
+  const head =
+    count === 1
+      ? "One internal faction is modelled inside this party"
+      : int(count) + " internal factions are modelled inside this party";
+  return names.length > 0 ? head + ": " + joinNames(names) + "." : head + ".";
+}
+
+// -- issue axes -----------------------------------------------------------------------------------
+
+/** Issues.All order (Issues.cs) — declaration order, and the order every engine sum uses. */
+export const ISSUE_ORDER: Agora.IssueName[] = [
+  "Services",
+  "CostOfLiving",
+  "Environment",
+  "Transit",
+  "Growth",
+  "HeritageOrder",
+];
+
+/** Plain English. `HeritageOrder` is an enum member name and must never reach the player. */
+export const ISSUE_LABEL: Record<Agora.IssueName, string> = {
+  Services: "Public services",
+  CostOfLiving: "Cost of living",
+  Environment: "Environment",
+  Transit: "Transit",
+  Growth: "Growth",
+  HeritageOrder: "Heritage and order",
+};
+
+/**
+ * What each end of the axis means, from the sign convention documented on `IssuePosition` in
+ * `Issues.cs`. `+1` is "spend/protect/restrict more", `-1` is "less".
+ */
+export const ISSUE_POLE_LOW: Record<Agora.IssueName, string> = {
+  Services: "Spend less",
+  CostOfLiving: "Revenue first",
+  Environment: "Fewer restrictions",
+  Transit: "Roads and cars",
+  Growth: "Restrain building",
+  HeritageOrder: "Open to change",
+};
+
+export const ISSUE_POLE_HIGH: Record<Agora.IssueName, string> = {
+  Services: "Spend more",
+  CostOfLiving: "Affordability first",
+  Environment: "Stricter protection",
+  Transit: "Buses and trains",
+  Growth: "Build more",
+  HeritageOrder: "Order and preservation",
+};
+
+/** The enum's own one-line description, so a tooltip can say what an axis covers. */
+export const ISSUE_NOTE: Record<Agora.IssueName, string> = {
+  Services: "Health, education, police, fire, garbage, utilities - is the city looked after.",
+  CostOfLiving: "Rent, land value, taxes, unemployment - can people afford to live here.",
+  Environment: "Air, ground, noise and water pollution; parks and green space.",
+  Transit: "Commute time, transit coverage, traffic, parking.",
+  Growth: "Development, jobs, new construction, densification.",
+  HeritageOrder: "Crime, order, stability, and resistance to change.",
+};
+
+/** Payload key for each issue — `IssuePositionView`'s properties are camelCased enum members. */
+export const ISSUE_KEY: Record<Agora.IssueName, keyof Agora.IssuePositionView> = {
+  Services: "services",
+  CostOfLiving: "costOfLiving",
+  Environment: "environment",
+  Transit: "transit",
+  Growth: "growth",
+  HeritageOrder: "heritageOrder",
+};
+
+/**
+ * A position in [-1, +1] as a readout. Anything inside a fortieth of the axis of dead centre reads
+ * as a word rather than as a number pretending to a precision the model does not have.
+ */
+export const CENTRE_BAND = 0.02;
+
+export function positionText(value: number): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return NO_VALUE;
+  }
+  if (Math.abs(value) < CENTRE_BAND) {
+    return "Centre";
+  }
+  return (value > 0 ? "+" : "-") + Math.abs(value).toFixed(2);
+}
+
+// -- government role ------------------------------------------------------------------------------
+
+/**
+ * `PartyGovernmentRoleName` is a C# member name and must never reach the player. "None" covers two
+ * different situations - no government at all, and a party the government does not name - so the
+ * pane says the weaker of the two and lets the coalition line carry the rest.
+ */
+export const ROLE_CHIP: Record<Agora.PartyGovernmentRoleName, string> = {
+  None: "",
+  Lead: "Leads the government",
+  Member: "In government",
+  Opposition: "In opposition",
+};
+
+export const ROLE_SENTENCE: Record<Agora.PartyGovernmentRoleName, string> = {
+  None: "Not named by the sitting government.",
+  Lead: "Leads the governing coalition.",
+  Member: "Sits in the governing coalition without leading it.",
+  Opposition: "Sits in opposition to the governing coalition.",
+};
+
+/** Party statuses are engine-owned enum member names; the rail and the header show these instead. */
+export const STATUS_CHIP: Record<Agora.PartyStatusName, string> = {
+  Active: "",
+  Endangered: "Endangered",
+  Dissolved: "Dissolved",
+  Merged: "Merged",
+  Revived: "Revived",
+};
