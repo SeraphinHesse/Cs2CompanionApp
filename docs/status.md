@@ -58,7 +58,7 @@ authority; this is the tracker.
 | **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | ⬜ |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop `ApplyProseNames` clobbering them. | 4 | ⬜ |
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ⬜ |
-| — | Backlog (correctness + affordance) | 6 | 🟡 phase-1 items done; `ClaudeResponseReader.cs:95` envelope unwrap + scrollbar check still open |
+| — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, committed** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **2 owner decisions raised**, and the drift re-run must repeat after W4/W6 |
 
 **Phase 1 is code complete and through the checklist gate** (`dotnet build` 0/0 · 1033 tests ·
 `npm run check` clean). Nothing is committed. Four review-blocking defects were found and fixed, and
@@ -67,6 +67,30 @@ see `docs/plans/0001-batched-schema-change.md` §9 and `docs/plans/0002-w6-parti
 list. Two of those change work not yet started: W4's stated enforcement point never writes
 `ColorHex`, and W5's article-limit tightening would discard every cached party name unless the cache
 load prunes over-length articles only.
+
+**The backlog is closed** (2026-08-08, on a branch off `163e6f2`, four commits, each independently
+reviewed against the checklist). `dotnet build Agora.sln` 0/0 · **1092 tests** (was 1083; +9, all for
+the envelope unwrap) · `npx tsc --noEmit` and `npm run check` clean. Four items:
+
+- **`ClaudeResponseReader` envelope unwrap** — the one real correctness bug left, and it was
+  mislabelling itself. Any byte the CLI emitted after the envelope object made the strict parse
+  reject it as trailing content, so the unwrap concluded "not an envelope" and the balanced-object
+  scan then extracted *the envelope itself*, which reached the validator as unknown fields. A parse
+  seam presented to the player as a bad model response. The reviewer reverted the fix and confirmed
+  5 of the 9 new tests fail against the pre-fix code.
+- **Two raw-id leaks** in News, closing out W2's "never render a raw id" rule.
+- **The Gameface scrollbar item — verified false and struck.** `cs2/ui`'s `Scrollable` draws its own
+  DOM track and thumb, styled by the game's global CSS, and appends rather than replaces a
+  consumer's `className`. Evidence read out of the shipped `index.js`/`index.css`. Cheaper than the
+  speculative CSS indicator the item asked for, and the item appears to have been written from a
+  general Gameface intuition rather than an observation.
+- **Contract-drift audit** over all 26 `agora.*` bindings. Shapes clean; three defects in the prose,
+  fixed. **This must be re-run after W4 and W6 merge** — the plan is right that adding bindings is
+  when drift appears, and neither workstream was in the tree for this pass.
+
+Two owner decisions came out of it, both recorded in `fixplan.md` § "Decisions for the owner":
+five `NewsArticle` wire fields with no engine source, and whether the Crosstab's Turnout mode should
+exist now that its copy admits it is a single district-wide number.
 
 **Schema bumps are batched, and the batch has landed.** `docs/plans/0001-batched-schema-change.md`
 is complete and reviewed across all three chunks: per-save settings (`ThemeLocked`,

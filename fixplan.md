@@ -374,14 +374,23 @@ Not part of the five reported issues. Verified unless marked.
       twice, most recently in the W0 review: the scanner handles an escaped backslash before a
       closing quote correctly, and `ClaudeResponseReaderTests` pins that case. Struck rather than
       deleted so it is not re-reported a third time.
-- [ ] `ClaudeResponseReader.cs:95` — **the real defect, in the same area.** The envelope unwrap hands
+- [x] `ClaudeResponseReader.cs:95` — **the real defect, in the same area.** The envelope unwrap hands
       the CLI's whole stdout to `FlavorJsonReader.Parse`, which rejects trailing content
       (`FlavorJsonReader.cs:81-85`). So any byte the CLI emits after the envelope object — a newline
       of diagnostics, a second JSON line — makes `Parse` return null, `UnwrapEnvelope` concludes
       "not an envelope", and `FirstBalancedObject` then extracts *the envelope itself* instead of the
       flavor document. That reaches the validator as a document full of unknown fields and is
       discarded, so the failure presents as a bad model response rather than as a parse seam that
-      never unwrapped. Pre-existing; not fixed in W0.
+      never unwrapped. Pre-existing; not fixed in W0. **Done:** envelope location moved into
+      `FindEnvelope` — strict whole-text parse first, and only on failure a retry against the first
+      balanced object alone. That ordering is load-bearing: parsing the span first would silently
+      swallow genuinely glued documents, which is exactly what `Parse`'s trailing-content check
+      exists to catch, so that check is untouched. Discrimination is still by a field only the
+      *envelope* carries, so a truncated flavor document still cannot be misread as an envelope. A
+      diagnostic-only guard in `ExtractFlavorJson` now fails closed with a seam-specific message
+      rather than shipping an envelope to the validator, so the log tells the two failures apart.
+      `FirstBalancedObject`'s escape handling was not touched. The reviewer reverted the fix and
+      confirmed 5 of the 9 new tests fail against the pre-fix code.
 - [x] `AgoraRuntime.cs:538` — if `CollectProse` throws, `_lastAttemptDate` is never set and the
       status line misreports. **Done:** `_lastAttemptDate` and the version bump moved into a
       `finally`, so any throw anywhere in the method still moves the status line.
@@ -403,13 +412,40 @@ Not part of the five reported issues. Verified unless marked.
       "Too close to call - tie-break", with a tooltip saying the tie-break is seeded, not a coin flip.
 - [x] `MandateTracker.tsx` — progress bar carries no inline percentage. **Done:** the percentage
       sits on the bar's own row, for progress and salience alike.
-- [ ] *(unverified)* Scrollable regions may render no visible scrollbar in Gameface. Confirm
-      against `cs2/ui`'s `Scrollable` before adding a CSS indicator.
-- [ ] **Found during W2.** "Never render a raw id" is broader than parties, and two non-party leaks
+- [x] ~~*(unverified)* Scrollable regions may render no visible scrollbar in Gameface.~~
+      **Verified false — struck, no change needed.** All five of Agora's scroll regions are `cs2/ui`
+      `Scrollable` (`NewsPanel.tsx:202`, `:229`; `ArticleReader.tsx:61`; `DistrictList.tsx:34`;
+      `DistrictsPanel.tsx:107`); there are no hand-rolled `overflow: auto` divs anywhere in `ui/src`.
+      `Scrollable` renders its **own DOM track and thumb** — read directly out of the shipped bundle
+      `Cities2_Data/Content/Game/UI/index.js` (component `iT`) — defaulting to
+      `trackVisibility: "scrollable"`, so the track fades in exactly when the content overflows,
+      measured by the component's own overflow observer. It is styled by the game's global
+      `index.css` (`.track_e3O` / `.thumb_Cib`: a 4rem rail in a 16rem gutter, 60% opacity, with
+      hover and pressed states, and the content auto-padded so text never sits under it). The
+      consumer's `className` is **appended** via `classnames`, never substituted, so a panel class
+      cannot suppress the track. A `::-webkit-scrollbar` rule would have styled nothing — the game
+      never uses a native scrollbar, which is precisely why CO drew one in DOM. The item appears to
+      have been written from a general Gameface intuition rather than an observation.
+      *(Noted, not acted on: Agora sets no `--scrollbarColor`, so the thumb inherits the enclosing
+      game panel's. If a future visual pass finds it low-contrast on a dark Agora panel, the fix is
+      one line on the `.scroll` class. Hypothetical polish, not this defect.)*
+- [x] **Found during W2.** "Never render a raw id" is broader than parties, and two non-party leaks
       remain: `ui/src/panels/News/lookup.ts:74` — `districtLabel` falls back to a district id; and
       `ui/src/panels/News/EventList.tsx:104` — `{event.title || event.archetypeId || event.id}` puts
       an event archetype or instance id in a rendered title. Each needs its own placeholder wording,
-      so neither was folded into W2.
+      so neither was folded into W2. **Done, with the two wordings decided separately.**
+      `districtLabel` now distinguishes **three** states, not two: "Citywide" (no district id),
+      "Unknown district" (an id absent from the list — deleted, or the binding has not landed) and
+      "Unnamed district" (present in the list, empty name). That is deliberately **asymmetric with
+      `partyLabel` in the same module**, which collapses its equivalent pair: an unnamed district is
+      something the player can go and fix, where no party state is. The module header says so, to
+      stop it being harmonised later.
+      For the event title, mapping `archetypeId` to English was considered and **rejected** —
+      `ProceduralEventGenerator` sets `Title` and `ArchetypeId` from the same archetype object, so a
+      map would only reproduce `title`, and the pool is an injectable parameter so the map would
+      silently fall behind. Catalog events are title-validated (`CatalogIssueCode.MissingTitle` drops
+      the entry) and carry `ArchetypeId = ""`, so that branch was a pure leak carrying no
+      information. Falls back to "Untitled event".
 - [x] *(was unverified)* `EventList.tsx:61` — check whether `humanizeEnum` output is genuinely
       player-legible for every `origin` value. **Confirmed a real defect and fixed:** `humanizeEnum`
       splits on inner capitals, which mangles the `origin` values; an explicit `ORIGIN_LABEL` map
@@ -420,9 +456,49 @@ Not part of the five reported issues. Verified unless marked.
 - [x] `docs/status.md` is stale by several milestones. Rewrite against reality. **Done:** rewritten
       2026-08-08 against artifacts in the tree, with a per-milestone split between "code landed" and
       "gate re-walked" rather than one claim standing for both.
-- [ ] A contract-drift review across the C#/TS binding boundary came back clean. Treat that as weak
+- [x] A contract-drift review across the C#/TS binding boundary came back clean. Treat that as weak
       evidence, not proof — re-run it after W4 and W6 add bindings, since that is when drift
-      appears.
+      appears. **Partly done — and "came back clean" was too generous.** A field-by-field re-run
+      over all **26** registered `agora.*` names confirmed the *shapes* are clean: 20 payload types
+      match name-for-name and type-for-type against `bindings.d.ts` (checked against each
+      `IJsonWritable.Write` body, not the C# property names), all 15 enum vocabularies match, and no
+      name bound in `ui/src` is missing from C# — the phantom-binding class of defect does not exist
+      in this tree. The `CommandOutcome` wire form was specifically checked and is **correct on both
+      sides**: `CommandOutcomes.ToWire` maps `Ok` to `""`, `CommandOutcomeName` leads with `""`, and
+      `bindings.ts`'s `writeMessage` tests `outcome === ""` explicitly rather than by truthiness.
+      **Three defects were found in the prose and fixed** — the `CrosstabCell.turnout` claim (see the
+      Crosstab note below), a contract row naming a C# type (`AgoraStateSummary`) that does not
+      exist, and §1 miscounting its own areas as five when the table below lists six.
+      **Still open, escalated as an owner decision** (see "Decisions for the owner"): five
+      `NewsArticle` wire fields with no engine source, and whether the Crosstab's Turnout mode should
+      exist. **The full re-run still has to happen after W4 and W6 merge** — neither is in this tree,
+      and adding bindings is exactly when drift appears.
+
+---
+
+## Decisions for the owner — raised by the backlog pass, not implemented
+
+Neither is a defect fix; both are choices, so nothing was done to the code.
+
+**1. Five `NewsArticle` wire fields have no engine source.** `byline`, `tags`, `partyId`,
+`districtId` and `eventId` are declared in `bindings.d.ts`, documented in `ui_bindings.md`, and
+*emitted* by the writer — but `AgoraUiProjection.BuildArticle` never assigns them, because
+`Agora.Core.Contracts.Article` has exactly five properties (`Id`, `Outlet`, `Headline`, `Body`,
+`Tone`). They cross as `""`/`[]` on every fetch, permanently. Consequences today:
+`ArticleReader.tsx`'s byline and tag branches are dead code, and `ui_bindings.md` publishes a
+**contractual sort key on `article.tags`** — a sort order over a list that is never non-empty.
+Either populate them (W5 territory — a byline is exactly the masthead detail W5 wants, and the three
+id links are what W5's "require `refs` to be populated" is asking the model for) or strike them from
+all three artifacts. Left alone pending your call, since W5 may well want them.
+
+**2. Should the Crosstab's Turnout mode exist?** Its copy now tells the truth, but the mode still
+paints all fifteen cells the identical value and the identical tint. A flat wash in a heat grid
+reads as a real measurement that happens to be uniform — a different false claim from the one just
+removed. Worse, the corrected note renders only in the `readoutHint` branch, so it disappears the
+moment the player clicks a cell to investigate. The alternative is to drop the mode and show the
+figure once as a scope-level line above the grid, which makes "one number for the whole area"
+structural rather than a caption. That is a layout change, so it is yours. Both the coder and the
+reviewer read it the same way; I agree, but did not act.
 
 ---
 
