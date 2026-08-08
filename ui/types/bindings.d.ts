@@ -3698,6 +3698,9 @@ declare namespace Agora {
 
   type PartyStatusName = "Active" | "Endangered" | "Dissolved" | "Merged" | "Revived";
 
+  /** Derived in the UI publisher from PoliticalState.Government; no engine field carries it. */
+  type PartyGovernmentRoleName = "None" | "Lead" | "Member" | "Opposition";
+
   type FactionStatusName = "Active" | "Endangered" | "Dissolved" | "Merged" | "Revived";
 
   type CoalitionStatusName = "Negotiating" | "Governing" | "Minority" | "Collapsed" | "Expired";
@@ -3827,6 +3830,71 @@ declare namespace Agora {
     descriptionLocked: boolean;
     /** Player has recoloured this party; `colorHex` is player-owned. */
     colorLocked: boolean;
+  }
+
+  /**
+   * A stance on each issue, each in [-1, +1]. Sign convention (see the one documented on
+   * `IssuePosition` in `Issues.cs`): +1 is "spend/protect/restrict more", -1 is "less". Never
+   * render an enum member name for these — see ISSUE_LABEL in the Parties panel.
+   */
+  interface IssuePositionView {
+    services: number;
+    costOfLiving: number;
+    environment: number;
+    transit: number;
+    growth: number;
+    heritageOrder: number;
+  }
+
+  /**
+   * `agora.parties.detail` — a MAP binding keyed by `PartyBrief.id`. An unknown key returns
+   * EMPTY_PARTY_DETAIL (`id: ""`), never throws.
+   *
+   * `name`, `shortName`, `description` and `slogan` are FLAVOR. Everything else is engine-owned.
+   * `coreGrievance`, `isIncumbent` and `isInGovernment` are deliberately NOT here — resolve them
+   * through `agora.parties.roster`. `name`, `shortName` and `colorHex` are the deliberate
+   * exception to that rule: they are the detail pane's own header.
+   */
+  interface PartyDetail {
+    id: IdString;
+    name: string;
+    shortName: string;
+    /** "#RRGGBB". Engine-owned, from the tuned palette. */
+    colorHex: string;
+    archetypeId: IdString;
+    description: string;
+    slogan: string;
+    /** Current stance. */
+    platform: IssuePositionView;
+    /** The stance it ran on at the last election. Meaningless when `!hasContestedElection`. */
+    lastManifesto: IssuePositionView;
+    /** Live seat count, which can differ from the last election's allocation. */
+    seats: number;
+    /** [0,1]. Zero before the first election. */
+    seatShare: number;
+    /** [0,1]. Zero before the first election. */
+    lastVoteShare: number;
+    hasContestedElection: boolean;
+    /** Cleared the electoral threshold at the last count. False when there has been none. */
+    passedThreshold: boolean;
+    /** Survival counter toward dissolution — a different fact from `passedThreshold`. */
+    consecutiveElectionsBelowThreshold: number;
+    /** [0,1] from the newest PUBLISHED poll. Zero when `!hasPoll`. */
+    currentPollShare: number;
+    hasPoll: boolean;
+    /** "" when `!hasPoll`. */
+    pollDate: SimDateString;
+    /** Signed: `currentPollShare - lastVoteShare`. Zero unless both flags are true. */
+    pollDeltaSinceElection: number;
+    /** [0,1] city-wide standing, the same figure as `agora.seats.voteShares`. */
+    currentStandingShare: number;
+    status: PartyStatusName;
+    foundedDate: SimDateString;
+    /** "" while the party still exists. */
+    dissolvedDate: SimDateString;
+    governmentRole: PartyGovernmentRoleName;
+    /** Ascending. Empty under the EU theme, which models no factions. */
+    factionIds: IdString[];
   }
 
   /**
