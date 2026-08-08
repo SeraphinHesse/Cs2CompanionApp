@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <!--
-    Twenty-four Agora.Mod files compiled in BY LINK, not by project reference.
+    Twenty-seven Agora.Mod files compiled in BY LINK, not by project reference.
 
     politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
     this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
@@ -87,11 +87,25 @@
     AgoraSidecarSystem, the one game-facing type in Persistence/, is deliberately in a file of its
     own so that it does not come along.
 
-    All twenty-four files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
+    The CLI invocation trio — ClaudeCliOptions, ClaudeCliLocator and ClaudeCliRunner — is here for
+    the quoting. The runner has two branches: a direct CreateProcess call, and, for the npm .cmd shim
+    that ClaudeCliLocator ranks first because it is what `npm i -g` installs, a route through
+    cmd.exe whose whole argument tail sits inside one outer pair of quotes that `cmd /s /c` strips
+    before re-parsing the remainder. Appending an argument inside that nesting compiles, reads as
+    careful, and breaks — and breaks only for .cmd users, which is most Windows players and quite
+    possibly not the developer, whose PATH may reach a claude.exe. There is no way to see that
+    difference except to assert on the two finished command lines side by side, which is what the
+    linked runner makes possible without launching a subprocess on the build agent. ClaudeCliOptions
+    comes with it because it owns the model-id character filter that is the reason the bare,
+    unquoted value is safe at all; ClaudeCliLocator because it decides which branch is taken.
+    ClaudeCliProvider, the one game-facing type among the CLI files, is in a file of its own so that
+    it does not come along.
+
+    All twenty-seven files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
     use only System.*, Newtonsoft and Agora.Core), so linking them keeps the property this suite
     exists to protect: it still builds and passes on a machine with no copy of Cities: Skylines II.
     Adding a file here that does reference the game will fail this project's build immediately, which
-    is the guard — and if a game type is ever added to one of these twenty-four, that is the alarm
+    is the guard — and if a game type is ever added to one of these twenty-seven, that is the alarm
     we want, because it means logic the tests cover has drifted out of their reach.
 
     Everything is in THIS project rather than in a sibling test project so that the one gate command
@@ -123,6 +137,9 @@
     <Compile Include="..\..\src\Agora.Mod\Llm\FlavorValidator.cs" Link="ModLlm\FlavorValidator.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolContent.cs" Link="ModLlm\StaticPoolContent.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolProvider.cs" Link="ModLlm\StaticPoolProvider.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliOptions.cs" Link="ModLlm\ClaudeCliOptions.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliLocator.cs" Link="ModLlm\ClaudeCliLocator.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliRunner.cs" Link="ModLlm\ClaudeCliRunner.cs" />
   </ItemGroup>
 
 </Project>
