@@ -74,7 +74,20 @@ namespace Agora.Mod.Llm
             // stream was cut off" into "malformed JSON at line 1, position 4000", which is a much
             // worse thing to find in a log a month later.
             string span = FirstBalancedObject(text);
-            if (span != null) return span;
+            if (span != null)
+            {
+                // Nothing was unwrapped, yet what we located is shaped like the CLI's own envelope.
+                // Handing that to the validator produces a page of unknown-field errors and blames
+                // the model for a seam that never ran, so say which it was.
+                if (inner == null && IsEnvelopeShaped(span))
+                {
+                    error = "the CLI envelope could not be unwrapped; the object found is the " +
+                            "envelope itself, not a flavor document";
+                    return null;
+                }
+
+                return span;
+            }
 
             error = text.Length > 0 && text[0] == '{'
                 ? "the JSON object is unterminated; the response was truncated"
@@ -91,23 +104,12 @@ namespace Agora.Mod.Llm
         {
             error = null;
 
-            string ignored;
-            JToken token = FlavorJsonReader.Parse(text, out ignored);
-            var envelope = token as JObject;
+            JObject envelope = FindEnvelope(text);
             if (envelope == null) return null;
 
-            // The flavor document itself is an object too. Tell them apart by a field only the
-            // envelope has - never by a field only the flavor has, since a truncated flavor document
-            // would then be misread as an envelope.
             JToken result = envelope["result"];
             JToken isError = envelope["is_error"];
             JToken subtype = envelope["subtype"];
-            JToken type = envelope["type"];
-
-            bool looksLikeEnvelope = result != null || isError != null ||
-                                     (type != null && type.Type == JTokenType.String &&
-                                      string.Equals(type.Value<string>(), "result", StringComparison.Ordinal));
-            if (!looksLikeEnvelope) return null;
 
             if (isError != null && isError.Type == JTokenType.Boolean && isError.Value<bool>())
             {
@@ -218,6 +220,66 @@ namespace Agora.Mod.Llm
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Locates the CLI envelope in <paramref name="text"/>, or null when there is not one.
+        /// </summary>
+        /// <remarks>
+        /// The strict whole-text parse comes first: that is what a well-behaved CLI prints, and it is
+        /// the only reading that can see two documents glued together and refuse them.
+        ///
+        /// <para>
+        /// When it fails we retry against the first balanced brace span alone. A CLI that prints a
+        /// warning line, a progress object, or any other byte after the envelope trips
+        /// <see cref="FlavorJsonReader"/>'s trailing-content check, and without this retry the
+        /// envelope would be declared "not an envelope", left alone, and then extracted whole as if
+        /// it were the flavor document - a validator failure that reads as the model's fault. Only
+        /// <i>locating</i> is forgiving here; the document that comes out still goes through the
+        /// unchanged strict path.
+        /// </para>
+        /// </remarks>
+        private static JObject FindEnvelope(string text)
+        {
+            string ignored;
+            var candidate = FlavorJsonReader.Parse(text, out ignored) as JObject;
+
+            if (candidate == null)
+            {
+                string span = FirstBalancedObject(text);
+                if (span == null || span.Length == text.Length) return null;
+                candidate = FlavorJsonReader.Parse(span, out ignored) as JObject;
+                if (candidate == null) return null;
+            }
+
+            // The flavor document itself is an object too. Tell them apart by a field only the
+            // envelope has - never by a field only the flavor has, since a truncated flavor document
+            // would then be misread as an envelope.
+            JToken type = candidate["type"];
+            bool looksLikeEnvelope = candidate["result"] != null || candidate["is_error"] != null ||
+                                     (type != null && type.Type == JTokenType.String &&
+                                      string.Equals(type.Value<string>(), "result", StringComparison.Ordinal));
+
+            return looksLikeEnvelope ? candidate : null;
+        }
+
+        /// <summary>
+        /// Diagnostic only: true when <paramref name="span"/> carries bookkeeping fields the CLI puts
+        /// on its envelope and the flavor schema has none of. Wider than the unwrap test on purpose -
+        /// it never decides what gets unwrapped, only which failure gets reported - but still keyed
+        /// exclusively off envelope fields, so a flavor document cannot land here.
+        /// </summary>
+        private static bool IsEnvelopeShaped(string span)
+        {
+            string ignored;
+            var obj = FlavorJsonReader.Parse(span, out ignored) as JObject;
+            if (obj == null) return false;
+
+            JToken type = obj["type"];
+            return obj["result"] != null || obj["is_error"] != null ||
+                   obj["session_id"] != null || obj["usage"] != null || obj["duration_ms"] != null ||
+                   (type != null && type.Type == JTokenType.String &&
+                    string.Equals(type.Value<string>(), "result", StringComparison.Ordinal));
         }
 
         private static string DescribeSubtype(JToken subtype) =>
