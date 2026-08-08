@@ -29,7 +29,11 @@ this mod. The JS side addresses a binding as two arguments, `(group, name)`:
 const seats$ = bindValue<Agora.SeatRow[]>("agora.seats", "allocation", []);
 ```
 
-Five areas exist. Each has exactly one publishing `UISystemBase`.
+Six areas exist, published by five `UISystemBase` subclasses. `agora.state` and `agora.parties`
+share `AgoraStateUISystem`, which declares both group constants: the roster and faction tables are
+republished on the same monthly tick as the state summary, and splitting them across two systems
+would mean two publishers reading the same `PoliticalState` in the same frame. Every other area has
+exactly one publisher of its own.
 
 | Area | Owns | Publisher |
 |---|---|---|
@@ -130,7 +134,7 @@ for anything that is *about* the political state; read it from here only to prov
 |---|---|---|---|---|---|---|---|
 | `agora.state.enabled` | `GetterValueBinding<bool>` | C# → UI | `bool` | `boolean` | UI tick | `false` | M4 |
 | `agora.state.ready` | `GetterValueBinding<bool>` | C# → UI | `bool` | `boolean` | UI tick | `false` | M4 |
-| `agora.state.summary` | `ValueBinding<T>` | C# → UI | `AgoraStateSummary : IJsonWritable` | `Agora.StateSummary` | monthly + on election | `EMPTY_STATE_SUMMARY` | M4 |
+| `agora.state.summary` | `ValueBinding<T>` | C# → UI | `StateSummaryPayload : IJsonWritable` | `Agora.StateSummary` | monthly + on election | `EMPTY_STATE_SUMMARY` | M4 |
 | `agora.state.settings` | `ValueBinding<T>` | C# → UI | `SettingsPayload : IJsonWritable` | `Agora.SettingsPayload` | monthly + on every accepted `setSetting` | `EMPTY_SETTINGS` | W3 |
 | `agora.state.isFirstRun` | `GetterValueBinding<bool>` | C# → UI | `bool` | `boolean` | UI tick | `false` | W3 |
 | `agora.state.setSetting` | `CallBinding<string,string,string>` | **UI → C#** | `(key, value) => CommandOutcome` | `(key: string, value: string) => Promise<Agora.CommandOutcomeName>` | on click | n/a | W3 |
@@ -242,9 +246,17 @@ Sort keys:
 - `detail.cityFallbackFields`: property name ascending.
 
 **Crosstab cells collapse the age axis.** The engine models 60 blocs (3 wealth × 5 education × 4
-age); this binding sums the four age bands so 15 rows cross the bridge instead of 60. Turnout in a
-cell is the vote-weighted turnout of its blocs, so the disenfranchised child/teen bands drag it down
-correctly rather than being dropped.
+age); this binding sums the four age bands so 15 rows cross the bridge instead of 60.
+
+**`CrosstabCell.turnout` is not a per-cell figure.** It is the **district-wide** realised turnout —
+city-wide for `cityCrosstab` — written unchanged into **every one of the 15 cells**. The only
+variation is that a cell with no eligible voters carries `0`. Do not render it as if it varied by
+cell: a per-cell turnout heatmap built on this value is a flat fill telling the player something
+untrue. Per-bloc turnout is computed each tick but is not persisted on `Bloc`, so the publisher
+cannot reach it; publishing the district figure is honest about the granularity available, where
+interpolating a per-cell rate would invent one. The reasoning is on the `BuildCrosstab` `<remarks>`
+in `src/Agora.Mod/UiBindings/AgoraUiProjection.cs`. Closing the gap means adding a field to `Bloc`,
+which is a contract change and goes through `/schema-change`.
 
 **`hasCityFallbacks` is a rendering obligation, not decoration.** When it is true, every field named
 in `cityFallbackFields` is a city number wearing a district's name. The panel must mark those fields

@@ -54,9 +54,9 @@ const METRICS: MetricDef[] = [
   },
   {
     id: "turnout",
-    label: "Turnout",
+    label: "Overall turnout",
     tint: "#4fb3a5",
-    note: "Turnout is vote-weighted across the four age bands, so non-voting bands drag it down.",
+    note: "The district's overall turnout, city-wide on the city crosstab; the same in every cell with voters.",
   },
   {
     id: "happiness",
@@ -301,7 +301,7 @@ export const Crosstab = (props: {
                 <span className={styles.factValue}>{int(selected.eligibleVoters)}</span>
               </span>
               <span className={styles.fact}>
-                <span className={styles.factLabel}>Turnout</span>
+                <span className={styles.factLabel}>Overall turnout</span>
                 <span className={styles.factValue}>{pct(selected.turnout)}</span>
               </span>
               <span className={styles.fact}>

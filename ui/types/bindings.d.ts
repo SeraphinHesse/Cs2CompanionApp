@@ -4099,8 +4099,7 @@ declare namespace Agora {
    * has zero population. Empty value: [].
    *
    * The engine models 60 blocs (3 wealth x 5 education x 4 age); this collapses the age axis so 15
-   * rows cross the bridge instead of 60. `turnout` is vote-weighted across the four age bands, so
-   * the disenfranchised child/teen bands drag it down correctly rather than being dropped.
+   * rows cross the bridge instead of 60. `turnout` is NOT a per-cell figure — see the field.
    */
   interface CrosstabCell {
     wealth: WealthTierName;
@@ -4109,7 +4108,14 @@ declare namespace Agora {
     /** [0,1]. Share of the district (or city) population. */
     populationShare: number;
     eligibleVoters: number;
-    /** [0,1]. Vote-weighted across age bands. */
+    /**
+     * [0,1]. **Not a per-cell figure.** This is the district-wide (or, for `cityCrosstab`, the
+     * city-wide) realised turnout, repeated identically in every cell; the only variation is that a
+     * cell with no eligible voters carries 0. Do not build a per-cell turnout heatmap from it — it
+     * would render as a flat fill. Per-bloc turnout is not persisted on `Bloc`, so it is not
+     * available to the publisher; see the `Known gap` remarks on `BuildCrosstab` in
+     * `src/Agora.Mod/UiBindings/AgoraUiProjection.cs`. Closing the gap is a `/schema-change`.
+     */
     turnout: number;
     /** "" when the cell has no voters. */
     leadingPartyId: IdString;
