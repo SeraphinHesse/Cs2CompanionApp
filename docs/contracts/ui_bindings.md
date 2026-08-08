@@ -18,8 +18,10 @@ W3 then published `agora.state.settings` and `agora.state.isFirstRun` out of §8
 **already reserved here**, so nothing was renamed and no existing payload moved. Then fixplan **W6**
 unfroze `agora.parties` on 2026-08-08, under plan `docs/plans/0002-w6-parties-tab.md`, to add
 `detail` — a new map binding and two new payload shapes, `PartyDetail` and `IssuePositionView`;
-nothing existing was renamed or reordered. **Version 5 covers the whole of W6**, so the later
-chunks of that plan add bindings under this version and must not bump it again. The freeze otherwise
+nothing existing was renamed or reordered. **Version 5 covers the W6 work landing in this pass** —
+the whole of plan 0002, Part I and Part II together, which move this file once rather than once per
+chunk. Any later landing that changes a shape here reads the current value and writes value + 1; the
+number is read from this file, never hard-coded. The freeze otherwise
 stands; these notes exist so the next reviewer reads authorised changes rather than violations.
 
 ---
