@@ -98,8 +98,72 @@ namespace Agora.Mod.Llm
         public List<FactionBrief> Factions { get; set; } = new List<FactionBrief>();
         public List<EventBrief> Events { get; set; } = new List<EventBrief>();
 
+        /// <summary>The ordinary round's article count. A prompt instruction, not engine state.</summary>
+        public const int DefaultArticleCount = 4;
+
+        /// <summary>
+        /// An election round under NA rules: the ordinary count plus one each for the result, the
+        /// winner's reaction and the loser's reaction that <c>FlavorPromptBuilder</c> asks for on top.
+        /// </summary>
+        public const int ElectionArticleCountNa = DefaultArticleCount + 3;
+
+        /// <summary>
+        /// An election round under EU rules: the NA set plus the coalition-outlook piece.
+        /// </summary>
+        /// <remarks>
+        /// A raised count is a prompt instruction to the model and nothing else — the canned pool is
+        /// handed <see cref="RosterCopy"/>, which carries <see cref="DefaultArticleCount"/>, so it is
+        /// never asked to fill eight slots out of template lists that hold three.
+        /// <c>FlavorPromptBuilder.AppendTask</c> clamps at twelve, so neither value is touched by it.
+        /// </remarks>
+        public const int ElectionArticleCountEu = ElectionArticleCountNa + 1;
+
         /// <summary>How many articles to ask for. A prompt instruction, not engine state.</summary>
-        public int ArticleCount { get; set; } = 4;
+        public int ArticleCount { get; set; } = DefaultArticleCount;
+
+        /// <summary>
+        /// The count an election wake asks for under <paramref name="theme"/>. Per-request: the caller
+        /// sets it on a request it just constructed, so a raised count cannot leak into a later round.
+        /// </summary>
+        public static int ElectionArticleCount(RegionTheme theme) =>
+            theme == RegionTheme.Eu ? ElectionArticleCountEu : ElectionArticleCountNa;
+
+        /// <summary>
+        /// A copy of this request for <c>StaticPoolProvider.Roster</c>: the same cast of parties,
+        /// factions and events, but the ordinary <see cref="DefaultArticleCount"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The pool's roster answers "who exists", not "what was asked for this round". A CLI request
+        /// is the only thing that ever carries a raised <see cref="ArticleCount"/>, and the pool must
+        /// not inherit it: its templates are a fixed, small set, so an eight-article round exhausts
+        /// <c>UniqueLine</c>'s bounded retry and files the same body twice. The roster also outlives
+        /// the request — it is only rebuilt at the next month boundary, and the dashboard polls the
+        /// pool throughout that window — so an inherited count would not be a one-round mistake.
+        /// </para>
+        /// <para>
+        /// A copy rather than the request itself for a second reason: the pool writes
+        /// <see cref="Date"/>, <see cref="Snapshot"/> and <see cref="Theme"/> onto its roster on every
+        /// poll, from the sim thread, while the CLI worker may be reading the request it was handed.
+        /// The lists are shared, because both sides only ever read them, and the briefs inside are
+        /// immutable once <c>FillBriefs</c> has built them.
+        /// </para>
+        /// </remarks>
+        public FlavorRequest RosterCopy()
+        {
+            return new FlavorRequest
+            {
+                Date = Date,
+                Reason = Reason,
+                Theme = Theme,
+                Snapshot = Snapshot,
+                Parties = Parties,
+                Factions = Factions,
+                Events = Events,
+                Catalog = Catalog,
+                ArticleCount = DefaultArticleCount
+            };
+        }
 
         /// <summary>
         /// The IDs the response may reference. Built from the briefs and the snapshot's districts by

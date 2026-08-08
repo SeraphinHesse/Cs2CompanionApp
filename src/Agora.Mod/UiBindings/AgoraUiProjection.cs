@@ -801,6 +801,9 @@ namespace Agora.Mod.UiBindings
                         Summary = FirstLine(article.Body),
                         OutletId = article.Outlet ?? "",
                         OutletName = article.Outlet ?? "",
+                        PartyId = article.PartyId ?? "",
+                        DistrictId = article.DistrictId ?? "",
+                        EventId = article.EventId ?? "",
                         HasArticle = true
                     });
                 }
@@ -895,6 +898,9 @@ namespace Agora.Mod.UiBindings
                 payload.Tone = article.Tone ?? "";
                 payload.OutletId = article.Outlet ?? "";
                 payload.OutletName = article.Outlet ?? "";
+                payload.PartyId = article.PartyId ?? "";
+                payload.DistrictId = article.DistrictId ?? "";
+                payload.EventId = article.EventId ?? "";
                 return payload;
             }
 

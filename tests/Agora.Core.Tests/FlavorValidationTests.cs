@@ -217,6 +217,52 @@ namespace Agora.Core.Tests
             Assert.Equal(string.Empty, Assert.Single(document.PartyFlavor).Name);
         }
 
+        // --- refs: the ids an article is about, all the way to the boundary contract --------------
+
+        [Fact]
+        public void ArticleRefsSurviveTheProjectionOntoTheBoundaryContract()
+        {
+            // The refs were parsed onto ArticleEntry and then dropped by ToPayload, so the dashboard
+            // could never tell which party or district a story was about. Asserted on the payload
+            // rather than on FlavorDocument because the document half already worked: the boundary
+            // contract is where the ids were being lost.
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(CleanJson(), Catalog(), RequestDate);
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+
+            FlavorPayload payload = result.Document!.ToPayload(RequestDate);
+
+            Article article = Assert.Single(payload.Articles);
+            Assert.Equal("party-riverside", article.PartyId);
+            Assert.Equal("district-harbour", article.DistrictId);
+            Assert.Equal("event-harbour-flood", article.EventId);
+        }
+
+        [Fact]
+        public void AnArticleWithoutRefsCarriesEmptyIdsRatherThanNulls()
+        {
+            // refs is optional in the schema, and a city-wide story legitimately has none. The
+            // consumers concatenate and compare these, so the absent case has to be "" — a null here
+            // would surface as a NullReferenceException in the projection, months from this change.
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(
+                @"{ ""schemaVersion"": " + FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture) +
+                @", ""generatedAtSimDate"": ""1997-06-01"",
+                    ""articles"": [ { ""id"": ""article-02"", ""outlet"": ""Harbour Register"",
+                                      ""headline"": ""Council adjourns early"",
+                                      ""body"": ""Nobody could agree on the agenda."", ""tone"": ""neutral"" } ] }",
+                Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+
+            Article article = Assert.Single(result.Document!.ToPayload(RequestDate).Articles);
+            Assert.Equal(string.Empty, article.PartyId);
+            Assert.Equal(string.Empty, article.DistrictId);
+            Assert.Equal(string.Empty, article.EventId);
+        }
+
         // --- schemaVersion: the one number, and what it is allowed to do -------------------------
 
         [Fact]

@@ -1248,6 +1248,15 @@ namespace Agora.Mod.Core
                 Snapshot = snapshot
             };
 
+            // An election round asks the prompt for a result piece, both reactions and — under EU
+            // rules — a coalition outlook, so it needs the slots to put them in. It is a prompt
+            // instruction to the model only: RequestFlavor gives the canned pool a RosterCopy, which
+            // carries the ordinary count, so the raised one reaches the CLI and nothing else.
+            if (reason == FlavorWakeReason.Election)
+            {
+                request.ArticleCount = FlavorRequest.ElectionArticleCount(request.Theme);
+            }
+
             FillBriefs(request, tick.State);
 
             // Fire and forget: RequestFlavor starts a background generation and returns immediately,

@@ -69,9 +69,17 @@ namespace Agora.Mod.Llm
         }
 
         /// <summary>Starts a model generation. False when there is no CLI provider or one is in flight.</summary>
+        /// <remarks>
+        /// The pool gets a <see cref="FlavorRequest.RosterCopy"/>, not the request. Handing it the
+        /// same object made the roster an alias of what the CLI worker is reading, which cost twice
+        /// over: an election round's raised <c>ArticleCount</c> became the canned pool's count until
+        /// the next month boundary rebuilt the roster, and the pool's per-poll writes to
+        /// <c>Date</c>/<c>Snapshot</c>/<c>Theme</c> raced the worker thread. The copy is made here
+        /// because the aliasing is this method's doing; neither caller has to know.
+        /// </remarks>
         public bool RequestFlavor(FlavorRequest request)
         {
-            if (_pool != null) _pool.Roster = request;
+            if (_pool != null && request != null) _pool.Roster = request.RosterCopy();
             return _cli != null && _cli.RequestFlavor(request);
         }
 
