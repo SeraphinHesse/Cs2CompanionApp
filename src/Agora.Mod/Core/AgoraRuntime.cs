@@ -1256,8 +1256,19 @@ namespace Agora.Mod.Core
         /// player's name would leave that name in place indefinitely —
         /// <see cref="ApplyProseNames"/> declines to rename any party whose name is non-empty and not
         /// provisional — so the fields are blanked and <see cref="EnsureEveryPartyNamed"/> is run
-        /// immediately, which is what puts a generated name back before the panel redraws rather than
-        /// showing a blank party until the next prose collection, possibly months of sim time away.
+        /// immediately, which normally puts a generated name back before the panel redraws rather
+        /// than showing a blank party until the next prose collection, possibly months of sim time
+        /// away.
+        /// </para>
+        /// <para>
+        /// <b>"Normally" is the honest word.</b> The namer fails closed in three ways and none of
+        /// them is reported here: it returns at once if the flavor provider or its canned pool is
+        /// absent, it logs and returns if <c>Generate</c> throws, and it returns if <c>Generate</c>
+        /// hands back no document. On any of those the party is left nameless and the panel shows its
+        /// placeholder until the next prose wake, where <see cref="ApplyProseNames"/> renames it —
+        /// the name is empty, so <c>mayRename</c> is true there — and the gap self-heals. That is the
+        /// right trade: a nameless party for a wake is recoverable, a command that fails because the
+        /// pool is missing is not.
         /// </para>
         /// <para>
         /// <b>The date is <see cref="PoliticalState.Date"/>, not a computed one</b> (non-negotiable

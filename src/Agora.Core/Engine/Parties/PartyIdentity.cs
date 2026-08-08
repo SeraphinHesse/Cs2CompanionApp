@@ -15,10 +15,13 @@ namespace Agora.Core.Engine.Parties
     /// </para>
     ///
     /// <para>
-    /// Four call sites in the mod must route through it — the two writes in
-    /// <c>ApplyProseNames</c> (the name/short-name pair under <c>mayRename</c>, and the
-    /// description/slogan pair after it) and the two in <c>EnsureEveryPartyNamed</c> (the same two
-    /// pairs, in its per-party loop). A later task wires them; nothing in this file edits the mod.
+    /// Four writes in the mod route through it, from two call sites, both in
+    /// <c>Agora.Mod.AgoraRuntime</c>: one in <c>ApplyProseNames</c> and one in
+    /// <c>EnsureEveryPartyNamed</c>, each inside that method's per-party loop. Two calls cover four
+    /// writes because a single <see cref="ApplyFlavor"/> handles both pairs — the name/short-name
+    /// pair, gated on the caller's <c>mayRename</c>, and the description/slogan pair, which moves
+    /// independently of it. The callers differ only in how they compute <c>mayRename</c>; the merge
+    /// rule and the player's locks live here, so a third caller gets them for free.
     /// </para>
     ///
     /// <para>

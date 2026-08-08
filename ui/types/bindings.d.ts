@@ -3649,7 +3649,7 @@ declare module "cs2/bindings" {
 // ---------------------------------------------------------------------------------------------
 // AGORA — dashboard binding payloads.
 //
-// Authority: docs/contracts/ui_bindings.md (schemaVersion 2). FROZEN for M4 — do not rename a
+// Authority: docs/contracts/ui_bindings.md (schemaVersion 5). FROZEN for M4 — do not rename a
 // field, add a field, or change a sort key here without changing that document first. Nothing
 // checks this contract at compile time: a mismatch renders an empty panel, not a build error.
 //

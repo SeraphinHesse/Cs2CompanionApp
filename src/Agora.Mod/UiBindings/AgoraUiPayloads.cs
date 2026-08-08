@@ -203,6 +203,8 @@ namespace Agora.Mod.UiBindings
         public string Id = "";
         public string Name = "";
         public string ShortName = "";
+        public string Description = "";
+        public string Slogan = "";
         public string ColorHex = "#808080";
         public string Status = "Active";
         public bool IsIncumbent;
@@ -223,6 +225,8 @@ namespace Agora.Mod.UiBindings
             UiJson.Id(writer, "id", Id);
             UiJson.Text(writer, "name", Name);
             UiJson.Text(writer, "shortName", ShortName);
+            UiJson.Text(writer, "description", Description);
+            UiJson.Text(writer, "slogan", Slogan);
             UiJson.Text(writer, "colorHex", ColorHex);
             UiJson.Text(writer, "status", Status);
             UiJson.Flag(writer, "isIncumbent", IsIncumbent);
@@ -264,6 +268,56 @@ namespace Agora.Mod.UiBindings
             UiJson.Number(writer, "tensionWithParty", TensionWithParty);
             UiJson.Text(writer, "status", Status);
             UiJson.Text(writer, "coreGrievance", CoreGrievance);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>
+    /// The swatches the colour picker offers, from <c>EngineTuning.Parties.ColorPalette</c>.
+    /// </summary>
+    /// <remarks>
+    /// A binding rather than a constant in the panel: swatches hard-coded in TypeScript drift from
+    /// the tuning silently the first time anyone edits the tuning. The order is the tuning's, never
+    /// re-sorted — a swatch's position is how a player recognises it between sessions.
+    /// </remarks>
+    public sealed class PartyPalettePayload : IJsonWritable
+    {
+        public List<string> Colors = new List<string>();
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.PartyPalette");
+            UiJson.Ids(writer, "colors", Colors);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>
+    /// What the party editors will accept, so the character counter and the rejector are the same
+    /// numbers.
+    /// </summary>
+    /// <remarks>
+    /// Every value is read from <see cref="Agora.Core.Engine.Parties.PartyIdentity"/>, which is also
+    /// what enforces them. A literal here would make the counter a second copy of a limit, and when
+    /// two copies disagree the wrong one is always the counter: the player finds out by being
+    /// refused after typing.
+    /// </remarks>
+    public sealed class PartyEditLimitsPayload : IJsonWritable
+    {
+        public int NameMax;
+        public int ShortNameMax;
+        public int DescriptionMax;
+        public int SloganMax;
+        public string ColorPattern = "";
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.PartyEditLimits");
+            UiJson.Number(writer, "nameMax", NameMax);
+            UiJson.Number(writer, "shortNameMax", ShortNameMax);
+            UiJson.Number(writer, "descriptionMax", DescriptionMax);
+            UiJson.Number(writer, "sloganMax", SloganMax);
+            UiJson.Text(writer, "colorPattern", ColorPattern);
             writer.TypeEnd();
         }
     }

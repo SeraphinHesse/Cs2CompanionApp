@@ -4,7 +4,7 @@ import { Button, Portal } from "cs2/ui";
 
 import { EuFlag, UsFlag } from "./Flags";
 import { FirstRunBoundary } from "./FirstRunBoundary";
-import { enabled$, isFirstRun$, requestSetting, writeMessage } from "./bindings";
+import { enabled$, isAccepted, isFirstRun$, requestSetting, writeMessage } from "./bindings";
 import { useSimulationHeldPaused } from "./pause";
 import { REGION_CHOICES } from "./regions";
 import styles from "./FirstRunDialog.module.scss";
@@ -63,11 +63,13 @@ const FirstRunDialogInner = (): JSX.Element | null => {
         return;
       }
 
-      const refusal = writeMessage(chosen);
-      if (refusal) {
+      // Acceptance is asked of `isAccepted`, never inferred from an empty message: an accepted
+      // write may carry one (§4.6's `OkColorInUse`), and reading that as a refusal would strand the
+      // dialog open over a theme the engine had already taken.
+      if (!isAccepted(chosen)) {
         // Leave the dialog open. This is the entire reason `setSetting` is a CallBinding rather than
         // a trigger: the player is told what the engine said and can press again.
-        setMessage(refusal);
+        setMessage(writeMessage(chosen));
         setBusy(false);
         return;
       }
