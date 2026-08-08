@@ -8,6 +8,8 @@ import {
   STATUS_CHIP,
   factionSentence,
   int,
+  manifestoDrift,
+  manifestoDriftSentence,
   partyColor,
   partyLabel,
   partyShortLabel,
@@ -149,6 +151,7 @@ export const PartyDetailPane = (props: {
   // The nested groups are contractual, but a missing one would take the whole pane down for a
   // cosmetic payload gap. Fall back to the documented empty shape instead.
   const platform = detail.platform || EMPTY_PARTY_DETAIL.platform;
+  const manifesto = detail.lastManifesto || EMPTY_PARTY_DETAIL.lastManifesto;
 
   const published = detail.id === props.partyId;
   const brief = props.brief;
@@ -193,6 +196,12 @@ export const PartyDetailPane = (props: {
   // this party is part of. Opposition and None get no count - the coalition is not theirs.
   const government = props.government;
   const inGovernment = detail.governmentRole === "Lead" || detail.governmentRole === "Member";
+  // How far today's platform has travelled from the manifesto. Gated on hasElection throughout, and
+  // for the same honesty reason as the delta cell above: `lastManifesto` defaults to dead centre, so
+  // for a party that has never been on a ballot both the tick and this sentence would report a
+  // platform it never ran on.
+  const drift = hasElection ? manifestoDrift(platform, manifesto) : null;
+
   const partnerCount =
     published && inGovernment && government && government.memberPartyIds
       ? Math.max(0, government.memberPartyIds.length - 1)
@@ -263,8 +272,20 @@ export const PartyDetailPane = (props: {
               : "No run of missed thresholds on record."}
           </div>
 
+          {drift ? (
+            <>
+              <SectionTitle title="Manifesto and drift" />
+              <div className={styles.line}>{manifestoDriftSentence(drift)}</div>
+            </>
+          ) : null}
+
           <SectionTitle title="Issue priorities" note="Each axis runs from less to more" />
-          <PlatformBars values={platform} colorHex={partyColor(detail.colorHex || brief.colorHex)} />
+          <PlatformBars
+            values={platform}
+            marker={hasElection ? manifesto : undefined}
+            markerLabel="Ran on"
+            colorHex={partyColor(detail.colorHex || brief.colorHex)}
+          />
         </>
       ) : null}
 

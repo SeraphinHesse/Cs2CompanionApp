@@ -194,6 +194,12 @@ party becomes `Dissolved` — so an id that resolves once resolves for the life 
 the roster is pushed to every panel on every monthly tick, and twelve issue positions plus polling
 per party is not something the seat chart or the news feed needs to carry.
 
+On `agora.parties.detail`: `platform` and `lastManifesto` are rendered together as a drift comparison
+(fixplan W6 addition 1); both were in the binding from the start. No payload changed and no version
+moved on its account — the pane draws the manifesto as a tick over the current-platform bars and
+suppresses both the tick and the drift line when `hasContestedElection` is false, because
+`lastManifesto` defaults to dead centre.
+
 `PartyBrief` gained `nameLocked`, `descriptionLocked` and `colorLocked` in plan 0001, ahead of W4's
 party editing. The publisher fills them from `Party.PlayerOverrides` today; **no panel consumes them
 yet**, and rendering them is W4's work, not a gap to be filled opportunistically.

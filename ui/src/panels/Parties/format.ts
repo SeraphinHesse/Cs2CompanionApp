@@ -234,6 +234,73 @@ export function positionText(value: number): string {
   return (value > 0 ? "+" : "-") + Math.abs(value).toFixed(2);
 }
 
+// -- manifesto drift ------------------------------------------------------------------------------
+
+/**
+ * How far a position has to have moved before the pane is willing to call it a move.
+ *
+ * This is a DISPLAY threshold and nothing in the engine reads it. `Agora.Core` has no drift concept,
+ * no mandate is scored against it, and no number here re-enters engine state - the two vectors are
+ * published, and comparing them is re-expression of the same kind as `pct()`. It exists only so a
+ * platform that has wandered a hundredth of an axis between ticks is not announced as a change of
+ * mind.
+ */
+export const MANIFESTO_DRIFT_THRESHOLD = 0.15;
+
+/**
+ * Movement between the manifesto a party ran on and where it stands today.
+ *
+ * `points` counts only the issues that cleared the threshold, so the two figures in the sentence
+ * below account for each other: the points reported are the points those issues moved, not a total
+ * inflated by five axes that barely twitched. A position is in [-1, +1] and is reported the way
+ * every other figure in this panel is - a hundred points to one unit of the axis.
+ */
+export function manifestoDrift(
+  platform: Agora.IssuePositionView,
+  manifesto: Agora.IssuePositionView
+): { moved: number; points: number } {
+  let moved = 0;
+  let total = 0;
+  for (let i = 0; i < ISSUE_ORDER.length; i++) {
+    const key = ISSUE_KEY[ISSUE_ORDER[i]];
+    const now = platform ? platform[key] : 0;
+    const then = manifesto ? manifesto[key] : 0;
+    if (typeof now !== "number" || !isFinite(now) || typeof then !== "number" || !isFinite(then)) {
+      continue;
+    }
+    const delta = Math.abs(now - then);
+    if (delta >= MANIFESTO_DRIFT_THRESHOLD) {
+      moved++;
+      total += delta;
+    }
+  }
+  return { moved: moved, points: Math.round(total * 100) };
+}
+
+/**
+ * The drift line. Only ever rendered for a party that has contested an election - `LastManifesto`
+ * defaults to dead centre, so a party that has never stood would otherwise be reported as having
+ * abandoned a platform it never ran on.
+ *
+ * A party that has not moved is told so in words rather than shown a zero, which would read as a
+ * measurement rather than as "nothing happened".
+ */
+export function manifestoDriftSentence(drift: { moved: number; points: number }): string {
+  if (drift.moved <= 0) {
+    return "Still standing on the platform it ran on: no issue has moved far from the manifesto.";
+  }
+  const movement = drift.points === 1 ? "1 point" : int(drift.points) + " points";
+  return (
+    "Moved " +
+    movement +
+    " from its manifesto on " +
+    int(drift.moved) +
+    " of " +
+    int(ISSUE_ORDER.length) +
+    " issues."
+  );
+}
+
 // -- government role ------------------------------------------------------------------------------
 
 /**
