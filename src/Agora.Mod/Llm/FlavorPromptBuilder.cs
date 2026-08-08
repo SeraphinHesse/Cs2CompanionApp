@@ -293,14 +293,33 @@ namespace Agora.Mod.Llm
                 sb.Append("- factionFlavor for every faction listed, including a leader's name.\n");
             }
             sb.Append("- ").Append(articles.ToString(CultureInfo.InvariantCulture));
-            sb.Append(" articles from local outlets covering the city as described above. ");
-            sb.Append("Vary the outlets and the tones. Each article's id must be unique and kebab-case. ");
-            sb.Append("Set refs only to IDs from the lists above. ");
+            sb.Append(" articles from local outlets covering the city as described above.\n");
+            sb.Append("  1. Lead with what happened, to whom, and why it matters. ");
+            sb.Append("The concrete change goes in the first sentence, not the last.\n");
+            sb.Append("  2. Name at least one party or district by the id given in the lists above, ");
+            sb.Append("and put that same id in refs.\n");
+            // AGORA-SEAM (W5-3): the requirement is stated, but not yet enforced — FilterAgainstCatalog
+            // skips an article whose refs are absent rather than dropping it, and tightening it today
+            // would delete every city-branch article the canned pool files, because StaticPoolProvider
+            // sets refs only on the district branch. W5-3 gives the canned articles refs and tightens
+            // the filter in the same change; the stronger "and is dropped" claim belongs there, once it
+            // is true. Softened deliberately until then: the prompt must not describe a check that does
+            // not run.
+            sb.Append("  3. refs is required on every article: at least one of eventId, districtId or ");
+            sb.Append("partyId, and only ids from the lists above. Write nothing you cannot point at.\n");
+            sb.Append("  4. Never attribute to a subject you have not named. Do not write \"residents say\", ");
+            sb.Append("\"officials say\", \"critics say\", \"sources say\", \"some argue\", \"many feel\", ");
+            sb.Append("or any variant of them. Name the party, the faction or the district, or do not attribute at all.\n");
+            sb.Append("  5. Vary the outlets and the tones. Each article's id must be unique and kebab-case.\n");
+            // The cap sentence is left exactly as it was, interpolation and all: FlavorCacheMigration
+            // is the single source of truth for both lengths, and the drift gate reads it there.
+            sb.Append("  ");
             sb.Append("Headlines are at most ")
               .Append(FlavorCacheMigration.HeadlineMaxLength.ToString(CultureInfo.InvariantCulture))
               .Append(" characters and bodies at most ")
               .Append(FlavorCacheMigration.BodyMaxLength.ToString(CultureInfo.InvariantCulture))
               .Append(" - a longer one fails validation and the whole response is discarded.\n");
+            AppendElectionCoverage(sb, request);
             if (request.Events.Count > 0)
             {
                 sb.Append("- eventProse for every event listed: how that event lands in THIS city specifically.\n");
@@ -308,6 +327,40 @@ namespace Agora.Mod.Llm
             sb.Append("- generatedAtSimDate exactly \"").Append(request.Date.ToString()).Append("\".\n");
             sb.Append("- schemaVersion exactly ").Append(FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture));
             sb.Append(" (the only number allowed in your entire response).\n\n");
+        }
+
+        /// <summary>
+        /// The extra pieces an election round asks for, emitted inside WRITE so that a non-election
+        /// prompt is unchanged byte for byte.
+        /// </summary>
+        /// <remarks>
+        /// Neither <see cref="FlavorRequest"/> nor <see cref="PartyBrief"/> carries a vote share, a
+        /// seat count or a turnout figure — deliberately, see the remarks on <c>PartyBrief</c> — so the
+        /// only account of the outcome the model has is the standing word in the party list. The block
+        /// says that outright rather than leaving the gap for the model to fill, because "write the
+        /// result" with no result in the brief is an invitation to invent one (non-negotiable #1).
+        /// </remarks>
+        private static void AppendElectionCoverage(StringBuilder sb, FlavorRequest request)
+        {
+            if (request.Reason != FlavorWakeReason.Election) return;
+
+            sb.Append("  The election just decided is the round's lead. Among those articles, include:\n");
+            sb.Append("  a) a result piece,\n");
+            sb.Append("  b) a piece carrying the winning side's reaction,\n");
+            sb.Append("  c) a piece carrying the losing side's reaction");
+            if (request.Theme == RegionTheme.Eu)
+            {
+                sb.Append(",\n");
+                sb.Append("  d) a piece on the coalition outlook - who might govern with whom, and on what.\n");
+            }
+            else
+            {
+                sb.Append(".\n");
+            }
+            sb.Append("  Name the parties involved by id only. You have not been given the vote shares, the ");
+            sb.Append("seat counts or the turnout, and you must not invent them: the standing word in the ");
+            sb.Append("party list above is the whole of the outcome you may write from, and the dashboard ");
+            sb.Append("carries the figures. Write \"held the council\" or \"lost ground\", never a figure.\n");
         }
 
         private static void AppendSchema(StringBuilder sb)
