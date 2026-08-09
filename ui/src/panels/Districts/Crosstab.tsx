@@ -35,7 +35,7 @@ import styles from "./Crosstab.module.scss";
  * unreadable at this size, and unreadable is the same as absent.
  */
 
-type CrosstabMetric = "party" | "turnout" | "happiness" | "discontent" | "share";
+type CrosstabMetric = "party" | "happiness" | "discontent" | "share";
 
 interface MetricDef {
   id: CrosstabMetric;
@@ -51,12 +51,6 @@ const METRICS: MetricDef[] = [
     label: "Lead",
     tint: "",
     note: "Cell tint is the leading party; the number is its share of that cell's vote.",
-  },
-  {
-    id: "turnout",
-    label: "Overall turnout",
-    tint: "#4fb3a5",
-    note: "The district's overall turnout, city-wide on the city crosstab; the same in every cell with voters.",
   },
   {
     id: "happiness",
@@ -101,9 +95,6 @@ function metricText(metric: CrosstabMetric, cell: Agora.CrosstabCell): string {
   if (metric === "party") {
     return cell.leadingPartyId ? pct(cell.leadingShare) : NO_VALUE;
   }
-  if (metric === "turnout") {
-    return pct(cell.turnout);
-  }
   if (metric === "happiness") {
     return happinessText(cell.happiness);
   }
@@ -121,9 +112,6 @@ function metricIntensity(
 ): number {
   if (metric === "party") {
     return clamp01(cell.leadingShare);
-  }
-  if (metric === "turnout") {
-    return clamp01(cell.turnout);
   }
   if (metric === "happiness") {
     return clamp01(cell.happiness / 100);
@@ -299,10 +287,6 @@ export const Crosstab = (props: {
               <span className={styles.fact}>
                 <span className={styles.factLabel}>Eligible</span>
                 <span className={styles.factValue}>{int(selected.eligibleVoters)}</span>
-              </span>
-              <span className={styles.fact}>
-                <span className={styles.factLabel}>Overall turnout</span>
-                <span className={styles.factValue}>{pct(selected.turnout)}</span>
               </span>
               <span className={styles.fact}>
                 <span className={styles.factLabel}>Leading</span>
