@@ -56,8 +56,8 @@ namespace Agora.Core.Engine.Parties
         public IReadOnlyList<PartyLifecycleRecord> Records { get; }
 
         /// <summary>
-        /// Dates on which more than <see cref="PartyLifecycleChanges.MaxPerDate"/> turns landed and
-        /// none was reported. Ascending, distinct. Empty in every normal save.
+        /// Dates on which the whole roster was minted at once and nothing was reported. Ascending,
+        /// distinct. Empty in every normal save.
         /// </summary>
         public IReadOnlyList<SimDate> SuppressedDates { get; }
     }
@@ -89,24 +89,11 @@ namespace Agora.Core.Engine.Parties
     /// </remarks>
     public static class PartyLifecycleChanges
     {
-        /// <summary>
-        /// How many turns one date may report before the whole date is treated as a regeneration
-        /// rather than as news.
-        /// </summary>
-        /// <remarks>
-        /// Not a tuning knob and deliberately not in <c>engine_tuning.json</c>: it is the arity of the
-        /// lifecycle itself. A split yields exactly one founding, a merge exactly one dissolution, and
-        /// nothing the engine does in one month produces a third. A date carrying more than two is a
-        /// registry regeneration — <c>PoliticalEngine</c>'s empty-registry recovery stamps every party
-        /// with the current date — which belongs in the log as a warning, not in the player's news.
-        /// </remarks>
-        public const int MaxPerDate = 2;
-
         private static readonly PartyLifecycleRecord[] NoRecords = new PartyLifecycleRecord[0];
 
         /// <summary>
         /// Every lifecycle turn in the roster's history, oldest first, with the opening roster
-        /// excluded and over-full dates suppressed.
+        /// excluded and whole-roster mintings suppressed.
         /// </summary>
         /// <param name="parties">
         /// The save's parties. Order is not read: the result is sorted into a total order of its own,
@@ -124,10 +111,17 @@ namespace Agora.Core.Engine.Parties
             if (parties == null || parties.Count == 0)
                 return new PartyLifecycleChangeSet(new List<PartyLifecycleRecord>(NoRecords), suppressed);
 
+            // Every founding date in the roster, including the ones on or before the start date that
+            // never become records. The suppression rule below counts against these, not against
+            // parties.Count, so the answer for a given date does not change as the roster grows.
+            var foundings = new List<SimDate>(parties.Count);
+
             for (int i = 0; i < parties.Count; i++)
             {
                 Party party = parties[i];
                 if (party == null || string.IsNullOrEmpty(party.Id)) continue;
+
+                foundings.Add(party.FoundedDate);
 
                 if (party.FoundedDate > startDate)
                     records.Add(new PartyLifecycleRecord(party.Id, PartyLifecycleKind.Founded,
@@ -148,17 +142,44 @@ namespace Agora.Core.Engine.Parties
             }
 
             records.Sort(Compare);
+            foundings.Sort();
 
             // Runs of equal dates, over a list already sorted by date — no grouping dictionary, whose
             // enumeration order would decide which date got reported first.
+            //
+            // What is suppressed is a date on which the *entire* roster was founded: every party that
+            // existed by then came into being on that one date. Only PoliticalEngine's empty-registry
+            // recovery does that — it replaces a registry it found empty, so the field it mints has no
+            // elders behind it. Ordinary churn cannot look like it, because the parties it founds are
+            // added to a roster that still holds everything ever founded before (nothing is removed
+            // from the list; a death only stamps a status and a date). So the count of foundings on a
+            // churn date is always short of the count of parties standing on or before it, however
+            // many splits, merges and deaths land in the same month — and three in one month is
+            // ordinary: deaths, merges and splits each loop over all their candidates and each stamps
+            // the same date.
+            //
+            // Counted against the parties founded at or before the date rather than against the whole
+            // roster, so that a founding *after* a regeneration cannot make the regeneration reappear
+            // as news — this is re-derived over the full history on every publish, so an answer that
+            // drifted with roster size would be a different archive every election.
             var kept = new List<PartyLifecycleRecord>(records.Count);
             int start = 0;
+            int elders = 0;   // parties founded on or before the current run's date; foundings is sorted
             while (start < records.Count)
             {
+                SimDate date = records[start].Date;
                 int end = start + 1;
-                while (end < records.Count && records[end].Date == records[start].Date) end++;
+                while (end < records.Count && records[end].Date == date) end++;
 
-                if (end - start > MaxPerDate) suppressed.Add(records[start].Date);
+                while (elders < foundings.Count && foundings[elders] <= date) elders++;
+
+                int founded = 0;
+                for (int i = start; i < end; i++)
+                {
+                    if (records[i].Kind == PartyLifecycleKind.Founded) founded++;
+                }
+
+                if (founded > 0 && founded >= elders) suppressed.Add(date);
                 else kept.AddRange(records.GetRange(start, end - start));
 
                 start = end;
