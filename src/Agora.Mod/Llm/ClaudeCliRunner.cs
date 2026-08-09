@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -99,6 +104,34 @@ namespace Agora.Mod.Llm
         /// bare <c>-p</c> with no positional prompt makes the CLI read there.
         /// </remarks>
         public const string Arguments = "-p --output-format json";
+
+        /// <summary>
+        /// The full argument string for one invocation: <see cref="Arguments"/> plus the model.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Both branches of <c>BuildStartInfo</c> call this, and that is the point of its existing.
+        /// The direct branch hands its arguments to <c>CreateProcess</c> untouched; the <c>cmd.exe</c>
+        /// branch nests them inside one outer pair of quotes that <c>cmd /s /c</c> strips before
+        /// re-parsing what is left. Two hand-assembled strings would let someone fix one and leave
+        /// the other, and the resulting bug would be invisible on a machine where the CLI resolves to
+        /// <c>claude.exe</c> - which is to say invisible to whoever wrote it, and live for the
+        /// majority of players, who have the npm <c>.cmd</c> shim.
+        /// </para>
+        /// <para>
+        /// The model goes in <b>bare</b>, with no quotes of its own. Quoting it would be the natural
+        /// instinct and would be wrong: inner quotes break the outer pair <c>/s</c> keys on, and cmd
+        /// then re-parses the whole line. Bare is safe only because
+        /// <see cref="ClaudeCliOptions.IsValidModelId"/> has already excluded whitespace and every
+        /// character cmd treats as syntax - <c>&amp; | ^ &lt; &gt; %</c> and the quote itself.
+        /// </para>
+        /// </remarks>
+        public static string BuildArguments(ClaudeCliOptions options)
+        {
+            string model = options == null ? ClaudeCliOptions.DefaultModel : options.Model;
+            if (!ClaudeCliOptions.IsValidModelId(model)) model = ClaudeCliOptions.DefaultModel;
+            return Arguments + " --model " + model;
+        }
 
         /// <summary>
         /// Runs one attempt. <paramref name="executablePath"/> null or missing gives
@@ -238,9 +271,24 @@ namespace Agora.Mod.Llm
             }
         }
 
-        private static ProcessStartInfo BuildStartInfo(string executablePath, ClaudeCliOptions options)
+        /// <summary>
+        /// Assembles the start info without starting anything.
+        /// </summary>
+        /// <remarks>
+        /// Internal rather than private so the test suite - which compiles this file in by link - can
+        /// assert on the finished command line. The alternative, covering the quoting by calling
+        /// <see cref="Run"/>, would spawn a real subprocess on whatever machine ran the tests.
+        /// <para>
+        /// A null <paramref name="options"/> falls back to the defaults rather than throwing, matching
+        /// <see cref="BuildArguments"/>. <see cref="Run"/> already coalesces before it calls here, so
+        /// this is defensive only - but nothing on the flavor path may throw (non-negotiable #7), and
+        /// two neighbouring methods disagreeing about null is how one of them eventually does.
+        /// </para>
+        /// </remarks>
+        internal static ProcessStartInfo BuildStartInfo(string executablePath, ClaudeCliOptions options)
         {
             ProcessStartInfo startInfo;
+            string arguments = BuildArguments(options);
 
             if (ClaudeCliLocator.NeedsCommandShell(executablePath))
             {
@@ -250,7 +298,7 @@ namespace Agora.Mod.Llm
                 startInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = "/d /s /c \"\"" + executablePath + "\" " + Arguments + "\""
+                    Arguments = "/d /s /c \"\"" + executablePath + "\" " + arguments + "\""
                 };
             }
             else
@@ -258,7 +306,7 @@ namespace Agora.Mod.Llm
                 startInfo = new ProcessStartInfo
                 {
                     FileName = executablePath,
-                    Arguments = Arguments
+                    Arguments = arguments
                 };
             }
 
@@ -270,7 +318,7 @@ namespace Agora.Mod.Llm
             startInfo.StandardOutputEncoding = new UTF8Encoding(false);
             startInfo.StandardErrorEncoding = new UTF8Encoding(false);
 
-            if (!string.IsNullOrEmpty(options.WorkingDirectory))
+            if (options != null && !string.IsNullOrEmpty(options.WorkingDirectory))
             {
                 startInfo.WorkingDirectory = options.WorkingDirectory;
             }

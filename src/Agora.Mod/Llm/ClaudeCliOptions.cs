@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 
 namespace Agora.Mod.Llm
@@ -29,6 +34,33 @@ namespace Agora.Mod.Llm
 
         /// <summary>Env var pointing at a repo checkout, so a dev build validates against the real schema file.</summary>
         public const string SchemaPathEnvVar = "AGORA_FLAVOR_SCHEMA";
+
+        /// <summary>Env var overriding <see cref="Model"/>.</summary>
+        public const string ModelEnvVar = "AGORA_CLAUDE_MODEL";
+
+        /// <summary>
+        /// The model the CLI is asked for, as an <b>alias</b> rather than a dated snapshot.
+        /// </summary>
+        /// <remarks>
+        /// Haiku because the flavor path is the only thing spending tokens and nothing it returns can
+        /// move a number (non-negotiable #1), so the cheapest capable model is the right one.
+        /// <para>
+        /// The alias, not <c>claude-haiku-4-5-20251001</c>, is the load-bearing half of that choice.
+        /// An alias cannot 404: it follows the snapshot the vendor currently serves. A pin retires,
+        /// and the day it does every save on every machine starts failing the call and falling back
+        /// to canned prose - silently, because non-negotiable #7 says a failed call must keep the last
+        /// good flavor and continue rather than surface an error. A pin therefore buys reproducibility
+        /// we do not need (prose is not deterministic input) at the price of a failure mode nobody
+        /// would notice for months.
+        /// </para>
+        /// </remarks>
+        public const string DefaultModel = "claude-haiku-4-5";
+
+        /// <summary>
+        /// Longest model id accepted. Aliases and dated snapshots are well under this; the bound
+        /// exists so a junk environment variable cannot push a megabyte onto the command line.
+        /// </summary>
+        public const int MaxModelIdLength = 64;
 
         /// <summary>
         /// Absolute path to the CLI. Null means "resolve it" - see <see cref="ClaudeCliLocator"/>.
@@ -76,6 +108,61 @@ namespace Agora.Mod.Llm
         /// </summary>
         public string SchemaFilePath { get; set; }
 
+        /// <summary>
+        /// Model id passed to the CLI as <c>--model</c>. Defaults to <see cref="DefaultModel"/>.
+        /// </summary>
+        /// <remarks>
+        /// The setter <b>ignores</b> anything <see cref="IsValidModelId"/> rejects and leaves the
+        /// previous value standing. That is deliberate rather than defensive habit: the value is
+        /// concatenated bare into a command line that, for a <c>.cmd</c> shim, is re-parsed by
+        /// <c>cmd.exe</c>, where a quote, an <c>&amp;</c> or a <c>%FOO%</c> would change what runs.
+        /// Filtering here - the one place a model id can enter - is what lets
+        /// <see cref="ClaudeCliRunner"/> concatenate without quoting and be right. Throwing instead
+        /// would violate non-negotiable #7 for a setting that has a perfectly good default.
+        /// </remarks>
+        public string Model
+        {
+            get { return _model; }
+            set { if (IsValidModelId(value)) _model = value.Trim(); }
+        }
+
+        private string _model = DefaultModel;
+
+        /// <summary>
+        /// True when <paramref name="model"/> is safe to place bare on a command line: a non-empty
+        /// run of <c>[A-Za-z0-9._-]</c> no longer than <see cref="MaxModelIdLength"/>, and not
+        /// starting with <c>-</c>.
+        /// </summary>
+        /// <remarks>
+        /// Written as an explicit character sweep rather than a regex so that the accepted set is
+        /// visible at the point of decision. Every shell metacharacter, every quote and the space
+        /// that would split one argument into two are all outside it, which is the whole point.
+        /// <para>
+        /// The leading dash is excluded separately, because the sweep alone would accept one: a dash
+        /// is a legal character <i>inside</i> a model id (<c>claude-haiku-4-5</c>) but a value that
+        /// opens with one is no longer a value. <c>--model --dangerously-skip-permissions</c> is a
+        /// command line an argument parser may read as two flags rather than a flag and its value,
+        /// so an environment variable meant to carry a value must not be able to pose as a flag.
+        /// </para>
+        /// </remarks>
+        public static bool IsValidModelId(string model)
+        {
+            if (string.IsNullOrEmpty(model)) return false;
+            string trimmed = model.Trim();
+            if (trimmed.Length == 0 || trimmed.Length > MaxModelIdLength) return false;
+            if (trimmed[0] == '-') return false;
+
+            for (int i = 0; i < trimmed.Length; i++)
+            {
+                char c = trimmed[i];
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                          c == '.' || c == '_' || c == '-';
+                if (!ok) return false;
+            }
+
+            return true;
+        }
+
         /// <summary>Working directory for the subprocess. Null means the process's own.</summary>
         public string WorkingDirectory { get; set; }
 
@@ -102,18 +189,48 @@ namespace Agora.Mod.Llm
         /// </summary>
         public static ClaudeCliOptions FromEnvironment(IFlavorLog log)
         {
+            return FromEnvironment(log, null);
+        }
+
+        /// <summary>
+        /// As <see cref="FromEnvironment(IFlavorLog)"/>, but reading through an injected delegate.
+        /// </summary>
+        /// <param name="log">Debug sink. Null is fine.</param>
+        /// <param name="getEnvironmentVariable">
+        /// Environment reader, the same seam <see cref="ClaudeCliLocator.Resolve"/> uses. Null falls
+        /// back to the process environment; a test passes a lookup instead of mutating the machine.
+        /// </param>
+        public static ClaudeCliOptions FromEnvironment(IFlavorLog log, Func<string, string> getEnvironmentVariable)
+        {
             log = log ?? NullFlavorLog.Instance;
+            var env = getEnvironmentVariable ?? Environment.GetEnvironmentVariable;
             var options = new ClaudeCliOptions();
 
             try
             {
-                string executable = Environment.GetEnvironmentVariable(ExecutableEnvVar);
+                string executable = env(ExecutableEnvVar);
                 if (!string.IsNullOrEmpty(executable)) options.ExecutablePath = executable.Trim();
 
-                string schema = Environment.GetEnvironmentVariable(SchemaPathEnvVar);
+                string schema = env(SchemaPathEnvVar);
                 if (!string.IsNullOrEmpty(schema)) options.SchemaFilePath = schema.Trim();
 
-                string timeout = Environment.GetEnvironmentVariable(TimeoutEnvVar);
+                string model = env(ModelEnvVar);
+                if (!string.IsNullOrEmpty(model))
+                {
+                    if (IsValidModelId(model))
+                    {
+                        options.Model = model;
+                    }
+                    else
+                    {
+                        // Log and carry on with the default. A typo'd model id is a bad session, not
+                        // a broken one (non-negotiable #7), and letting it through would put an
+                        // unquoted stranger on a command line cmd.exe re-parses.
+                        log.Debug("ignoring " + ModelEnvVar + ": not a valid model id; using " + DefaultModel);
+                    }
+                }
+
+                string timeout = env(TimeoutEnvVar);
                 int parsed;
                 if (!string.IsNullOrEmpty(timeout) &&
                     int.TryParse(timeout.Trim(), System.Globalization.NumberStyles.Integer,

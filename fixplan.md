@@ -427,46 +427,89 @@ timeout is 120s with one retry.
 
 **Prompt and content**
 
-- [ ] Rewrite the article instruction: every article must lead with **what happened, to whom, and
+- [x] Rewrite the article instruction: every article must lead with **what happened, to whom, and
       why it matters**, name at least one party or district by id from the supplied catalog, and
       state the concrete change in the first sentence. Ban the "residents say / officials say"
       construction outright — it is the shape all four current templates share.
-- [ ] Tighten the schema: headline ≤ 90 chars (from 140), body ≤ 420 (from 900). Lean is both the
+      *(In `AppendTask`, not the line range this plan cited. There is no `AppendFactions` method.)*
+- [x] Tighten the schema: headline ≤ 90 chars (from 140), body ≤ 420 (from 900). Lean is both the
       requested style and the cheaper one. `/schema-change`.
-- [ ] Require `refs` to be populated. An article referencing nothing is what produces prose about
+      *(Already shipped before W5 began; `FlavorCacheMigration` is the single source and
+      `FlavorSchemaDriftTests` gates it against the schema file.)*
+- [x] Require `refs` to be populated. An article referencing nothing is what produces prose about
       no identifiable subject.
-- [ ] Rewrite `StaticPoolContent` headline and body templates against the same rule — the canned
+      *(Not just a prompt change: `FilterAgainstCatalog` now drops a refless article, which first
+      required every canned article to carry refs. Tightening it also opened a fail-open — an
+      emptied round replaced last-good and persisted — closed by `ArticlesAllDiscarded`.)*
+- [x] Rewrite `StaticPoolContent` headline and body templates against the same rule — the canned
       pool is the fallback for the fallback and must not be the vaguest thing in the build.
-- [ ] **Election coverage.** On an election tick, request a dedicated set: a result piece, a
+- [x] **Election coverage.** On an election tick, request a dedicated set: a result piece, a
       winner's-reaction piece, a loser's-reaction piece, and — under EU theme — a coalition-outlook
       piece. Raise `ArticleCount` for that wake only.
+      *(Slots (b) and (c) ask for a party's **own claim** and **own challenge**, not a winner's and
+      a loser's reaction: the request carries no outcome, so asking for those two invited the model
+      to invent one. The raise is 7 NA / 8 EU and is non-sticky — recorded against §11 M3's
+      ratified "3–5 per wake" in `politicsmodplan.md` and `docs/status.md`.)*
 
 **Model**
 
-- [ ] Add `Model` to `ClaudeCliOptions`, default `claude-haiku-4-5-20251001`, overridable via
-      `AGORA_CLAUDE_MODEL`. Append `--model <model>` to `ClaudeCliRunner.Arguments`.
-      *(An earlier review claimed `claude -p` cannot select a model. That is wrong — `claude --help`
-      on this machine lists `--model <model>`. Verified 2026-08-01.)*
-- [ ] Non-negotiable #1 is unaffected: schema validation and the numeric sweep already stand
+- [x] Add `Model` to `ClaudeCliOptions`, default **`claude-haiku-4-5`** (the alias, not the dated
+      snapshot — a retired pin cannot 404 loudly, it falls silently to canned prose in every save
+      forever), overridable via `AGORA_CLAUDE_MODEL`. Append `--model <model>` to
+      `ClaudeCliRunner.Arguments`.
+      *(`--model <model>` re-verified against `claude --help` on this machine, 2026-08-09. Model ids
+      are validated to `[A-Za-z0-9._-]`, bounded, and rejected if they open with a dash, so the env
+      var cannot smuggle a second flag into the command line. `ClaudeCliRunner/Options/Locator` are
+      now linked into the test suite, which is what made the cmd.exe quoting assertable at all.)*
+- [x] Non-negotiable #1 is unaffected: schema validation and the numeric sweep already stand
       between model output and engine state, so a smaller model cannot corrupt anything. It can
       only write worse prose, which the validator will still reject if malformed.
+      *(Re-confirmed after the refs change: `refs` cross the boundary as catalog-checked id strings
+      only, and `ToPayload` still copies nothing but strings.)*
 
 **Popup**
+
+**The popup is NOT BUILT.** Nothing below this line was implemented. Three of the five bullets were
+wrong as written and are corrected here so the next pass does not implement the wrong thing.
 
 - [ ] `ui/src/shell/ArticleModal.tsx` — masthead layout: outlet nameplate in a serif face with rules
       above and below, dateline, headline at display size, body in two columns if it fits the
       hook-point width, party colour as a thin spot rule. Rendered through `Portal` so it overlays
       the whole HUD rather than sitting in the top-right corner.
-- [ ] Pause via `SimulationSystem.selectedSpeed = 0` — public setter, verified at
-      `refsrc/Game/Game.Simulation/SimulationSystem.cs:72`. **No Harmony patch required.** Capture
-      the prior speed and restore it on dismiss; restore on panel unmount too, or a closed dashboard
-      leaves the player paused with no way back.
+      *(`Portal` takes **only** `children` — it supplies relocation and nothing else. The scrim and
+      centring are the caller's own first child; copy the two-div wrapper from `FirstRunDialog.tsx`.
+      Give it its own `moduleRegistry.append` and its own boundary, and make the boundary unmount
+      its children so the pause hook's cleanup releases the barrier.)*
+- [ ] ~~Pause via `SimulationSystem.selectedSpeed = 0`~~ — **obsolete, and implementing it would be a
+      regression.** `ui/src/shell/pause.ts` already exports `useSimulationHeldPaused(active)` over
+      the game's refcounted `time.simulationPausedBarrier$`. Reuse it verbatim. That setter is a
+      no-op while `m_IsLoading`, so the one write that matters is silently discarded, and manual
+      capture/restore makes un-pausing a bug that must be handled on unmount, save load, quit to
+      menu and boundary catch. Subscribing makes those cases unreachable.
 - [ ] "Important" = elections (always), coalition formed or collapsed, party founded or dissolved,
       and timeline events at severity ≥ 3.
-- [ ] Two per-save settings, both in the W3 schema bump: **Pause on major news** (default on),
+      *(Only two of these are observable today. **There is no severity filter anywhere** — `BuildFeed`
+      emits every fired event at any severity, so the ≥ 3 gate is new logic. **Coalition *formed*
+      produces no feed row**: `CoalitionHistory` only ever receives *ended* coalitions and the
+      sitting one lives in `state.Government`, which `BuildFeed` never reads — fix that gap in the
+      same pass, or the alert names something the player cannot then find. **Party founded/dissolved
+      has no row and no tick signal**; `EngineTickResult` exposes only a bare `GovernmentChanged`
+      bool, so detection is a Mod-side diff in `AgoraRuntime.OnMonth` against `tick.KnownPartyIds`,
+      not a change to `Agora.Core`.)*
+- [x] Two per-save settings, both in the W3 schema bump: **Pause on major news** (default on),
       **Show every report as a popup** (default off).
+      *(Settings exist end to end — contract, sidecar, migration, projection, binding, and toggles in
+      `SettingsPanel.tsx`. **Nothing reads either value.** The work left is the consumer, not the
+      setting, and the hint text already promises behaviour that does not exist.)*
 - [ ] Queue, never stack. If two qualifying items land in one tick, show them in sequence with a
       "2 of 3" counter. A modal that can open on top of a modal is how a player gets stuck.
+      *(One modal at a time **by construction**: the component renders `current` or `null`, with no
+      code path that can mount two. Alerts are session-scoped and deliberately do not persist — emit
+      at creation into a bounded ring that starts empty on every load, so no-replay-on-reload is
+      structural. Ship the queue cap with an honest "N of M" and a Dismiss-all. Gate the whole thing
+      on `!isFirstRun`, or a player meets an article stacked on a region prompt that has no dismiss.
+      Fetch the body only when the alert says it has one — `useMapValue` throws on an unregistered
+      binding, and Event/Election/Coalition alerts have no article row.)*
 
 ---
 
@@ -645,6 +688,16 @@ Neither is a defect fix; both are choices, so nothing was done to the code.
 Either populate them (W5 territory — a byline is exactly the masthead detail W5 wants, and the three
 id links are what W5's "require `refs` to be populated" is asking the model for) or strike them from
 all three artifacts. Left alone pending your call, since W5 may well want them.
+
+**RESOLVED in W5 — split, then settled both ways.** The three id fields were *populated*:
+`Agora.Core.Contracts.Article` now carries `EventId`/`DistrictId`/`PartyId`, `refs` survive the Core
+boundary, and `ArticleReader` renders them as chips. `byline` and `tags` were *struck* from the
+payload, the TS type, the empty literal, `ArticleReader` and the contract doc — including the sort
+key over `article.tags`. Populating a byline would need a field added to
+`politics_flavor.schema.json`, and the batched schema pass has closed; tags would be free text from
+the model, where `refs` does the same job better because it is checked against the catalog and so
+cannot name something that does not exist. `events[].tags` is a different field with a real engine
+source and is untouched.
 
 **2. Should the Crosstab's Turnout mode exist?** Its copy now tells the truth, but the mode still
 paints all fifteen cells the identical value and the identical tint. A flat wash in a heat grid

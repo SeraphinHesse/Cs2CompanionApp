@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.IO;
 using System.Text;
@@ -102,6 +107,22 @@ namespace Agora.Mod.Llm
                 {
                     _log.Warn("cached flavor at " + path + " failed validation and was ignored: " +
                               Join(result.Errors));
+                    return null;
+                }
+
+                // The other face of the emptied round. Every flavor_cache.json written before the
+                // refs check existed holds city-branch articles with no refs at all, so the first
+                // load after that change filters the lot away - and returning the remains would
+                // install an article-less document as the last good one, which then survives every
+                // reload. Null is the honest answer: it means "no last good yet", and the canned pool
+                // serves until the next wake writes a cache that does carry refs. Party names go with
+                // it, which is the cost of the safe direction; a cache is a derived artefact and the
+                // next generation rebuilds it.
+                if (result.ArticlesAllDiscarded)
+                {
+                    _log.Warn("cached flavor at " + path + " lost all " + result.ArticlesReceived +
+                              " of its articles to the catalog filter and was ignored: " +
+                              Join(result.Discarded));
                     return null;
                 }
 

@@ -27,8 +27,8 @@ export const AGORA_EVENTS_MAX = 25;
 // -- empty / loading values (contract section 6, copied literally) ------------------------------
 
 export const EMPTY_NEWS_ARTICLE: Agora.NewsArticle = {
-  id: "", date: "", headline: "", byline: "", body: "", tone: "", outletId: "", outletName: "",
-  tags: [], partyId: "", districtId: "", eventId: "",
+  id: "", date: "", headline: "", body: "", tone: "", outletId: "", outletName: "",
+  partyId: "", districtId: "", eventId: "",
 };
 
 export const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {

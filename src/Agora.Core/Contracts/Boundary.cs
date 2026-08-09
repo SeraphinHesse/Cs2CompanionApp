@@ -119,5 +119,12 @@ namespace Agora.Core.Contracts
         public string Headline { get; set; } = "";
         public string Body { get; set; } = "";
         public string Tone { get; set; } = "";
+
+        // What the article is about. These are catalog ids echoed back by the model and checked
+        // against FlavorCatalog before they reach this type, so an id naming nothing legal never
+        // gets here. Identifiers, never numbers - non-negotiable #1 is untouched.
+        public string EventId { get; set; } = "";
+        public string DistrictId { get; set; } = "";
+        public string PartyId { get; set; } = "";
     }
 }

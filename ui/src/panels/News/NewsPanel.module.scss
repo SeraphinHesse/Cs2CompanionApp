@@ -406,15 +406,6 @@
   margin-bottom: 4rem;
 }
 
-.articleByline {
-  @include prose;
-  font-size: 11rem;
-  line-height: 15rem;
-  max-height: 30rem;
-  margin-bottom: 8rem;
-  color: $text-dim;
-}
-
 .articlePara {
   @include prose;
   // No clamp: the body scrolls inside its own region instead of being cut off.

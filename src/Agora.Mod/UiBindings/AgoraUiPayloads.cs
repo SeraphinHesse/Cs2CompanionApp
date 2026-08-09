@@ -758,12 +758,10 @@ namespace Agora.Mod.UiBindings
         public string Id = "";
         public Agora.Core.Contracts.SimDate? Date;
         public string Headline = "";
-        public string Byline = "";
         public string Body = "";
         public string Tone = "";
         public string OutletId = "";
         public string OutletName = "";
-        public List<string> Tags = new List<string>();
         public string PartyId = "";
         public string DistrictId = "";
         public string EventId = "";
@@ -774,12 +772,10 @@ namespace Agora.Mod.UiBindings
             UiJson.Id(writer, "id", Id);
             UiJson.Date(writer, "date", Date);
             UiJson.Text(writer, "headline", Headline);
-            UiJson.Text(writer, "byline", Byline);
             UiJson.Text(writer, "body", Body);
             UiJson.Text(writer, "tone", Tone);
             UiJson.Id(writer, "outletId", OutletId);
             UiJson.Text(writer, "outletName", OutletName);
-            UiJson.Ids(writer, "tags", Tags);
             UiJson.Id(writer, "partyId", PartyId);
             UiJson.Id(writer, "districtId", DistrictId);
             UiJson.Id(writer, "eventId", EventId);

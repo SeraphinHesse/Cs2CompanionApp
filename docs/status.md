@@ -57,8 +57,38 @@ authority; this is the tracker.
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed) · **needs the manual walkthrough** |
 | **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | ⬜ |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab |
-| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ⬜ |
+| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 **prose + model lane complete, reviewed, committed. Popup lane NOT STARTED.** See below. |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, committed** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **2 owner decisions raised**, and the drift re-run must repeat after W4/W6 |
+
+### W5 — what shipped, and what did not
+
+**Shipped, reviewed, committed** (branch `worktree-agent-a1c4d1450a9355a73`, 4 commits on top of the
+inherited pair): article `refs` cross the Core boundary and render as chips; the article instruction
+leads with what happened and bans unattributed sourcing; election coverage asks for a party's own
+claim and own challenge rather than a winner's and a loser's reaction; the canned pool was rewritten
+against the same rule with new election templates and now carries `refs` on every article, which is
+what allowed `FilterAgainstCatalog` to start dropping refless ones; `--model` with the alias
+`claude-haiku-4-5`; and `byline`/`tags` struck from the article contract.
+
+**Not started: the entire popup lane.** No alert emission, no bindings, no modal, no pause wiring,
+no first-run interlock. `PauseOnMajorNews` and `ShowAllReports` remain **two switches that do
+nothing**, with hint text promising behaviour that does not exist — that is the most visible loose
+end. Three prerequisites are known-missing and are written up in `fixplan.md` §W5: there is no
+severity filter anywhere, coalition *formed* produces no feed row, and party founded/dissolved has
+neither a feed row nor a tick signal.
+
+**Manual gates outstanding for the shipped half** — none of these can be verified without the game:
+prose quality on a real save; the fail-closed path with a bogus `AGORA_CLAUDE_MODEL`; that
+`ClaudeCliProvider`'s `ArticlesAllDiscarded` branch keeps last-good rather than blanking the feed
+(the branch is untested by construction — the type is game-facing and deliberately unlinked from the
+test suite); and that an existing save's `flavor_cache.json` full of refless articles degrades to
+canned prose rather than an empty feed.
+
+**W5 deviates from the ratified article count, deliberately.** §11 M3 ratifies 3–5 articles per
+wake; an election wake asks for 7 (NA) or 8 (EU) — the ordinary 4 plus one slot per dedicated
+election piece — because W5's "elections covered extensively" decision would otherwise buy the
+election coverage by cutting general coverage below an ordinary month. Recorded in `politicsmodplan.md`
+§11 M3. The extra tokens land on election months only, and elections are 3–4 years apart.
 
 **Phase 1 is code complete and through the checklist gate** (`dotnet build` 0/0 · 1033 tests ·
 `npm run check` clean). Nothing is committed. Four review-blocking defects were found and fixed, and

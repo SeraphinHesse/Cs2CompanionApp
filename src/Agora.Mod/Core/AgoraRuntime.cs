@@ -1584,6 +1584,15 @@ namespace Agora.Mod.Core
                 Snapshot = snapshot
             };
 
+            // An election round asks the prompt for a result piece, both reactions and — under EU
+            // rules — a coalition outlook, so it needs the slots to put them in. It is a prompt
+            // instruction to the model only: RequestFlavor gives the canned pool a RosterCopy, which
+            // carries the ordinary count, so the raised one reaches the CLI and nothing else.
+            if (reason == FlavorWakeReason.Election)
+            {
+                request.ArticleCount = FlavorRequest.ElectionArticleCount(request.Theme);
+            }
+
             FillBriefs(request, tick.State);
 
             // Fire and forget: RequestFlavor starts a background generation and returns immediately,
@@ -1612,7 +1621,10 @@ namespace Agora.Mod.Core
                     PartyId = party.Id,
                     ArchetypeId = party.ArchetypeId,
                     CoreGrievance = party.CoreGrievance,
-                    StatusWord = party.Status.ToString(),
+                    // A governing phrase, not Status.ToString(). The lifecycle word carried no
+                    // outcome at all, and the prompt's election block is written against this field
+                    // — see PartyBrief.StandingWord.
+                    StatusWord = PartyBrief.StandingWord(party),
                     CurrentName = party.Name,
                     FoundedDate = party.FoundedDate
                 });
@@ -1670,7 +1682,12 @@ namespace Agora.Mod.Core
             };
 
             FillBriefs(request, _state);
-            _flavor.Pool.Roster = request;
+
+            // Through RosterCopy for the same reason LayeredFlavorProvider.RequestFlavor does it: one
+            // rule, so a roster is never an alias of a request anyone else holds. Nothing changes value
+            // here — this request is built locally, at the ordinary article count, and never handed to
+            // the CLI worker — but two assignment sites with opposite treatment is how the rule rots.
+            _flavor.Pool.Roster = request.RosterCopy();
         }
 
         /// <summary>

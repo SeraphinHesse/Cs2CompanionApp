@@ -265,7 +265,7 @@ Tasks: bloc construction; issue weights; party generation (EU) and party+faction
 **Gate:** an election simulated from a fixed save reproduces identical results ×3.
 
 ### M3 · The Voice
-Tasks: `IFlavorProvider` + `ClaudeCliProvider`; prompt assembly (plan excerpt + sidecar + snapshot); schema validation + retry-once + fail-closed fallback; wake cadence (yearly, election, manual trigger button); flavor cache; parties/factions get real names, descriptions, slogans; 3–5 articles per wake in the news feed.
+Tasks: `IFlavorProvider` + `ClaudeCliProvider`; prompt assembly (plan excerpt + sidecar + snapshot); schema validation + retry-once + fail-closed fallback; wake cadence (yearly, election, manual trigger button); flavor cache; parties/factions get real names, descriptions, slogans; 3–5 articles per wake in the news feed (an election wake is the one exception: the ordinary count plus one slot for each dedicated election piece — 7 under NA rules, 8 under EU, per the W5 "elections covered extensively" decision).
 
 **Gate:** disable network/CLI mid-year — engine and dashboard continue perfectly, prose stays at last good state.
 

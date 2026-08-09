@@ -155,7 +155,10 @@ namespace Agora.Mod.Llm
                     Outlet = a.Outlet,
                     Headline = a.Headline,
                     Body = a.Body,
-                    Tone = a.Tone
+                    Tone = a.Tone,
+                    EventId = a.EventId,
+                    DistrictId = a.DistrictId,
+                    PartyId = a.PartyId
                 });
             }
 
