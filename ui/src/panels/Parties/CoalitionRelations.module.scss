@@ -1,0 +1,286 @@
+// Panel 26 — Parties, the coalition arithmetic. Flex only - Gameface has no CSS grid and fails
+// silently on it, and it has no `backdrop-filter` either. `gap` is avoided throughout; spacing is
+// done with margins and padding, as in the sibling sheets.
+//
+// Nothing is absolutely positioned: the cohesion meter is a flex track with a flex fill whose width
+// is set inline, the same construction the mandate scorecard's delivery bar uses.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// -- section chrome, matching the pane's own so the heading reads as one of its sections ------------
+
+.sectionTitle {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin: 8rem 0 5rem 0;
+  padding-bottom: 3rem;
+  border-bottom: 1rem solid $line;
+}
+
+.sectionTitleText {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: 8rem;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-dim;
+}
+
+.sectionNote {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10rem;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/** The whole section reduced to one sentence: no election yet, or no arithmetic under FPTP. */
+.note {
+  display: flex;
+  font-size: 11rem;
+  color: $text-faint;
+  line-height: 1.4;
+}
+
+/** The two blocks inside the section - quieter than the section title, louder than a row label. */
+.blockLabel {
+  display: flex;
+  margin: 6rem 0 4rem 0;
+  font-size: 10rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-faint;
+}
+
+// -- one arrangement --------------------------------------------------------------------------------
+
+@mixin option-base {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-bottom: 4rem;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-inset;
+}
+
+.optionRow {
+  @include option-base;
+}
+
+/** The arrangement that is actually in office, lifted off the others rather than recoloured. */
+.optionRowGoverning {
+  @include option-base;
+  background-color: $surface-raised;
+  border-left: 2rem solid $accent;
+}
+
+.optionMembers {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+
+.member {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0 8rem 2rem 0;
+  min-width: 0;
+}
+
+.memberSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 7rem;
+  height: 7rem;
+  margin-right: 4rem;
+  border-radius: 2rem;
+}
+
+.memberName {
+  display: flex;
+  min-width: 0;
+  font-size: 12rem;
+  color: $text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// -- the row's figures and chips ----------------------------------------------------------------------
+
+.optionMeta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.metaSeats {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: 6rem;
+  font-size: 10rem;
+  color: $text-dim;
+  font-variant-numeric: tabular-nums;
+}
+
+@mixin chip-base {
+  display: flex;
+  flex: 0 0 auto;
+  margin: 0 4rem 2rem 0;
+  padding: 1rem 5rem;
+  border-radius: 3rem;
+  font-size: 9rem;
+  white-space: nowrap;
+}
+
+.chip {
+  @include chip-base;
+  background-color: $surface-raised;
+  color: $text-dim;
+}
+
+/** Present, but not the thing to read first: a shortfall, or a label on the shape of the set. */
+.chipQuiet {
+  @include chip-base;
+  background-color: $surface-inset;
+  color: $text-faint;
+}
+
+.chipGoverning {
+  @include chip-base;
+  background-color: $surface-hover;
+  color: $accent;
+}
+
+// -- the cohesion meter ---------------------------------------------------------------------------
+
+.cohesionRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  margin-top: 2rem;
+}
+
+.cohesionLabel {
+  display: flex;
+  flex: 0 0 auto;
+  width: 46rem;
+  margin-right: 5rem;
+  font-size: 9rem;
+  color: $text-faint;
+}
+
+.cohesionTrack {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  // Takes the slack in the row; min-width: 0 keeps it shrinkable beside the fixed figure, and the
+  // fill's percentage width resolves against it because the row itself is a definite width.
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 4rem;
+  border-radius: 2rem;
+  background-color: $surface-track;
+  overflow: hidden;
+}
+
+.cohesionFill {
+  // The width is the published cohesion, set inline. `flex: 0 0 auto` keeps it exactly that: a
+  // shrinkable fill would quietly under-report the figure.
+  display: flex;
+  flex: 0 0 auto;
+  height: 100%;
+  border-radius: 2rem;
+  background-color: $accent;
+}
+
+.cohesionValue {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  width: 30rem;
+  margin-left: 5rem;
+  font-size: 10rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-dim;
+}
+
+// -- the two per-row notes --------------------------------------------------------------------------
+
+.leadLine {
+  display: flex;
+  margin-top: 2rem;
+  font-size: 9rem;
+  color: $text-faint;
+}
+
+/** Quiet on purpose: an oversized coalition is a remark about the set, not a fault in it. */
+.surplus {
+  display: flex;
+  margin-top: 1rem;
+  font-size: 9rem;
+  color: $text-faint;
+  line-height: 1.4;
+}
+
+// -- who it can work with ---------------------------------------------------------------------------
+
+.pairBlock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-bottom: 4rem;
+}
+
+.pairLabel {
+  display: flex;
+  font-size: 10rem;
+  color: $text-faint;
+}
+
+.pairNames {
+  display: flex;
+  min-width: 0;
+  font-size: 11rem;
+  color: $text-dim;
+  line-height: 1.4;
+}
+
+/** Nobody on the list: a sentence rather than an empty line under a label. */
+.pairEmpty {
+  display: flex;
+  min-width: 0;
+  font-size: 10rem;
+  color: $text-faint;
+  line-height: 1.4;
+}
+
+.footnote {
+  display: flex;
+  margin-top: 3rem;
+  font-size: 9rem;
+  color: $text-faint;
+  line-height: 1.4;
+}

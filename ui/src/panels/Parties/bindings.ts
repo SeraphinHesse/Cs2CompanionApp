@@ -129,6 +129,21 @@ export const electionRecord$ = bindMap<string, Agora.PartyElectionRow[]>(
   "electionRecord"
 );
 
+/**
+ * Map binding, keyed by PartyBrief.id: every viable arrangement of the chamber that contains this
+ * party, best first and capped at eight (contract section 4.2). The order is formation order and is
+ * contractual - majority first, then minimum-winning, then score - so the pane does not re-sort it.
+ *
+ * A LIVE view. It is recomputed from where the parties stand TODAY, not the record of who negotiated
+ * after the last election, so it answers "who could govern now" and drifts as platforms drift. Empty
+ * under first past the post by design.
+ *
+ * Fetched for the open pane alone, like the three maps above. That is what makes it affordable: the
+ * enumeration behind it is bounded but not free, and it must never become a pushed value binding
+ * re-running for every party on every tick (contract rule 6).
+ */
+export const relations$ = bindMap<string, Agora.CoalitionOption[]>("agora.parties", "relations");
+
 // -- agora.seats (rail columns and the coalition line) ---------------------------------------------
 
 export const allocation$ = bindValue<Agora.SeatRow[]>("agora.seats", "allocation", []);

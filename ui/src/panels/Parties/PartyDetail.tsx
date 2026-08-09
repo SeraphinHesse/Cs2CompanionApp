@@ -16,6 +16,7 @@ import {
   pct,
   signedPoints,
 } from "./format";
+import { CoalitionRelations } from "./CoalitionRelations";
 import { HistoryStrip } from "./HistoryStrip";
 import { MandateScorecard } from "./MandateScorecard";
 import { PlatformBars } from "./PlatformBars";
@@ -356,6 +357,17 @@ export const PartyDetailPane = (props: {
               been around. It renders nothing at all - heading included - for a party that has never
               held a mandate. */}
           <MandateScorecard partyId={props.partyId} mandates={props.mandates} />
+
+          {/* After the record, because "who could it govern with" is read once you know what the
+              party is and how it has done. Unlike the scorecard this section always renders: an
+              electoral system with no coalition arithmetic is itself worth stating, and the
+              component branches on the system rather than on the length of its list. */}
+          <CoalitionRelations
+            partyId={props.partyId}
+            system={props.system}
+            government={props.government}
+            roster={props.roster}
+          />
         </>
       ) : null}
     </div>
