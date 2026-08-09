@@ -316,13 +316,12 @@ rename would be silently reverted at the next flavor wake.
       `agora.parties.colorPalette`, a free hex accepted by `setColor`, and a colour another party
       already wears **accepted with a warning** rather than blocked. The warning crosses as
       `OkColorInUse`, which is an **acceptance**: it must not map to the empty string, or the panel
-      cannot show it. **The picker itself is lane D and is not shipped — W6 owns it.**
+      cannot show it. **Lane D shipped 2026-08-09; reviewed and merged.**
 - [x] The **reset bindings** — `resetName`, `resetDescription`, `resetColor` — each clearing its
       lock and handing the field back to flavor. **Resets are separate bindings and cannot fold into
       the setters**: an empty string is `ValueRequired`, never "reset". A cleared box — a slipped
       keystroke, a paste that did not take — is otherwise indistinguishable from a deliberate
-      hand-back, and the two have opposite consequences. **The per-field reset control is lane D and
-      is not shipped — W6 owns it.**
+      hand-back, and the two have opposite consequences. **Lane D shipped 2026-08-09; reviewed and merged.**
 - [x] Record every binding in `docs/contracts/ui_bindings.md`, before any UI is written.
 - [x] **Not in the original list:** the canned pool's de-duplication. `StaticPoolProvider` seeded
       its `usedNames` set only from its own draws and never read the roster's current names, so a

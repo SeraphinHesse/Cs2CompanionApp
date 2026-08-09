@@ -642,8 +642,22 @@ told the mod is going to overwrite it.
 
 Copy these literally. `bindValue`'s third argument is the value rendered before C# publishes
 anything; omit it and the panel renders `undefined` on the first frame. Each panel declares the
-constants it needs module-locally — there is no shared runtime module, by design, because three
-panels are authored in parallel.
+constants it needs module-locally — there is no shared runtime module **between panels**, by design,
+because panels are authored in parallel.
+
+**`shell/` is the one exception, and the rule is about what kind of thing is being shared.** Panels
+have always depended on the shell for design tokens (`@use "../../shell/tokens"`, W1); W4 lane D
+extended that to TypeScript, importing `isAccepted` / `writeMessage` from `ui/src/shell/bindings.ts`
+rather than copying them. The distinction to hold:
+
+- **Presentation helpers** — a percentage formatter, a label fallback — may be copied panel to panel.
+  Two copies that drift produce two slightly different renderings of the same number, which is
+  cosmetic.
+- **A rule that decides whether a write took must never be copied.** `CommandOutcome.OkColorInUse`
+  is an **accepted** write that carries a warning, so "has a message" is not "was rejected". A panel
+  holding its own copy of that test, drifting from the shell's, rolls its control back to the old
+  value while the engine keeps the new one, and the two stay disagreed until the next republish.
+  Import it. Do not reimplement it, and do not infer acceptance from the message being non-empty.
 
 ```tsx
 const EMPTY_STATE_SUMMARY: Agora.StateSummary = {

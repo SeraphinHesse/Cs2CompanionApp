@@ -283,6 +283,13 @@ Run `.\tools\verify-setup.ps1 -Build` for the current state of all build precond
   webpack is transpile-only. A green `check` + `build` is therefore *not* evidence of either class
   parity or type safety. Run **`npx tsc --noEmit`** separately, and diff class names by hand in
   review. Found during W6 chunk G's review, 2026-08-09.
+- **Never junction a worktree's `ui/node_modules` to another checkout's install.** `ui/node_modules`
+  is gitignored, so a fresh worktree has none and `tsc` is unavailable there. Junctioning to a
+  sibling install looks like the cheap fix and is a trap: deleting the junction afterwards with a
+  recursive delete follows the link and **empties the target**, silently disarming `tsc` for every
+  other lane and for the main checkout. This happened on 2026-08-09 and cost a real verification
+  gap — two lanes reported clean typechecks against an install a third lane then destroyed. Run
+  `npm install` inside the worktree instead; it takes about five seconds.
 - **`npm run build` deploys.** It writes into the player's live `…\Mods\Agora.Mod` folder, and
   `dotnet build Agora.sln` triggers it too once `node_modules` is installed. Use
   `dotnet build src/Agora.Mod/Agora.Mod.csproj -p:UseCsiiToolchain=false` for a compile check that

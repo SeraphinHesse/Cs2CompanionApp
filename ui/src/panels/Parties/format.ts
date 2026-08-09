@@ -5,8 +5,16 @@
  * every share, position and count is published by the engine and only re-expressed for a human here
  * (a ratio rendered as a percentage, a signed difference rendered with its sign).
  *
- * There is no shared runtime module between panels, by design (contract §6), so the few helpers
+ * There is no shared runtime module between PANELS, by design (contract §6), so the few helpers
  * that also exist in the Districts panel are copied rather than imported.
+ *
+ * `shell/` is not another panel and is the one exception. It is the layer panels already depend on
+ * — every stylesheet in this folder does `@use "../../shell/tokens"` (W1) — and `bindings.ts:2`
+ * extends that to TypeScript for `isAccepted` / `writeMessage` (W4 lane D). Those two are imported
+ * rather than copied deliberately: `OkColorInUse` is an ACCEPTED write carrying a warning, and a
+ * second copy of that test drifting from the shell's is precisely the bug `fixplan.md` §W4 rule 3
+ * exists to prevent. Copy presentation helpers between panels; never copy a rule that decides
+ * whether a write took.
  */
 
 export const NO_VALUE = "-";
