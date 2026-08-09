@@ -399,6 +399,10 @@ namespace Agora.Mod.Llm
                 // this same stream - RngFor's fourth argument is a sub-stream key under
                 // StreamNames.NameSelection, so naming a party costs no new named stream.
                 var rng = SeedStreams.RngFor(_saveGuid, request.Date, StreamNames.NameSelection, "article:" + id);
+                // NB "article:" here is an RNG sub-stream salt, NOT an alert id. Alert ids carry the
+                // BARE article id precisely because it doubles as the agora.news.article map key
+                // (see NewsAlert.Id). A grep for "article:" hits this line first; do not "fix" it to
+                // match, and do not copy it into an alert.
 
                 string outlet = UniqueLine(rng, StaticPoolContent.Outlets, NoSubstitution, NoSubstitution,
                                            usedOutlets, 0);

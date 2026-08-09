@@ -282,9 +282,16 @@ plus enough to render a masthead card without a second round trip.
 
 ```
 NewsAlertPayload
-  id          string   the feed-row id it points at: "article:<id>" | "event:<id>"
-                       | "election:<id>" | "coalition:<id>" | "party:<id>:founded"
-                       | "party:<id>:dissolved"
+  id          string   the feed-row id it points at. EVERY KIND IS PREFIXED EXCEPT AN ARTICLE:
+                       <bare Article.Id, NO prefix> | "event:<id>" | "election:<id>"
+                       | "coalition:<id>" (ending) | "coalition:<id>:formed"
+                       | "party:<id>:founded" | "party:<id>:dissolved"
+                       ERRATUM: this line originally read "article:<id>" and was WRONG.
+                       An article id is simultaneously the agora.news.article map key, so the
+                       modal resolves the body with useMapValue(article$, alert.id) off this
+                       very string. Prefixing it fails SILENTLY - BuildArticle answers an
+                       unknown key with an empty payload rather than throwing, so the player
+                       gets a blank masthead and nothing is logged. See NewsAlert.cs.
   kind        string   "Article" | "Event" | "Election" | "Coalition" | "Party"
   date        string   SimDate, from AgoraTimeService via the engine tick (non-negotiable #8)
   headline    string
@@ -425,7 +432,10 @@ private const int AlertQueueMax = 8;
   over city B is exactly that bug's shape.
 - **Bounded at 8, dropping oldest.** A player who leaves the game running through a decade at speed 3
   with `ShowAllReports` on must not accumulate an unbounded modal queue. When the ring drops, log it.
-- **De-duplicated by feed-row id within the session.** A `HashSet<string>` of ids already raised,
+- **De-duplicated within the session, keyed on `Kind + "|" + Id`** (ERRATUM: this line said "by
+  feed-row id"; the bare id is not safe as a key, because article ids are model-authored while
+  every other kind is engine-minted, so an article id of `"event:..."` would silently suppress a
+  real engine alert). A `HashSet<string>` of keys already raised,
   cleared in the same place. This is what stops a re-publish, a settings change, or a second
   `CollectProse` in the same month raising the same article twice. `fixplan.md:508` calls this
   "session-scoped and deliberately do not persist"; it is right, and the set is the mechanism.

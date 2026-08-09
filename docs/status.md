@@ -264,6 +264,18 @@ Nothing in `fixplan.md` is complete until that passes **without restarting the g
 
 ## Known gaps found this pass, not yet closed
 
+-1. **`SimDate.ToString()` is culture-invariant by accident, not by declaration.**
+   `src/Agora.Core/Contracts/SimDate.cs:57` is `$"{Year:D4}-{Month:D2}-{Day:D2}"`, and an
+   interpolated string formats under `CurrentCulture`. This value feeds **sidecar filenames and
+   seed/stream keys** (`SimClockMath.cs:25` says so outright), JSON, and LLM prompts. In practice
+   `D`-format on a non-negative `int` does not vary by culture in .NET — no native-digit
+   substitution, no sign in play — so it is safe today. But **non-negotiable 2 says a seed must never
+   depend on the machine's culture**, and here that holds by a property of the format specifier
+   rather than by anything stated or tested. `CoalitionFormation` already formats its attempt number
+   with an explicit `InvariantCulture` and a comment saying exactly why, so the codebase knows the
+   rule; this one site just predates it. Cheap fix (`.ToString("D4", CultureInfo.InvariantCulture)`)
+   plus a test pinning it under a hostile culture. Found by the culture-formatting sweep, 2026-08-09.
+
 0. **Text entry has never been rendered under Gameface.** W4 lane D's five fields
    (`PartyEditor.tsx:253, 266, 338, 436` and the `<textarea>` at `:325`) are the **first
    `<input>`/`<textarea>` anywhere in `ui/src`**. `cs2/ui` exports no text-input component — the only

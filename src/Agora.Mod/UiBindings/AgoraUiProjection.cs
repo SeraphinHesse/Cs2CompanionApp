@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Agora.Core.Contracts;
 using Agora.Core.Engine.Government.Coalitions;
 using Agora.Core.Engine.Parties;
@@ -1669,8 +1670,20 @@ namespace Agora.Mod.UiBindings
             return body.Length <= 160 ? body : body.Substring(0, 160);
         }
 
+        /// <summary>
+        /// Whole percent, away from zero, invariant.
+        /// </summary>
+        /// <remarks>
+        /// The invariance is load-bearing, not habit. <c>AgoraRuntime.RaiseAlerts</c> renders the
+        /// same figure the same way in an election alert's summary, so a card and the feed row it
+        /// points at cannot disagree about one ballot; this helper is the other half of that pair.
+        /// Concatenating the <c>int</c> directly would format under <c>CurrentCulture</c> — the
+        /// same output for the non-negative values fed in today, and a silent split the first time
+        /// one is not. Change one, change the other.
+        /// </remarks>
         private static string Percent(double value) =>
-            ((int)Math.Round(value * 100.0, MidpointRounding.AwayFromZero)) + "%";
+            ((int)Math.Round(value * 100.0, MidpointRounding.AwayFromZero))
+                .ToString(CultureInfo.InvariantCulture) + "%";
 
         private static int CompareOrdinal(string a, string b) => string.CompareOrdinal(a, b);
     }
