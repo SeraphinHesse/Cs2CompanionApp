@@ -3728,6 +3728,15 @@ declare namespace Agora {
   type NewsKindName = "Article" | "Event" | "Election" | "Coalition" | "Mandate" | "Party";
 
   /**
+   * What produced an alert. A SUBSET of `NewsKindName` — `"Mandate"` is absent because a mandate
+   * being issued or resolved is a state change the tracker already shows, not an interruption.
+   *
+   * Kept as its own union rather than reusing `NewsKindName` so the narrower set is checked: a
+   * modal switching on `NewsKindName` would need a `"Mandate"` branch that can never be reached.
+   */
+  type NewsAlertKindName = "Article" | "Event" | "Election" | "Coalition" | "Party";
+
+  /**
    * Engine-authored failure code for the flavor provider. NEVER LLM output and never a raw
    * exception message — the UI may switch on it. "" means the last attempt succeeded.
    */
@@ -4369,6 +4378,52 @@ declare namespace Agora {
     districtId: IdString;
     /** "" when not tied to a timeline event. */
     eventId: IdString;
+    hasArticle: boolean;
+  }
+
+  /**
+   * `agora.news.alerts` — the unanswered interruptions, OLDEST FIRST. Not sorted by date and not
+   * sorted at all: this is the order they happened in, which is the order the player answers them
+   * in. Do not re-sort it. Bounded by the engine; empty value: [].
+   *
+   * Each entry POINTS AT A FEED ROW that already exists — `id` is that row's id, so anything the
+   * modal shows can be found again in the News tab. When `hasArticle` is true the body may be
+   * fetched from `agora.news.article` keyed by the same `id`; when it is false there is no body and
+   * the map binding would answer with EMPTY_NEWS_ARTICLE rather than throwing, which renders as a
+   * blank masthead. Branch on `hasArticle`, never on `kind`.
+   *
+   * Dismiss through `agora.news.ackAlert(id)`, or `ackAlert("*")` for all of them.
+   *
+   * `headline`, `summary` and `outletName` are FLAVOR.
+   */
+  interface NewsAlert {
+    /** The feed-row id: "article:…", "event:…", "election:…", "coalition:…", "party:…:founded". */
+    id: IdString;
+    kind: NewsAlertKindName;
+    date: SimDateString;
+    headline: string;
+    /** One line. A body, when there is one, comes from NewsArticle. */
+    summary: string;
+    /** "" for every kind but an article. */
+    outletName: string;
+    /** "" when not about one party. Resolve the colour and label through `agora.parties.roster`. */
+    partyId: IdString;
+    /** "" when city-wide. */
+    districtId: IdString;
+    /** "" when not tied to a timeline event. */
+    eventId: IdString;
+    /** 1-5 for event-derived alerts, 0 otherwise. Display only. */
+    severity: number;
+    /**
+     * The ENGINE's verdict on whether this one is grave enough to hold the clock. Read this; never
+     * compare `severity` to a number of your own. The threshold lives in `EngineTuning` and a copy
+     * of it here would be a second definition of "major" that drifts on the next tuning pass.
+     *
+     * Whether the clock is actually held is a separate question, answered by
+     * `settings.pauseOnMajorNews`. An article alert is never major.
+     */
+    major: boolean;
+    /** Whether `agora.news.article` may be fetched for `id`. */
     hasArticle: boolean;
   }
 

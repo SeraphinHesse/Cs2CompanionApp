@@ -1359,6 +1359,46 @@ namespace Agora.Mod.UiBindings
             return payload;
         }
 
+        /// <summary>
+        /// The alert queue, oldest first: a straight copy of the ring, with no filtering and no
+        /// sorting of its own.
+        /// </summary>
+        /// <remarks>
+        /// The ring is already in the order the alerts happened, and it is the order the player is
+        /// asked to answer them in. Re-sorting it here would change which card comes up first — a
+        /// view deciding something the engine decided (<c>docs/contracts/ui_bindings.md</c> §7 rule
+        /// 7), and the reason this builder is a copy rather than a projection.
+        /// </remarks>
+        internal static List<NewsAlertPayload> BuildAlerts(IList<NewsAlert> alerts)
+        {
+            var rows = new List<NewsAlertPayload>();
+            if (alerts == null) return rows;
+
+            for (int i = 0; i < alerts.Count; i++)
+            {
+                NewsAlert alert = alerts[i];
+                if (alert == null || string.IsNullOrEmpty(alert.Id)) continue;
+
+                rows.Add(new NewsAlertPayload
+                {
+                    Id = alert.Id,
+                    Kind = alert.Kind,
+                    Date = alert.Date,
+                    Headline = alert.Headline,
+                    Summary = alert.Summary,
+                    OutletName = alert.OutletName,
+                    PartyId = alert.PartyId,
+                    DistrictId = alert.DistrictId,
+                    EventId = alert.EventId,
+                    Severity = alert.Severity,
+                    Major = alert.Major,
+                    HasArticle = alert.HasArticle
+                });
+            }
+
+            return rows;
+        }
+
         internal static FlavorStatusPayload BuildFlavorStatus(PoliticalState state)
         {
             var payload = new FlavorStatusPayload

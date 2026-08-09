@@ -20,6 +20,19 @@ export const EMPTY_SETTINGS: Agora.SettingsPayload = {
   themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
 };
 
+/**
+ * Not wired into a binding — `alerts$` is an array and takes `[]`. This is the guard a card
+ * substitutes for an index the queue no longer holds, so a render racing an ack cannot read a field
+ * off `undefined` on the frame between the two.
+ *
+ * `major` is `false` here on purpose. An empty alert must never be the thing that takes the pause
+ * barrier.
+ */
+export const EMPTY_NEWS_ALERT: Agora.NewsAlert = {
+  id: "", kind: "Article", date: "", headline: "", summary: "", outletName: "",
+  partyId: "", districtId: "", eventId: "", severity: 0, major: false, hasArticle: false,
+};
+
 // -- agora.state (§4.1, dashboard chrome) --------------------------------------------------------
 
 /** Master toggle. False means the player sees no trace of the mod — not even the button. */
@@ -57,6 +70,21 @@ export const isFirstRun$ = bindValue<boolean>("agora.state", "isFirstRun", false
  */
 export const roster$ = bindValue<Agora.PartyBrief[]>("agora.parties", "roster", []);
 
+// -- agora.news (§4.5, the popup lane) -----------------------------------------------------------
+
+/**
+ * The unanswered interruptions, OLDEST FIRST — the order they happened in, which is the order the
+ * player answers them in. Do not sort it, and do not reverse it: the queue's order is the engine's,
+ * and reordering a queue in the view changes which card the player is shown first.
+ *
+ * Read by the shell rather than by the News panel because the modal is chrome: it has to appear with
+ * the dashboard closed, over whatever the player was doing.
+ *
+ * Each entry points at a feed row that already exists, so everything the modal shows can be found
+ * again in the News tab afterwards.
+ */
+export const alerts$ = bindValue<Agora.NewsAlert[]>("agora.news", "alerts", []);
+
 // -- agora.debug (§4.0, M0 pipeline proof) -------------------------------------------------------
 
 /**
@@ -77,7 +105,7 @@ export const simDate$ = bindValue<string>("agora.debug", "simDate", "");
 /** Political month, 1–12. Named `simDay` in the binding: §4.0 is closed, so the name cannot change. */
 export const simMonth$ = bindValue<number>("agora.debug", "simDay", 0);
 
-// -- the write channel (§4.1 agora.state.setSetting) ---------------------------------------------
+// -- the write channels (§4.1 agora.state.setSetting, §4.5 agora.news.ackAlert) ------------------
 
 /**
  * Ask the engine to change one per-save setting.
@@ -117,9 +145,17 @@ export type WriteOutcome =
 export const SETTING_CALL_TIMEOUT_MS = 8000;
 
 /**
- * `setSetting` with a deadline. Never rejects; the caller gets a `WriteOutcome` either way.
+ * Send an inbound call and answer within the deadline whatever the bridge does. Never rejects; the
+ * caller gets a `WriteOutcome` either way.
+ *
+ * One helper rather than the same promise dance per write channel, so that a second inbound call
+ * cannot quietly ship without the timeout — which is the failure that leaves a player looking at a
+ * dead button with the clock stopped. `label` is for the console only and never reaches the player.
  */
-export function requestSetting(key: string, value: string): Promise<WriteOutcome> {
+function withDeadline(
+  label: string,
+  send: () => Promise<Agora.CommandOutcomeName>,
+): Promise<WriteOutcome> {
   return new Promise<WriteOutcome>(function (resolve) {
     let settled = false;
 
@@ -139,19 +175,48 @@ export function requestSetting(key: string, value: string): Promise<WriteOutcome
     // The throw guard is for the binding not being registered at all — outside a loaded game the
     // publishing system may not exist, and that must not escape as an unhandled rejection.
     try {
-      setSetting(key, value).then(
+      send().then(
         function (outcome) {
           finish({ answered: true, outcome: outcome });
         },
         function (error) {
-          console.warn("[AGORA] setSetting(" + key + ") failed on the bridge", error);
+          console.warn("[AGORA] " + label + " failed on the bridge", error);
           finish({ answered: false });
         },
       );
     } catch (error) {
-      console.warn("[AGORA] setSetting(" + key + ") could not be sent", error);
+      console.warn("[AGORA] " + label + " could not be sent", error);
       finish({ answered: false });
     }
+  });
+}
+
+/**
+ * `setSetting` with a deadline. Never rejects; the caller gets a `WriteOutcome` either way.
+ */
+export function requestSetting(key: string, value: string): Promise<WriteOutcome> {
+  return withDeadline("setSetting(" + key + ")", function () {
+    return setSetting(key, value);
+  });
+}
+
+/**
+ * Tell the engine the player answered an alert, and drop it from the queue. Pass `"*"` to dismiss
+ * every queued alert at once.
+ *
+ * A call and not a trigger, and it carries the same deadline as `requestSetting` for a sharper
+ * reason than that one has: while a major alert is up the modal holds the pause barrier, and the
+ * game forces the speed to zero every frame it is held. A dismiss that never answers would leave a
+ * player with a card they cannot close and a clock they cannot start. The deadline is what puts the
+ * decision back in the caller's hands.
+ *
+ * Acking an id the engine no longer holds answers `""`, not a refusal — a double-click is not an
+ * error. This function only sends; the returned code is the engine's verdict (contract §4.6) and the
+ * caller decides through `isAccepted` whether the card may close.
+ */
+export function ackAlert(id: string): Promise<WriteOutcome> {
+  return withDeadline("ackAlert(" + id + ")", function () {
+    return call<Agora.CommandOutcomeName>("agora.news", "ackAlert", id);
   });
 }
 
