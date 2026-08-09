@@ -328,6 +328,10 @@ visually (dimmed + a tooltip) and must never present them as a local fact. This 
 | `agora.news.flavorStatus` | `ValueBinding<T>` | C# → UI | `FlavorStatus` | `Agora.FlavorStatus` | on every flavor attempt, success or failure | `EMPTY_FLAVOR_STATUS` | M4 |
 | `agora.news.wakeFlavor` | `TriggerBinding` | **UI → C#** | — | `() => void` | on click | n/a | M4 |
 
+**`agora.news.mandates` row:** also consumed by the Parties tab, filtered by `partyId`, as a per-party
+scorecard (fixplan W6 addition 6). No per-party binding exists or should be added: it would publish
+the same rows twice.
+
 Sort keys:
 
 - `feed`: `date` **descending**, then `id` ordinal ascending. Capped at `AGORA_NEWS_FEED_MAX = 40`.

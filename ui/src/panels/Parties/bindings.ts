@@ -141,6 +141,22 @@ export const government$ = bindValue<Agora.GovernmentSummary | null>(
   null
 );
 
+// -- agora.news (the mandate scorecard) ------------------------------------------------------------
+
+/**
+ * Every mandate in the save, published for the News tab's tracker (contract section 4.5) and read
+ * here filtered to the open party as a scorecard: how many it kept, not a second list of rows.
+ *
+ * The binding is PUBLISHED, not reserved, so consuming it satisfies contract rule 3. Nothing is
+ * registered in C# for this - there is deliberately no `agora.parties.mandates`, because a per-party
+ * binding would publish the same rows twice.
+ *
+ * Known cost: this is a pushed list carrying EVERY mandate, so the Parties tab pays its bridge cost
+ * whenever it is open. That is already the News panel's cost, it is not per-party, and so it does not
+ * grow with the roster. Accepted.
+ */
+export const mandates$ = bindValue<Agora.MandateRow[]>("agora.news", "mandates", []);
+
 // -- UI-only selection ------------------------------------------------------------------------------
 
 /**

@@ -11,6 +11,7 @@ import {
   factions$,
   government$,
   latestPoll$,
+  mandates$,
   ready$,
   roster$,
   selectedPartyId$,
@@ -68,6 +69,10 @@ const PartiesPanelInner = (): JSX.Element | null => {
   const rawPoll = useValue(latestPoll$);
   const rawGovernment = useValue(government$);
   const rawFactions = useValue(factions$);
+  // Pushed, and subscribed ONCE here like the roster and the faction list - the pane filters it to
+  // the open party. This is the News tab's published mandate list read as a per-party scorecard;
+  // there is no per-party binding and none should be added (see bindings.ts).
+  const rawMandates = useValue(mandates$);
   const storedId = useValue(selectedPartyId$);
 
   // A binding can hand over a null payload during a partial deploy; the fallback argument only
@@ -78,6 +83,7 @@ const PartiesPanelInner = (): JSX.Element | null => {
   const poll: Agora.PollSummary | null = rawPoll || null;
   const government: Agora.GovernmentSummary | null = rawGovernment || null;
   const factions: Agora.FactionBrief[] = rawFactions || [];
+  const mandates: Agora.MandateRow[] = rawMandates || [];
 
   // The rail's two number columns. Lookups only - neither map is ever iterated for ordering, so
   // they introduce no iteration-order dependence, and neither costs a per-row map subscription.
@@ -161,6 +167,7 @@ const PartiesPanelInner = (): JSX.Element | null => {
                   government={government}
                   factions={factions}
                   roster={roster}
+                  mandates={mandates}
                 />
               ) : (
                 <div className={styles.emptyPane}>

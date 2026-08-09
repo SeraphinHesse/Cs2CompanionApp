@@ -17,6 +17,7 @@ import {
   signedPoints,
 } from "./format";
 import { HistoryStrip } from "./HistoryStrip";
+import { MandateScorecard } from "./MandateScorecard";
 import { PlatformBars } from "./PlatformBars";
 import { PollSparkline } from "./PollSparkline";
 import styles from "./PartyDetail.module.scss";
@@ -130,6 +131,12 @@ export const PartyDetailPane = (props: {
    * dissolved brand stays in the register, so the name is always there to be found.
    */
   roster: Agora.PartyBrief[];
+  /**
+   * The whole published mandate list, subscribed once by the panel. The scorecard filters it to this
+   * party and counts it; it renders no mandate row - that is the News tab's tracker, and the two
+   * views are deliberately different grains.
+   */
+  mandates: Agora.MandateRow[];
 }): JSX.Element => {
   const rawDetail = useMapValue(partyDetail$, props.partyId);
 
@@ -344,6 +351,11 @@ export const PartyDetailPane = (props: {
               : ""}
           </div>
           <div className={styles.lineDim}>{factionSentence(factions.count, factions.names)}</div>
+
+          {/* After the lifecycle, because a party's record is read once you know how long it has
+              been around. It renders nothing at all - heading included - for a party that has never
+              held a mandate. */}
+          <MandateScorecard partyId={props.partyId} mandates={props.mandates} />
         </>
       ) : null}
     </div>
