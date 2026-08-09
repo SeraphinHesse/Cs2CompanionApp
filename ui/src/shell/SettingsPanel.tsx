@@ -218,7 +218,7 @@ export const SettingsPanel = (): JSX.Element => {
 
       <ToggleRow
         label="Pause on major news"
-        hint="Stop the clock when an election, a coalition or a serious event is reported."
+        hint="Stop the clock when an election, a change of government, a party's founding or collapse, or a serious event is reported."
         value={shownFlag("pauseOnMajorNews", settings.pauseOnMajorNews)}
         disabled={busy}
         onChange={function (next) {
@@ -228,7 +228,7 @@ export const SettingsPanel = (): JSX.Element => {
 
       <ToggleRow
         label="Show every report as a popup"
-        hint="Off, the press stays in the News tab and only major items interrupt."
+        hint="On, every report comes up as a card as well; those never stop the clock. Off, the press stays in the News tab."
         value={shownFlag("showAllReports", settings.showAllReports)}
         disabled={busy}
         onChange={function (next) {
