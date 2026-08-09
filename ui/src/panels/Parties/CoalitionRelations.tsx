@@ -90,9 +90,13 @@ export const CoalitionRelations = (props: {
    */
   system: Agora.ElectoralSystemName;
   /**
-   * The sitting government, or null. Read for ONE purpose: to tell "no election has been held" apart
-   * from "an election was held and no viable arrangement contains this party". Both produce an empty
-   * list, and the two deserve different sentences - see the branch below.
+   * The sitting government, or null. The prop proves ONE thing, in one direction: non-null means a
+   * government is sitting, so the chamber is real and an empty list can only mean no viable
+   * arrangement contains this party. Null proves nothing - it is a city that has never voted OR one
+   * between a collapse and a new formation, and this component cannot tell those apart, because the
+   * projection returns an empty list on four separate paths and carries no city-wide "has voted"
+   * signal. So the null sentence below says nothing about elections at all; the non-null one, which
+   * is on solid ground, says everything it is entitled to.
    */
   government: Agora.GovernmentSummary | null;
   /** The whole published register, for resolving member ids to names and colours. */
@@ -166,7 +170,7 @@ export const CoalitionRelations = (props: {
         {title}
         <div className={styles.note}>
           {props.government === null
-            ? "No coalition arithmetic yet - the city has not held an election."
+            ? "No coalition arithmetic to show yet."
             : "No arrangement of the current chamber that includes this party is viable as things " +
               "stand. That is the arithmetic coming up short, not a partner turning it down."}
         </div>
