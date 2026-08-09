@@ -1,0 +1,269 @@
+// Panel 26 — Parties, the party editors in the detail header. Flex only - Gameface has no CSS grid
+// and fails silently on it, no `backdrop-filter`, and nothing here is absolutely positioned.
+// `gap` is avoided throughout; spacing is done with margins, as in the rest of this panel.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6rem;
+  padding-top: 4rem;
+  border-top: 1rem solid $line-soft;
+}
+
+// -- the three openers, and the ownership chips beside them ----------------------------------------
+
+.tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@mixin tab-base {
+  display: flex;
+  align-items: center;
+  margin: 0 4rem 2rem 0;
+  padding: 0 7rem;
+  border: 1rem solid $line;
+  border-radius: 8rem;
+  background-color: transparent;
+  color: $text-dim;
+  font-size: 9rem;
+  line-height: 16rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tab {
+  @include tab-base;
+}
+
+.tabOpen {
+  @include tab-base;
+  border-color: $accent;
+  background-color: $surface-hover;
+  color: $text;
+}
+
+.owned {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+// "Your name", "Your words", "Your colour" — a locked field is the player's, and is never labelled
+// as generated or as AI output.
+.ownedChip {
+  display: flex;
+  margin: 0 0 2rem 4rem;
+  padding: 0 5rem;
+  border-radius: 8rem;
+  background-color: $surface-raised;
+  color: $text-faint;
+  font-size: 9rem;
+  line-height: 14rem;
+  white-space: nowrap;
+}
+
+// -- one expanded section ---------------------------------------------------------------------------
+
+.section {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4rem;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin-bottom: 2rem;
+}
+
+.fieldLabelText {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-faint;
+}
+
+@mixin counter-base {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: 6rem;
+  font-size: 9rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.counter {
+  @include counter-base;
+  color: $text-faint;
+}
+
+// Over the published ceiling. Shown rather than prevented: the engine rejects rather than truncates.
+.counterOver {
+  @include counter-base;
+  color: $bad;
+}
+
+@mixin field-base {
+  display: flex;
+  width: 100%;
+  margin-bottom: 5rem;
+  padding: 3rem 5rem;
+  border: 1rem solid $line-strong;
+  border-radius: 3rem;
+  background-color: $surface-inset;
+  color: $text;
+  font-size: 11rem;
+  line-height: 1.4;
+}
+
+.input {
+  @include field-base;
+}
+
+.textarea {
+  @include field-base;
+  min-height: 56rem;
+  resize: none;
+}
+
+.hint {
+  display: flex;
+  margin-bottom: 4rem;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+// -- actions ------------------------------------------------------------------------------------------
+
+.actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@mixin action-base {
+  display: flex;
+  align-items: center;
+  margin: 0 5rem 2rem 0;
+  padding: 0 9rem;
+  border: 1rem solid $line-strong;
+  border-radius: 3rem;
+  background-color: transparent;
+  color: $text;
+  font-size: 10rem;
+  line-height: 18rem;
+  white-space: nowrap;
+}
+
+.save {
+  @include action-base;
+  border-color: $accent;
+  color: $accent;
+}
+
+.reset {
+  @include action-base;
+  color: $text-dim;
+}
+
+// -- the colour picker ----------------------------------------------------------------------------------
+
+.swatches {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 5rem;
+}
+
+@mixin swatch-base {
+  display: flex;
+  flex: 0 0 auto;
+  width: 16rem;
+  height: 16rem;
+  margin: 0 4rem 4rem 0;
+  padding: 0;
+  border-radius: 3rem;
+}
+
+.swatch {
+  @include swatch-base;
+  border: 1rem solid $line;
+}
+
+// The ring is the whole selected state - see PartyEditor.tsx for why there is no tick glyph.
+.swatchOn {
+  @include swatch-base;
+  border: 2rem solid $text;
+}
+
+.hexRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4rem;
+}
+
+.hexInput {
+  @include field-base;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+  margin-right: 5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hexPreview {
+  display: flex;
+  flex: 0 0 auto;
+  width: 16rem;
+  height: 16rem;
+  margin-right: 5rem;
+  border: 1rem solid $line;
+  border-radius: 3rem;
+}
+
+// -- what came back ---------------------------------------------------------------------------------------
+
+// A write that WAS accepted and carries a warning — OkColorInUse. Never styled as a refusal: the
+// colour was applied, and a refusal-shaped message would send the player back to undo it.
+.warning {
+  display: flex;
+  margin-top: 4rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+  color: $warn;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.refusal {
+  display: flex;
+  margin-top: 4rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+  color: $bad;
+  font-size: 10rem;
+  line-height: 1.4;
+}

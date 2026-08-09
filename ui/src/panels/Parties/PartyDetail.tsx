@@ -19,6 +19,7 @@ import {
 import { CoalitionRelations } from "./CoalitionRelations";
 import { HistoryStrip } from "./HistoryStrip";
 import { MandateScorecard } from "./MandateScorecard";
+import { PartyEditor } from "./PartyEditor";
 import { PlatformBars } from "./PlatformBars";
 import { PollSparkline } from "./PollSparkline";
 import styles from "./PartyDetail.module.scss";
@@ -74,11 +75,15 @@ const StatCell = (props: {
 );
 
 /**
- * The header, kept as its own component and rendering only text.
+ * The header: who this party is, and the controls for making it the player's.
  *
- * This is the seam fixplan W4 builds into: the rename field, the colour picker and the lock
- * affordances go INSIDE this component, reading `brief.nameLocked` / `brief.colorLocked`. W6 adds
- * no button, no input and no trigger - the tab is read-only.
+ * This was the seam fixplan W4 left; lane D fills it. The identity line above renders the PUBLISHED
+ * name and colour and nothing else - `PartyEditor` below it holds the drafts, sends the writes and
+ * renders the engine's verdict, and every accepted write bumps the engine's state version, so what
+ * is shown here comes back from the roster rather than from anything the editor remembers.
+ *
+ * The locks ride on the brief and are surfaced by the editor as "Your name" / "Your words" / "Your
+ * colour". A locked field is the player's own text and is never described as generated.
  */
 export const PartyDetailHeader = (props: {
   partyId: string;
@@ -104,17 +109,26 @@ export const PartyDetailHeader = (props: {
   const roleChip = published ? ROLE_CHIP[detail.governmentRole] : "";
 
   return (
-    <div className={styles.paneHead}>
-      <span className={styles.headSwatch} style={{ backgroundColor: color }} />
-      <div className={styles.headTitleBlock}>
-        <div className={styles.headName}>{name}</div>
-        <div className={styles.headChips}>
-          <span className={styles.headShort}>{short}</span>
-          {statusChip ? <span className={styles.headChip}>{statusChip}</span> : null}
-          {roleChip ? <span className={styles.headChip}>{roleChip}</span> : null}
-          {brief.isIncumbent ? <span className={styles.headChip}>Holds the mayoralty</span> : null}
+    <div className={styles.paneHeadBlock}>
+      <div className={styles.paneHead}>
+        <span className={styles.headSwatch} style={{ backgroundColor: color }} />
+        <div className={styles.headTitleBlock}>
+          <div className={styles.headName}>{name}</div>
+          <div className={styles.headChips}>
+            <span className={styles.headShort}>{short}</span>
+            {statusChip ? <span className={styles.headChip}>{statusChip}</span> : null}
+            {roleChip ? <span className={styles.headChip}>{roleChip}</span> : null}
+            {brief.isIncumbent ? (
+              <span className={styles.headChip}>Holds the mayoralty</span>
+            ) : null}
+          </div>
         </div>
       </div>
+
+      {/* Fed the roster brief, not the detail: the brief is a pushed value binding and is always
+          right for the selected id, including for a party the engine has not published a detail for
+          yet. The editor renders nothing at all until the engine is ready. */}
+      <PartyEditor partyId={props.partyId} brief={brief} />
     </div>
   );
 };
