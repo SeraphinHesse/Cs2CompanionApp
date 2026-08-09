@@ -268,7 +268,7 @@ so a city between a collapse and a new formation still has an answer. Enumeratio
 must never become a `GetterValueBinding` re-running it every UI tick (rule 6).
 
 `PartyDetail` carries the lineage scalars
-that go beside it — `predecessorPartyId`, `successorPartyId`, `revivalCount` and `absorbedPartyIds`,
+that go beside `electionRecord` — `predecessorPartyId`, `successorPartyId`, `revivalCount` and `absorbedPartyIds`,
 the last being the reverse index of `successorPartyId`, since the forward pointer alone cannot tell a
 party that absorbed three rivals that it did.
 

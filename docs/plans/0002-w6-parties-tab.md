@@ -1837,23 +1837,23 @@ Each chunk is independently landable. **Do D, E, F, G before H** — H is the on
 
 ### Chunk H — coalition relations (§16) — **only after H0**
 
-- [ ] **H1.** `CoalitionFormation.cs`: extract the build/slack/mark/sort block from `Form` (`:143-157`)
+- [x] **H1.** `CoalitionFormation.cs`: extract the build/slack/mark/sort block from `Form` (`:143-157`)
       into a private `RankOf` helper, and have `Form` call it. Behaviour-preserving.
       `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` must stay green **before** anything
       new is added — that is the proof the refactor changed nothing.
-- [ ] **H2.** Add the public `CoalitionFormation.RankCandidates` (§16.4.1). Do **not** make
+- [x] **H2.** Add the public `CoalitionFormation.RankCandidates` (§16.4.1). Do **not** make
       `CoalitionMath` public.
-- [ ] **H3.** Write tests H1–H6 in `tests/Agora.Core.Tests/CoalitionsTests.cs` (§16.5). Gate: green.
+- [x] **H3.** Write tests H1–H6 in `tests/Agora.Core.Tests/CoalitionsTests.cs` (§16.5). Gate: green.
       *Test H1 is the one that matters — it is what stops the dashboard's ranking drifting from the
       engine's.*
-- [ ] **H4.** `AgoraUiPayloads.cs`: `CoalitionOptionPayload` (§16.4.2).
-- [ ] **H5.** `AgoraUiProjection.BuildPartyRelations` + `CoalitionOptionsMax = 8` (§16.4.3), taking
+- [x] **H4.** `AgoraUiPayloads.cs`: `CoalitionOptionPayload` (§16.4.2).
+- [x] **H5.** `AgoraUiProjection.BuildPartyRelations` + `CoalitionOptionsMax = 8` (§16.4.3), taking
       `EngineTuning` as an argument.
-- [ ] **H6.** `AgoraStateUISystem.cs`: register `agora.parties.relations` with its list writer,
+- [x] **H6.** `AgoraStateUISystem.cs`: register `agora.parties.relations` with its list writer,
       passing `AgoraRuntime.Tuning`; `UpdateAll()`. **Never a `GetterValueBinding`** — it would
       re-enumerate every UI tick.
-- [ ] **H7.** `ui/types/bindings.d.ts`: `CoalitionOption`.
-- [ ] **H8.** `ui_bindings.md`: §4.2 row, sort key, cap, §5 shape, and the "live view, not history"
+- [x] **H7.** `ui/types/bindings.d.ts`: `CoalitionOption`.
+- [x] **H8.** `ui_bindings.md`: §4.2 row, sort key, cap, §5 shape, and the "live view, not history"
       note (§16.4.5).
 - [ ] **H9.** `Parties/CoalitionRelations.tsx` + scss (§16.4.4). Branch on `summary.system` for the
       FPTP message. **Never label an absent pairing a "refusal".**
