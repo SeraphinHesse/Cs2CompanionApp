@@ -30,6 +30,7 @@ namespace Agora.Mod.UiBindings
         private GetterMapBinding<string, PartyDetailPayload> _partyDetail;
         private GetterMapBinding<string, List<PollTrendPointPayload>> _pollTrend;
         private GetterMapBinding<string, List<PartyElectionRowPayload>> _electionRecord;
+        private GetterMapBinding<string, List<CoalitionOptionPayload>> _relations;
 
         protected override void CreateBindings()
         {
@@ -84,6 +85,13 @@ namespace Agora.Mod.UiBindings
                 PartiesGroup, "electionRecord", GetPartyElectionRecord,
                 valueWriter: ListOf<PartyElectionRowPayload>()));
 
+            // A list once more, so the writer once more. A map binding rather than a value binding is
+            // load-bearing here and not just tidiness: this one re-runs candidate enumeration, and a
+            // GetterValueBinding would run it on every UI tick whether or not the pane is open.
+            AddBinding(_relations = new GetterMapBinding<string, List<CoalitionOptionPayload>>(
+                PartiesGroup, "relations", GetPartyRelations,
+                valueWriter: ListOf<CoalitionOptionPayload>()));
+
             // The party editors. Paired fields travel together — a rename that could not also set
             // the short name would lock the short name away from flavor with no way to write it.
             AddBinding(new CallBinding<string, string, string, string>(
@@ -127,6 +135,14 @@ namespace Agora.Mod.UiBindings
         /// </summary>
         private static List<PartyElectionRowPayload> GetPartyElectionRecord(string partyId) =>
             AgoraUiProjection.BuildPartyElectionRecord(AgoraRuntime.State, partyId);
+
+        /// <summary>
+        /// Every arrangement this party could be part of, best first. A live ranking recomputed from
+        /// current platforms, not the record of who negotiated last time — and empty under FPTP, where
+        /// there is no coalition arithmetic to report. Unknown key returns an empty list.
+        /// </summary>
+        private static List<CoalitionOptionPayload> GetPartyRelations(string partyId) =>
+            AgoraUiProjection.BuildPartyRelations(AgoraRuntime.State, AgoraRuntime.Tuning, partyId);
 
         /// <summary>
         /// The master toggle. Panels render <c>null</c> when this is false — not a disabled shell,
@@ -204,6 +220,7 @@ namespace Agora.Mod.UiBindings
             _partyDetail.UpdateAll();
             _pollTrend.UpdateAll();
             _electionRecord.UpdateAll();
+            _relations.UpdateAll();
         }
     }
 }

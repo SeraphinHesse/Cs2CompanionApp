@@ -3971,6 +3971,35 @@ declare namespace Agora {
   }
 
   /**
+   * `agora.parties.relations` — a MAP binding keyed by `PartyBrief.id`. Every viable arrangement
+   * containing this party, best first, capped at AGORA_COALITION_OPTIONS_MAX = 8. Unknown key or
+   * FPTP returns []. A LIVE view computed from current platforms — not the historical record of
+   * who actually negotiated.
+   */
+  interface CoalitionOption {
+    /** Ascending. Always contains the party this was fetched for. */
+    memberPartyIds: IdString[];
+    leadPartyId: IdString;
+    seats: number;
+    /** [0,1]. */
+    seatShare: number;
+    hasMajority: boolean;
+    /** [0,1]. Lower is closer. */
+    meanDistance: number;
+    /** [0,1]. Judged against `distanceCap`. */
+    maxDistance: number;
+    /** [0,1]. */
+    distanceCap: number;
+    /** [0,1]. Also the odds talks succeed. */
+    cohesion: number;
+    /** [0,1]. */
+    score: number;
+    isMinimumWinning: boolean;
+    isGrandCoalition: boolean;
+    isCurrentGovernment: boolean;
+  }
+
+  /**
    * `agora.parties.factions` — sorted by `partyId` ascending, then `internalSupport` DESCENDING,
    * then `id` ascending. Empty value: []. Empty under the EU theme, which has no factions.
    *

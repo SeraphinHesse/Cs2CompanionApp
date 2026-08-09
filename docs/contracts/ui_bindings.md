@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 6**
+**schemaVersion: 7**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -38,6 +38,13 @@ whole of plan 0002, Part I and Part II, which move this file once rather than on
 branches independently wrote version 5 for their own half; merging them is a further change, so the
 merged file reads value + 1. Any later landing that changes a shape here reads the current value and
 writes value + 1; the number is read from this file, never hard-coded.
+
+**Version 7 is plan 0002 chunk H**, which adds a fourth `agora.parties` map binding, `relations`, and
+one payload shape, `CoalitionOption` — the coalition arithmetic of the open party. Additive again:
+nothing was renamed and no existing payload moved. It is the first binding whose value is *computed*
+on fetch rather than copied from stored state, which is why §4.2 states plainly that the engine does
+the computing (`CoalitionFormation.RankCandidates`, pure and RNG-free) and this bridge only copies —
+rule 5 is unmoved.
 
 The freeze otherwise stands; these notes exist so the next reviewer reads authorised changes rather
 than violations.
@@ -97,7 +104,7 @@ These cross a Gameface bridge on every update. Keep them flat and bounded:
   not contain a list of rows that themselves contain lists).
 - Unbounded histories are capped and the cap is part of the contract:
   `AGORA_NEWS_FEED_MAX = 40`, `AGORA_EVENTS_MAX = 25`, `AGORA_ELECTION_HISTORY_MAX = 12`,
-  `AGORA_POLL_TREND_MAX = 24`.
+  `AGORA_POLL_TREND_MAX = 24`, `AGORA_COALITION_OPTIONS_MAX = 8`.
 - Anything per-district and expensive is a **map binding**, fetched only for the key the panel is
   actually showing — never a city-wide array of every district's full detail.
 - Prose bodies never ride in a list payload. The feed carries headline + one-line summary; the body
@@ -212,6 +219,7 @@ Reads — every row here is C# → UI:
 | `agora.parties.detail` | `GetterMapBinding<string,T>` | `PartyDetail` per key | `Agora.PartyDetail` | on demand, per subscribed key | `EMPTY_PARTY_DETAIL` | W6 |
 | `agora.parties.pollTrend` | `GetterMapBinding<string,T>` | `List<PollTrendPoint>` per key | `Agora.PollTrendPoint[]` | on demand, per subscribed key | `[]` | W6 |
 | `agora.parties.electionRecord` | `GetterMapBinding<string,T>` | `List<PartyElectionRow>` per key | `Agora.PartyElectionRow[]` | on demand, per subscribed key | `[]` | W6 |
+| `agora.parties.relations` | `GetterMapBinding<string,T>` | `List<CoalitionOption>` per key | `Agora.CoalitionOption[]` | on demand, per subscribed key | `[]` | W6 |
 
 The map key is the **party id** exactly as it appears in `PartyBrief.id`. An unknown key returns the
 empty value, never throws. Unlike a district, a party id is never removed from the roster — a dead
@@ -247,6 +255,18 @@ published rather than dropped, because the seats are real. `hasSeatRecord` is th
 whether the seat table produced a row at all: a party that stood while the count allocated nothing —
 FPTP's empty result for a city with no districts — has `passedThreshold`, `seats`, `seatShare` and
 `voteShare` at their unset defaults, so the strip shows the contest but states no threshold verdict.
+`relations` is a **live** view recomputed from current platforms via
+`CoalitionFormation.RankCandidates`, not the historical record of who negotiated after the last
+election. It answers "who could govern now". **Empty under FPTP by design** — the winning party
+governs alone and there is no coalition arithmetic to report — so the panel branches on
+`summary.system` and never on the list being empty (§4.3's rule). Every arrangement containing the
+open party is listed, best first; one that never appears was not refused by name, it simply was not
+viable, and there is no per-partner refusal field because the ranking cannot say which of the two
+rejection rules a set it never built would have failed. Chamber seats come from the latest election,
+so a city between a collapse and a new formation still has an answer. Enumeration is bounded by
+`coalitions.formationMaxPartners`, which is why this is a map binding fetched for one open pane and
+must never become a `GetterValueBinding` re-running it every UI tick (rule 6).
+
 `PartyDetail` carries the lineage scalars
 that go beside it — `predecessorPartyId`, `successorPartyId`, `revivalCount` and `absorbedPartyIds`,
 the last being the reverse index of `successorPartyId`, since the forward pointer alone cannot tell a
@@ -322,7 +342,12 @@ is how a player recognises it between sessions. `editLimits` is a flat object wi
 left to right in time. This is the one list in the contract that is **not** newest-first, and it is
 capped by dropping from the **front**, so the newest `AGORA_POLL_TREND_MAX = 24` points survive.
 `electionRecord`: `date` ascending (oldest first), capped at `AGORA_ELECTION_HISTORY_MAX = 12`,
-keeping the newest twelve. `detail.absorbedPartyIds`: ordinal ascending.
+keeping the newest twelve. `detail.absorbedPartyIds`: ordinal ascending. `relations`: formation
+order — `hasMajority` first, then `isMinimumWinning`, then `score` descending, then fewer partners,
+then the joined member-id key (`CoalitionCandidate.Compare`,
+`src/Agora.Core/Engine/Government/Coalitions/CoalitionCandidate.cs`). Capped at
+`AGORA_COALITION_OPTIONS_MAX = 8`, keeping the **best** eight, so this cap drops from the back.
+`relations[*].memberPartyIds`: ordinal ascending.
 
 ### 4.3 `agora.seats` — seat chart + government breakdown
 
@@ -493,6 +518,9 @@ PartyDetail         id, name, shortName, colorHex, archetypeId, description, slo
 PollTrendPoint      date, share, marginOfError, weeksToElection
 PartyElectionRow    electionId, date, termNumber, isSnapElection, seats, seatShare, voteShare,
                     passedThreshold, wasOnBallot, hasSeatRecord
+CoalitionOption     memberPartyIds, leadPartyId, seats, seatShare, hasMajority, meanDistance,
+                    maxDistance, distanceCap, cohesion, score, isMinimumWinning, isGrandCoalition,
+                    isCurrentGovernment
 FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
                     tensionWithParty, status, coreGrievance
 PartyShare          partyId, share
