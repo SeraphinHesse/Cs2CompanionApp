@@ -4,12 +4,15 @@
 running ahead of it against defects found in the first real play session.
 **Updated:** 2026-08-09
 
-> This file was stale by several milestones until 2026-08-08, and this pass refreshes it again for
-> everything that landed on `main` since: W3's fixed/re-reviewed defects, W4 lanes A–C, W5's
-> prose+model lane, the backlog, and W6 chunks A–F. Statuses below are keyed to artifacts that exist
-> in the tree; where a milestone's **gate** has not been formally re-walked since the code landed, it
-> says so rather than claiming a pass. **W6 chunk G is in progress on a live worktree as of this
-> update** — the W6 row and the M6 milestone row will need one more pass once it and chunk H land.
+> **The fix-plan pass is code complete across all seven workstreams.** W0–W6 and the backlog are
+> merged and independently reviewed; W5's popup lane, the largest remaining piece, was planned in
+> `docs/plans/0003-w5-popup-lane.md` and executed across six chunks. Statuses below are keyed to
+> artifacts that exist in the tree; where a **gate** has not been re-walked since the code landed, it
+> says so rather than claiming a pass.
+>
+> **What remains is the manual gate, and only the player can walk it** — see "The manual gate" below.
+> A green build is not a passed gate: much of this pass is reachable only through `Unity.Entities` /
+> `Game.*` and so has manual gates rather than tests, by design rather than by omission.
 
 ---
 
@@ -57,10 +60,10 @@ authority; this is the tracker.
 | **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed, **merged to `main`** |
 | **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed), **merged to `main`** · **needs the manual walkthrough** |
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed), **merged to `main`** · **needs the manual walkthrough** |
-| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–H all merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, history strip, mandate scorecard, coalition relations) · **H1–H8 reviewed and approved; H9's review is outstanding** |
+| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–H all merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, history strip, mandate scorecard, coalition relations) · **every chunk reviewed and approved**, H9 after one blocking fix |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **complete.** Lanes A–C and **lane D** all code complete, reviewed, merged · lane D's five text fields are the **first text entry anywhere in `ui/src`** and carry a real manual gate (see below) |
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ✅ **code complete.** Prose + model lane, and the whole popup lane (`docs/plans/0003`): C1 binding surface, C3/C4 the two missing feed rows, C2/C5 severity gate + ring + emission, C6/C7 modal + pause + interlock + masthead, C8 join. `PauseOnMajorNews` and `ShowAllReports` now do something. **C0's in-game spike was deliberately not built** — folded into the manual gate · **needs the walkthrough** |
-| — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), and the drift re-run must repeat after W6 fully lands |
+| — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), **the drift re-run is done** (2026-08-09, 44 bindings, shapes clean, six prose defects fixed) |
 
 ### The manual gate — what only the player can verify
 
