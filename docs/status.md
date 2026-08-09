@@ -31,8 +31,8 @@ elections, government, flavor and effects layers are all implemented in `Agora.C
 | **M5 · The World** | ✅ effect palette + dispatcher + resolver + schedule + validation; `Agora.Mod/Effects` ledger and application system; `data/timeline_eu.json`, `timeline_na.json`, `timeline_global.json` | ⚠️ 1990→2008 run not re-walked |
 | **M6 · The Spectacle** | 🟡 partial — crosstab explorer, mandate tracker, news archive present; **political map overlay and election-night broadcast mode not built** | ⬜ |
 
-**Test suite.** `tests/Agora.Core.Tests` is at **1221 tests** as of the last merge to `main`
-(`42d4f31`), up from 1033 at the start of this pass, spanning determinism, blocs, affinity, turnout,
+**Test suite.** `tests/Agora.Core.Tests` is at **1227 tests** as of W6 chunk H, up from 1033 at the
+start of this pass, spanning determinism, blocs, affinity, turnout,
 polling, indices, both electoral systems, coalitions, mandates, factions, party lifecycle, the
 effect palette and application, the per-save reset seam, the scheduler, sim-clock math, start-year
 planning, the shipped timeline/tuning catalogs, party identity locks, and the LLM response path —
@@ -57,7 +57,7 @@ authority; this is the tracker.
 | **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed, **merged to `main`** |
 | **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed), **merged to `main`** · **needs the manual walkthrough** |
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed), **merged to `main`** · **needs the manual walkthrough** |
-| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–G merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, party history strip, mandate scorecard) · **chunk H (coalition relations) in progress** |
+| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–H all merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, history strip, mandate scorecard, coalition relations) · **H1–H8 reviewed and approved; H9's review is outstanding** |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed, merged to `main`** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab, not started |
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 **prose + model lane complete, reviewed, merged to `main`. Popup lane NOT STARTED.** See below. |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), and the drift re-run must repeat after W6 fully lands |
@@ -216,6 +216,20 @@ exists to fix — a consequence `fixplan.md` did not mention.
 Nothing in `fixplan.md` is complete until that passes **without restarting the game**.
 
 ---
+
+## Known gaps found this pass, not yet closed
+
+1. **The test suite is insensitive to coalition majority-iteration order.** Found by W6 chunk H's
+   review, which injected `majority.Reverse();` after `MajorityOf(candidates)` in
+   `CoalitionFormation.Form` and watched **all 1227 tests still pass**. Chunk H's `RankOf` refactor
+   was proved correct by a 3000-chamber differential diff against the pre-refactor implementation,
+   not by the suite — so the suite would not have caught it had it been wrong. Closing this needs a
+   fixture where two majority candidates both have cohesion below 1.0 and the seed makes the first
+   walk out, so a reordering changes which government forms. Cheap, and it guards the argument the
+   whole refactor rests on.
+2. **`ui/types/bindings.d.ts:3652` still says "schemaVersion 5"** in its authority comment while
+   `docs/contracts/ui_bindings.md:3` is at **7**. Contract drift in the mirror rather than in a
+   payload, but it is exactly what the drift audit exists to catch. Fold into the re-run.
 
 ## Blocked / needs a decision
 
