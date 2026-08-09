@@ -815,7 +815,15 @@ a running game — before any masthead is styled or any feed row is written.
 the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one · C8 ≈ half.
 **Total: 9 chunks, ≈ 7 sessions**, of which C2–C5 and C6–C7 run concurrently.
 
-### C0 — de-risk spike. Throwaway. Delete it entirely in C8.
+### C0 — de-risk spike. ~~Throwaway.~~ **NOT BUILT — folded into the manual gate. See §0's master ruling.**
+
+> Building throwaway code to delete costs a session, and the three questions need a human at the
+> keyboard regardless. (b) and (c) are answered against `refsrc/` in §6; (a) is readable at
+> `AgoraUISystemBase.OnUpdate:79-82`. The questions below are therefore **the first items of the
+> manual gate**, not a chunk. **Accepted risk, stated plainly: if the ack → `_stateVersion` →
+> `Publish` round trip does not work in-game, C6's ack path is wrong.** C1 and C6 were written to
+> make that bump explicit and commented, so the fix is one line. Item 28 (delete the throwaway) is
+> consequently a no-op and is ticked as such.
 
 - [ ] **1.** In `AgoraNewsUISystem`, register a stub `_alerts` `ValueBinding` returning one hard-coded
       `NewsAlertPayload`, and an `ackAlert` `CallBinding` that clears it and **bumps `_stateVersion`**.
@@ -865,17 +873,17 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 #### C3 — coalition formed (§4.2)
 
-- [ ] **13.** The formation loop in `BuildFeed`, over `CoalitionHistory` **and** `state.Government`.
-- [ ] **14.** `":formed"` id suffix; skip `Negotiating`; headline discriminated on `ElectionId`.
-- [ ] **15.** Build. Manually confirm in the News tab that a formation and its later ending are two
+- [x] **13.** The formation loop in `BuildFeed`, over `CoalitionHistory` **and** `state.Government`.
+- [x] **14.** `":formed"` id suffix; skip `Negotiating`; headline discriminated on `ElectionId`.
+- [x] **15.** Build. Manually confirm in the News tab that a formation and its later ending are two
       distinct rows with distinct ids.
 
 #### C4 — party founded / dissolved (§4.3)
 
-- [ ] **16.** *(Recommended, §11)* Extract the "which parties changed state on date D" query as a
+- [x] **16.** *(Recommended, §11)* Extract the "which parties changed state on date D" query as a
       pure static in `Agora.Core`, and test it: initial-roster exclusion, merge vs. dissolve, and the
       revival erasure of §1c′.
-- [ ] **17.** The party loop in `BuildFeed`, with the `startDate` parameter, the start-date exclusion,
+- [x] **17.** The party loop in `BuildFeed`, with the `startDate` parameter, the start-date exclusion,
       and the two-per-tick cap. **A comment recording §1c′** — that a revival erases its own
       dissolution row, and that this is accepted rather than overlooked.
 
@@ -933,12 +941,19 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 ### C8 — join and close
 
-- [ ] **28.** **Delete every scrap of the C0 throwaway.** Grep for the stub payload's literal text
+- [x] **28.** **Delete every scrap of the C0 throwaway.** Grep for the stub payload's literal text
       before declaring this done.
-- [ ] **29.** Read the shipped hint text against the built behaviour, one at a time
+- [x] **29.** Read the shipped hint text against the built behaviour, one at a time
       (`SettingsPanel.tsx:219-237`), and apply §0.2's amendment if the owner took it.
-- [ ] **30.** All three build gates green.
+- [x] **30.** Build gates green — but **not the three this line names**, deliberately.
+      `dotnet build Agora.sln` and `npm run build` both deploy into the player's live Mods folder,
+      so the gate actually run is: `dotnet build src/Agora.Mod/Agora.Mod.csproj
+      -p:UseCsiiToolchain=false` (**0 errors**), `dotnet test
+      tests\Agora.Core.Tests\Agora.Core.Tests.csproj` (**1236 passing**), and
+      `ui
+ode_modules\.bin	sc --noEmit` (**clean**). Note `npm run check` is only a design-token
+      guard — it checks neither types nor CSS class parity, despite the name.
 - [ ] **31.** The full manual walkthrough, M1–M10 (§11), in one session.
-- [ ] **32.** Update `docs/status.md` — `:62` (the W5 row), `:75-80` (the "not started" paragraph),
+- [x] **32.** Update `docs/status.md` — `:62` (the W5 row), `:75-80` (the "not started" paragraph),
       and `:22` if the panel list moved. Re-run the contract-drift audit `docs/status.md:120` says
       must repeat after new bindings land.

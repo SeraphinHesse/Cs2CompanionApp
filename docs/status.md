@@ -31,7 +31,7 @@ elections, government, flavor and effects layers are all implemented in `Agora.C
 | **M5 · The World** | ✅ effect palette + dispatcher + resolver + schedule + validation; `Agora.Mod/Effects` ledger and application system; `data/timeline_eu.json`, `timeline_na.json`, `timeline_global.json` | ⚠️ 1990→2008 run not re-walked |
 | **M6 · The Spectacle** | 🟡 partial — crosstab explorer, mandate tracker, news archive present; **political map overlay and election-night broadcast mode not built** | ⬜ |
 
-**Test suite.** `tests/Agora.Core.Tests` is at **1227 tests** as of W6 chunk H, up from 1033 at the
+**Test suite.** `tests/Agora.Core.Tests` is at **1236 tests**, up from 1033 at the
 start of this pass, spanning determinism, blocs, affinity, turnout,
 polling, indices, both electoral systems, coalitions, mandates, factions, party lifecycle, the
 effect palette and application, the per-save reset seam, the scheduler, sim-clock math, start-year
@@ -59,8 +59,44 @@ authority; this is the tracker.
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed), **merged to `main`** · **needs the manual walkthrough** |
 | **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–H all merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, history strip, mandate scorecard, coalition relations) · **H1–H8 reviewed and approved; H9's review is outstanding** |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **complete.** Lanes A–C and **lane D** all code complete, reviewed, merged · lane D's five text fields are the **first text entry anywhere in `ui/src`** and carry a real manual gate (see below) |
-| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 prose + model lane complete. **Popup lane planned (`docs/plans/0003`) and part-built:** C1 (binding surface) and C6–C7 (modal, pause, interlock, masthead) merged and reviewed · **C3/C4 (the two missing feed rows) in progress; C2/C5 (severity gate, ring, emission) and C8 (join) not started** |
+| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ✅ **code complete.** Prose + model lane, and the whole popup lane (`docs/plans/0003`): C1 binding surface, C3/C4 the two missing feed rows, C2/C5 severity gate + ring + emission, C6/C7 modal + pause + interlock + masthead, C8 join. `PauseOnMajorNews` and `ShowAllReports` now do something. **C0's in-game spike was deliberately not built** — folded into the manual gate · **needs the walkthrough** |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), and the drift re-run must repeat after W6 fully lands |
+
+### The manual gate — what only the player can verify
+
+Everything below needs the game running. Nothing here has been seen on screen: the code is reviewed,
+built and typechecked, and that is a different claim.
+
+**A. The C0 questions** (the de-risk spike that was deliberately not built — answer these first,
+because a "no" means C6's ack path needs revising, which is a one-line fix by construction):
+1. Does an alert card **disappear** when Dismiss is pressed? This proves the ack → `_stateVersion` →
+   `Publish` round trip. `AgoraUISystemBase.OnUpdate:79-82` gates publishing on `StateVersion`, and
+   `AgoraRuntime.AckAlert` bumps it with a comment forbidding the line's removal.
+2. Does the clock stop while a **major** card is up, and **return to the prior speed** when it
+   closes? An article card must **never** stop the clock, even with both settings on.
+3. On a first-run save, does the article modal stay out of the way until the region prompt is
+   dismissed? Two pause barriers must coexist and the clock resume only after **both** are gone.
+
+**B. Text entry — the highest-risk unverified area.** W4 lane D's five fields are the first
+`<input>`/`<textarea>` anywhere in `ui/src`; `cs2/ui` exports no text-input component. Beyond "do
+characters appear": **focus a field and press space, digits, `b`, `p`** — keys bound to game hotkeys
+— and confirm the sim does not pause, change speed, or open bulldoze. Nothing in the component stops
+key propagation, because there was no pattern in the repo to copy. `<textarea>` is the higher risk.
+Then: type past the published limit (counter reddens, engine returns the `TooLong` sentence); pick a
+colour another party already wears (amber "already wears this colour", **and the swatch keeps the
+new colour** — that is `OkColorInUse` being read as an acceptance).
+
+**C. The fix plan's own walkthrough**, unchanged and still the gate on everything:
+> Load city A (EU). Play a year. Rename a party and recolour it. Quit to main menu. Create city B
+> and choose US. Confirm: US-flavoured party names, no city A prose anywhere, effects ledger empty,
+> heartbeat ticking on day one. Return to city A. Confirm the rename and the colour survived.
+
+**Watch specifically for an alert from city A popping over city B** — the ring is cleared in
+`ResetForNewSave`, and that clear is the W0 bug class.
+
+**D. Gameface rendering** that no static check can reach: that the masthead's serif stack resolves to
+an actual serif; that a long article body scrolls rather than pushing the buttons off-screen; that
+`Portal` overlays the HUD for the modal's subtree as it already does for `FirstRunDialog`.
 
 ### W5 — what shipped, and what did not
 
@@ -71,6 +107,12 @@ claim and own challenge rather than a winner's and a loser's reaction; the canne
 against the same rule with new election templates and now carries `refs` on every article, which is
 what allowed `FilterAgainstCatalog` to start dropping refless ones; `--model` with the alias
 `claude-haiku-4-5`; and `byline`/`tags` struck from the article contract.
+
+> **Superseded 2026-08-09 — the popup lane is now built.** The paragraph below describes the state
+> before `docs/plans/0003-w5-popup-lane.md` was written and executed. Kept as the record of what the
+> gap was. All three prerequisites it names were built: a severity gate reading the engine's own
+> `MajorSeverityThreshold`, a coalition-formed feed row, and party founded/dissolved rows plus a
+> Mod-side detection query extracted into `Agora.Core`.
 
 **Not started: the entire popup lane.** No alert emission, no bindings, no modal, no pause wiring,
 no first-run interlock. `PauseOnMajorNews` and `ShowAllReports` remain **two switches that do
