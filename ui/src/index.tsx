@@ -1,5 +1,5 @@
 import { ModRegistrar } from "cs2/modding";
-import { AgoraButton, Dashboard, FirstRunDialog } from "./shell";
+import { AgoraButton, ArticleModal, Dashboard, FirstRunDialog } from "./shell";
 
 /**
  * UI mod entry point.
@@ -8,13 +8,13 @@ import { AgoraButton, Dashboard, FirstRunDialog } from "./shell";
  * find, override, extend and append. Prefer `append` — it adds to a hook point without
  * replacing game code, so it survives game updates that `override` would break.
  *
- * Three appends, and the splits are the point. Agora used to mount its three panels straight
+ * Four appends, and the splits are the point. Agora used to mount its three panels straight
  * onto GameTopRight, all three at once, with no way to dismiss them: News alone is 760rem wide and
  * 640rem tall, so the stack overflowed the hook point at any interface scale and buried the city.
  * Now the only thing the mod puts on screen is one button, and `Dashboard` renders null until that
  * button is pressed — so the default view of the game is the game.
  *
- * Both components read `agora.state.enabled` and render null when the mod is switched off, so
+ * Every one of them reads `agora.state.enabled` and renders null when the mod is switched off, so
  * mounting them here is not the same as forcing them onto the screen: with Agora disabled, these
  * hook points look exactly as they did before it was installed.
  */
@@ -33,6 +33,14 @@ const register: ModRegistrar = (moduleRegistry) => {
   // failure in it must not be able to take the dashboard with it, or the other way round. It renders
   // null on every load after the first, and on every load with the mod switched off.
   moduleRegistry.append("GameTopLeft", FirstRunDialog);
+
+  // The news alert, on its own append for the same reasons and one more. Like the region prompt it
+  // renders through `Portal`, so the hook point is only an anchor; unlike it, this subtree comes and
+  // goes all game and may hold the simulation paused each time. Keeping it off the dashboard's mount
+  // means a card that fails to render cannot take the dashboard down — and cannot take the News tab
+  // down with it, which is the one place the player could otherwise still read what happened. It
+  // renders null while the region prompt is up, with an empty queue, and with the mod switched off.
+  moduleRegistry.append("GameTopLeft", ArticleModal);
 };
 
 export default register;
