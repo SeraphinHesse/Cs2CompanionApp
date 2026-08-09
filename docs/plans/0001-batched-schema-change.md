@@ -747,51 +747,54 @@ from A once step 0 has landed.
 
 ### Chunk A — sidecar
 
-- [ ] **0.** Add the `Newtonsoft.Json` package reference and the six `Persistence` link entries to
+- [x] **0.** Add the `Newtonsoft.Json` package reference and the six `Persistence` link entries to
       `tests/Agora.Core.Tests/Agora.Core.Tests.csproj` (§6.0). Grep each linked file for
       `Game\.|Colossal|Unity` first. Confirm `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`
       still passes green with no new tests. *If this step fails, stop and report — everything below
       depends on it.*
-- [ ] **1.** Fix the no-version fall-through in `SidecarSchema.Migrate` (`:177-185`) and rewrite the
+- [x] **1.** Fix the no-version fall-through in `SidecarSchema.Migrate` (`:177-185`) and rewrite the
       stale class-doc paragraph at `:91-95` (§3.1). Add test 1 — it will fail until step 3.
-- [ ] **2.** `PartyOverrides` enum + `Party.PlayerOverrides` (§2.1), `using System;` in `Parties.cs`,
+- [x] **2.** `PartyOverrides` enum + `Party.PlayerOverrides` (§2.1), `using System;` in `Parties.cs`,
       and the `PartyRegistry.Clone` line at `:181` (§2.2). Add test 19.
-- [ ] **3.** Three `AgoraSettings` fields; version initialisers at `PoliticalState.cs:84` and `:130`
+- [x] **3.** Three `AgoraSettings` fields; version initialisers at `PoliticalState.cs:84` and `:130`
       → 2 (§2.3).
-- [ ] **4.** Version constants at `SidecarSchema.cs:107,108,110` → 2, plus the pointer comment on
+- [x] **4.** Version constants at `SidecarSchema.cs:107,108,110` → 2, plus the pointer comment on
       `CurrentFlavorCacheVersion` (§9 finding d). Add `UpgradeSettingsObjectToV2`,
       `MigrateStateV1ToV2` and the two step-table entries (§3.3).
-- [ ] **5.** `data/schemas/political_state.schema.json` — the four edits (§4.1).
-- [ ] **6.** Write `SidecarMigrationTests.cs`, tests 1–10 (§6.1). Gate: all green.
+- [x] **5.** `data/schemas/political_state.schema.json` — the four edits (§4.1).
+- [x] **6.** Write `SidecarMigrationTests.cs`, tests 1–10 (§6.1). Gate: all green.
 
 ### Chunk B — flavor
 
-- [ ] **7.** In one commit: `data/schemas/politics_flavor.schema.json:13,58,59`,
+- [x] **7.** In one commit: `data/schemas/politics_flavor.schema.json:13,58,59`,
       `FlavorSchema.cs:29,47,92,93`, `StaticPoolProvider.cs:277,279,291,293`, and the prompt sentence
       at `FlavorPromptBuilder.cs:244` (§4.2, §4.3, §5). Splitting these breaks the fallback provider
       in the intermediate commit.
-- [ ] **8.** New `src/Agora.Mod/Llm/FlavorCacheMigration.cs`, `System.*` + `Newtonsoft.*` only (§5).
-- [ ] **9.** Wire it into `FlavorCache.cs:85-87` with the Warn line (§5).
-- [ ] **10.** Add the four `Llm` link entries to the test csproj; write
+- [x] **8.** New `src/Agora.Mod/Llm/FlavorCacheMigration.cs`, `System.*` + `Newtonsoft.*` only (§5).
+- [x] **9.** Wire it into `FlavorCache.cs:85-87` with the Warn line (§5).
+- [x] **10.** Add the four `Llm` link entries to the test csproj; write
       `FlavorCacheMigrationTests.cs` (tests 11–16) and `FlavorSchemaDriftTests.cs` (17–18). Gate.
 
 ### Chunk C — UI contract
 
-- [ ] **11.** `AgoraUiPayloads.cs` `PartyBriefPayload` fields + writes; `AgoraUiProjection.cs:84`
+- [x] **11.** `AgoraUiPayloads.cs` `PartyBriefPayload` fields + writes; `AgoraUiProjection.cs:84`
       populates them from `party.PlayerOverrides` (§7).
-- [ ] **12.** `ui/types/bindings.d.ts` — `PartyBrief` fields and `SettingsPayload` (§7).
-- [ ] **13.** `docs/contracts/ui_bindings.md` — the six edits (§7).
+- [x] **12.** `ui/types/bindings.d.ts` — `PartyBrief` fields and `SettingsPayload` (§7).
+- [x] **13.** `docs/contracts/ui_bindings.md` — the six edits (§7).
 
 ### Close
 
-- [ ] **14.** `dotnet build Agora.sln`, `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`,
+- [x] **14.** **Gated without the solution build** — `dotnet build Agora.sln` triggers `npm run build`
+      and deploys into the player's live Mods folder. Gate actually run:
+      `dotnet build src/Agora.Mod/Agora.Mod.csproj -p:UseCsiiToolchain=false`, the test project, and
+      `tsc --noEmit`. ~~`dotnet build Agora.sln`, `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`,
       `cd ui && npm run build`. All three green.
 - [ ] **15.** Manual: load a save created before this change. Confirm in `Agora.log` a line of the
       form `Upgraded schemaVersion 1 -> 2: added party playerOverrides and the three per-save UI
       settings`, that party names are unchanged in the seat chart, and that the news feed still has
       its articles. Then save, quit to menu, reload: the second load must log `Current`, not another
       upgrade — that is idempotency proven against a real file rather than a fixture.
-- [ ] **16.** Update `docs/status.md` with the new sidecar version and this plan's completion.
+- [x] **16.** Update `docs/status.md` with the new sidecar version and this plan's completion.
 
 ---
 

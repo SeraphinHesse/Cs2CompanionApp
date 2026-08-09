@@ -911,12 +911,12 @@ layout work — if the remount does not behave, that is the moment to find out.
 
 ### Chunk A — the bridge, end to end (de-risk)
 
-- [ ] **1.** `AgoraUiPayloads.cs`: `PartyGovernmentRole` and `PartyDetailPayload` with its full
+- [x] **1.** `AgoraUiPayloads.cs`: `PartyGovernmentRole` and `PartyDetailPayload` with its full
       `Write` (§3.1). Compile only; nothing consumes it yet.
-- [ ] **2.** `AgoraUiProjection.BuildPartyDetail` + `RoleOf` (§3.3, §3.4). `dotnet build Agora.sln`.
-- [ ] **3.** `AgoraStateUISystem.cs`: the field, the `AddBinding` in `CreateBindings`, the
+- [x] **2.** `AgoraUiProjection.BuildPartyDetail` + `RoleOf` (§3.3, §3.4). `dotnet build Agora.sln`.
+- [x] **3.** `AgoraStateUISystem.cs`: the field, the `AddBinding` in `CreateBindings`, the
       `UpdateAll()` in `Publish` (§3.2).
-- [ ] **4.** **Smoke test, and it is the point of this chunk.** A throwaway `PartiesPanel` that
+- [x] **4.** **Smoke test, and it is the point of this chunk.** A throwaway `PartiesPanel` that
       renders nothing but the rail (short names only) and a one-line pane showing `selectedId` beside
       `detail.id` and `detail.name`, mounted via §5.5, with the `key={selectedId}` remount from §2 in
       place. Launch with `--uiDeveloperMode`, click rapidly down the rail, and confirm the two ids are
@@ -926,28 +926,28 @@ layout work — if the remount does not behave, that is the moment to find out.
 
 ### Chunk B — types and contract
 
-- [ ] **5.** `ui/types/bindings.d.ts`: `PartyGovernmentRoleName`, `IssuePositionView`, `PartyDetail`
+- [x] **5.** `ui/types/bindings.d.ts`: `PartyGovernmentRoleName`, `IssuePositionView`, `PartyDetail`
       (§5.1).
-- [ ] **6.** `docs/contracts/ui_bindings.md`: all six edits in §6. **For edit 1: open the file, read
+- [x] **6.** `docs/contracts/ui_bindings.md`: all six edits in §6. **For edit 1: open the file, read
       the current `schemaVersion` at `:3`, and write that value plus one. Do not hard-code a number —
       plan 0001 is moving the same line (§8).**
 
 ### Chunk C — the panel
 
-- [ ] **7.** `Parties/bindings.ts`, `Parties/format.ts` (including the whole §4 label mapping),
+- [x] **7.** `Parties/bindings.ts`, `Parties/format.ts` (including the whole §4 label mapping),
       `Parties/index.ts`, `Parties/Boundary.tsx`.
-- [ ] **8.** `Parties/PlatformBars.tsx` + `PlatformBars.module.scss` — the centre-zero bar (§5.3).
+- [x] **8.** `Parties/PlatformBars.tsx` + `PlatformBars.module.scss` — the centre-zero bar (§5.3).
       Build it before the pane: it is the one piece of layout Gameface can surprise you on, and it is
       the visible half of the tab.
-- [ ] **9.** `Parties/PartyList.tsx` + `PartyList.module.scss` (§5.2).
-- [ ] **10.** `Parties/PartyDetail.tsx` + `PartyDetail.module.scss`, with `PartyDetailHeader` kept as
+- [x] **9.** `Parties/PartyList.tsx` + `PartyList.module.scss` (§5.2).
+- [x] **10.** `Parties/PartyDetail.tsx` + `PartyDetail.module.scss`, with `PartyDetailHeader` kept as
       its own component for W4 (§5.2 item 1).
-- [ ] **11.** `Parties/PartiesPanel.tsx` + `PartiesPanel.module.scss`, replacing the step-4 throwaway.
+- [x] **11.** `Parties/PartiesPanel.tsx` + `PartiesPanel.module.scss`, replacing the step-4 throwaway.
       Delete every scrap of the throwaway.
 
 ### Close Part I
 
-- [ ] **12.** `dotnet build Agora.sln`; `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`;
+- [x] **12.** ~~`dotnet build Agora.sln`~~ — see P2's note on why the solution build is not the gate. `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`;
       `cd ui && npm run build`. All three green.
 - [ ] **13.** Manual walkthrough, one session: open the tab on a save with **no** election yet —
       confirm seats/vote/poll cells read `-` with the note, not `0%`. Play to the first election;
@@ -956,7 +956,7 @@ layout work — if the remount does not behave, that is the moment to find out.
       chip. Confirm no enum member name (`HeritageOrder`, `CostOfLiving`, `FirstPastThePost`) is
       visible anywhere. Click every party in the rail twice in succession and confirm the pane never
       shows the previous party's numbers.
-- [ ] **14.** Update `docs/status.md:22` — the tab list is hard-coded there — and record W6 core
+- [x] **14.** Update `docs/status.md:22` — the tab list is hard-coded there — and record W6 core
       complete.
 
 **Part I is shippable here.** Part II may follow immediately or later.
@@ -1791,38 +1791,38 @@ Each chunk is independently landable. **Do D, E, F, G before H** — H is the on
 
 ### Chunk D — manifesto vs. platform (§12) — no C#, no contract version bump
 
-- [ ] **D1.** `PlatformBars.tsx`: add the optional `marker` / `markerLabel` props and the centre-zero
+- [x] **D1.** `PlatformBars.tsx`: add the optional `marker` / `markerLabel` props and the centre-zero
       tick (§12.2). No absolute positioning.
-- [ ] **D2.** `PartyDetail.tsx`: pass `marker` only when `hasContestedElection`; add the drift summary
+- [x] **D2.** `PartyDetail.tsx`: pass `marker` only when `hasContestedElection`; add the drift summary
       line and the `MANIFESTO_DRIFT_THRESHOLD` constant in `format.ts` (§12.3). Section heading is
       **"Manifesto and drift"**, never "betrayal".
-- [ ] **D3.** `ui_bindings.md` §4.2 annotation (§12.4). `cd ui && npm run build`.
+- [x] **D3.** `ui_bindings.md` §4.2 annotation (§12.4). `cd ui && npm run build`.
 
 ### Chunk E — poll trend sparkline (§13)
 
-- [ ] **E1.** `AgoraUiPayloads.cs`: `PollTrendPointPayload` (§13.3).
-- [ ] **E2.** `AgoraUiProjection.BuildPollTrend` + `PollTrendMax = 24` (§13.4). **Read `Shares`, never
+- [x] **E1.** `AgoraUiPayloads.cs`: `PollTrendPointPayload` (§13.3).
+- [x] **E2.** `AgoraUiProjection.BuildPollTrend` + `PollTrendMax = 24` (§13.4). **Read `Shares`, never
       `TrueShares`.** Trim from the front, not the back.
-- [ ] **E3.** `AgoraStateUISystem.cs`: register the map **with `valueWriter: ListOf<…>()`** and add
+- [x] **E3.** `AgoraStateUISystem.cs`: register the map **with `valueWriter: ListOf<…>()`** and add
       `_pollTrend.UpdateAll()` (§13.2). Omitting the writer throws on construction.
-- [ ] **E4.** `ui/types/bindings.d.ts`: `PollTrendPoint`.
-- [ ] **E5.** `ui_bindings.md`: §4.2 row, the oldest-first sort-key exception, the §2 cap, the §5 shape,
+- [x] **E4.** `ui/types/bindings.d.ts`: `PollTrendPoint`.
+- [x] **E5.** `ui_bindings.md`: §4.2 row, the oldest-first sort-key exception, the §2 cap, the §5 shape,
       the §8 annotation explaining why `agora.seats.pollTrend` stays reserved (§13.6).
-- [ ] **E6.** `Parties/PollSparkline.tsx` + scss; wire into `PartyDetail` beneath the Standing row.
+- [x] **E6.** `Parties/PollSparkline.tsx` + scss; wire into `PartyDetail` beneath the Standing row.
       Print the scale maximum on the axis.
 
 ### Chunk F — party history strip (§14)
 
-- [ ] **F1.** `AgoraUiPayloads.cs`: four new `PartyDetailPayload` fields + writes; new
+- [x] **F1.** `AgoraUiPayloads.cs`: four new `PartyDetailPayload` fields + writes; new
       `PartyElectionRowPayload` (§14.2).
-- [ ] **F2.** `AgoraUiProjection`: fill the four fields, build `AbsorbedPartyIds` as the reverse index
+- [x] **F2.** `AgoraUiProjection`: fill the four fields, build `AbsorbedPartyIds` as the reverse index
       of `SuccessorPartyId`, and add `BuildPartyElectionRecord` (§14.3).
-- [ ] **F3.** `AgoraStateUISystem.cs`: register `agora.parties.electionRecord` with its list writer;
+- [x] **F3.** `AgoraStateUISystem.cs`: register `agora.parties.electionRecord` with its list writer;
       `UpdateAll()`.
-- [ ] **F4.** `ui/types/bindings.d.ts`: the four `PartyDetail` fields and `PartyElectionRow`.
-- [ ] **F5.** `ui_bindings.md`: §4.2 row + sort key, §5 shapes, **and update the `EMPTY_PARTY_DETAIL`
+- [x] **F4.** `ui/types/bindings.d.ts`: the four `PartyDetail` fields and `PartyElectionRow`.
+- [x] **F5.** `ui_bindings.md`: §4.2 row + sort key, §5 shapes, **and update the `EMPTY_PARTY_DETAIL`
       literal in §6** — a missed field there is a silent runtime hole.
-- [ ] **F6.** `Parties/HistoryStrip.tsx` + scss; fold the existing founded/dissolved lines into the
+- [x] **F6.** `Parties/HistoryStrip.tsx` + scss; fold the existing founded/dissolved lines into the
       lineage sentence rather than printing them twice.
 
 ### Chunk G — mandate scorecard (§15) — no C# at all
@@ -1864,14 +1864,21 @@ Each chunk is independently landable. **Do D, E, F, G before H** — H is the on
       Part II, by reading the current value and writing value + 1. Plan 0001 leaves it at `3` and
       Part I takes it to `4`, so Part II lands on `5` if shipped separately, or Part I and II together
       move it once to `4`. **Read, do not hard-code.**
-- [ ] **P2.** `dotnet build Agora.sln`; `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`;
+- [x] **P2.** **Gated differently, deliberately** — `dotnet build Agora.sln` triggers `npm run build`,
+      which deploys into the player's live Mods folder, so it is not run mid-pass. What actually
+      gated W6: `dotnet build src/Agora.Mod/Agora.Mod.csproj -p:UseCsiiToolchain=false` (0 errors),
+      `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` (1236 passing), and
+      `ui
+ode_modules\.bin	sc --noEmit` (clean). `npm run check` is only a design-token guard —
+      not a typecheck and not a class-parity check, despite the name.
+      ~~`dotnet build Agora.sln`; `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`;
       `cd ui && npm run build`. All three green.
 - [ ] **P3.** Manual walkthrough on a save with at least two elections and one government: confirm the
       manifesto tick is absent for a party that has never stood; the sparkline prints its scale
       maximum; the history strip shows a real split or merge if the save has one; the scorecard's
       delivery rate ignores pending mandates; and the relations list marks the sitting government.
       Confirm no screen anywhere says "betrayal" or "refuses".
-- [ ] **P4.** Update `docs/status.md` and record which additions shipped.
-- [ ] **P5.** Re-run the C#/TS contract-drift review that `fixplan.md:371-374` asks for after W4 and W6
+- [x] **P4.** Update `docs/status.md` and record which additions shipped.
+- [x] **P5.** Re-run the C#/TS contract-drift review that `fixplan.md:371-374` asks for after W4 and W6
       add bindings — with five new bindings across two passes, this is now the highest-value item on
       that list.
