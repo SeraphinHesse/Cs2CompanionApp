@@ -858,9 +858,9 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 #### C2 — the severity gate *(blocked on §0.1)*
 
-- [ ] **11.** Add `major` to the alert construction, reading
+- [x] **11.** Add `major` to the alert construction, reading
       `AgoraRuntime.Tuning.Catalog.MajorSeverityThreshold`. **No literal `3`, no literal `4`, anywhere.**
-- [ ] **12.** A comment at the comparison naming `EngineTuning.cs:844` and `EventScheduler.cs:378` as
+- [x] **12.** A comment at the comparison naming `EngineTuning.cs:844` and `EventScheduler.cs:378` as
       the other two consumers of the same number, so the next reader knows it is shared.
 
 #### C3 — coalition formed (§4.2)
@@ -881,29 +881,29 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 #### C5 — the ring and real emission (§5)
 
-- [ ] **18.** `NewsAlert`, `_alerts`, `_raisedAlertIds`, the `Alerts` getter, `AckAlert` (§8.4).
-- [ ] **19.** **The clears in `ResetForNewSave` (`AgoraRuntime.cs:535`), in the prose block at `:554`.**
+- [x] **18.** `NewsAlert`, `_alerts`, `_raisedAlertIds`, the `Alerts` getter, `AckAlert` (§8.4).
+- [x] **19.** **The clears in `ResetForNewSave` (`AgoraRuntime.cs:535`), in the prose block at `:554`.**
       Not last, not optional — this is the W0 bug class.
-- [ ] **20.** `RaiseAlerts` from `OnMonth`; the article raise from `CollectProse` (§5.1). Read
+- [x] **20.** `RaiseAlerts` from `OnMonth`; the article raise from `CollectProse` (§5.1). Read
       `ShowAllReports` at emit time (§5.4). Cap at 8, log on drop.
-- [ ] **20a.** **Consume `PartyLifecycleChangeSet.SuppressedDates`** with a one-shot log on the
+- [x] **20a.** **Consume `PartyLifecycleChangeSet.SuppressedDates`** with a one-shot log on the
       once-per-month emission path. C4 populates it and **nothing reads it** — §1c requires *"if the
       cap trips, log it and emit none"* and only the second half shipped. It cannot be logged from
       `BuildFeed`: that is a view rebuilt on every publish, so the warning would repeat for the rest
       of the save. **A computed field with no reader is a claim the code does not honour** — wire it
       here or delete it, and do not leave the obligation in a comment. *(Raised by C3/C4's review;
       recorded here so it cannot be lost between chunks.)*
-- [ ] **20b.** **Fix the pre-existing enum leak** at `AgoraUiProjection.cs:1320-1322` —
+- [x] **20b.** **Fix the pre-existing enum leak** at `AgoraUiProjection.cs:1320-1322` —
       `Summary = "Reason: " + coalition.CollapseReason + "."` renders `"Reason: PartnerWithdrawal."`
       to the player. Map `CoalitionCollapseReason` to human copy with a safe fallback. Predates this
       lane; assigned here because C5 is the last C# lane of the pass.
-- [ ] **20c.** **Consolidate the start-date derivation.** C4 was barred from `AgoraRuntime.cs` and so
+- [x] **20c.** **Consolidate the start-date derivation.** C4 was barred from `AgoraRuntime.cs` and so
       added `AgoraUiProjection.SaveStartDate`, duplicating `AgoraRuntime.cs:686`. Add
       `public static SimDate StartDate => _startDate;` and delete the helper. Review confirmed the
       two are equivalent **today** — `_saveSettings` and `state.Settings` are the same object by
       reference and there is no mid-save `StartYear` setter — so this is de-duplication, not a bug
       fix. One derivation, not two.
-- [ ] **21.** Build + test. Both green.
+- [x] **21.** Build + test. Both green.
 
 ---
 
