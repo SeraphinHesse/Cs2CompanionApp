@@ -32,6 +32,7 @@ namespace Agora.Core.Tests
         private static readonly SimDate Y1993 = new SimDate(1993, 1, 1);
         private static readonly SimDate Y1996 = new SimDate(1996, 1, 1);
         private static readonly SimDate Y2000 = new SimDate(2000, 1, 1);
+        private static readonly SimDate Y2003 = new SimDate(2003, 1, 1);
 
         // ============================ The opening roster ==========================================
 
@@ -59,12 +60,39 @@ namespace Agora.Core.Tests
             // per-date cap is the second half of that belt-and-braces pair.
             EngineTuning tuning = EngineTuning.Default;
             List<Party> parties = PartyRegistry.GenerateInitial(SaveA, Y2000, RegionTheme.Eu, tuning);
-            Assert.True(parties.Count > PartyLifecycleChanges.MaxPerDate);
+
+            // The whole field, elders and all, carries the one date — which is the thing the rule
+            // recognises, and the thing no amount of ordinary churn can reproduce.
+            Assert.True(parties.Count > 1);
+            Assert.All(parties, p => Assert.Equal(Y2000, p.FoundedDate));
 
             PartyLifecycleChangeSet changes = PartyLifecycleChanges.Collect(parties, Y1990);
 
             Assert.Empty(changes.Records);
             Assert.Equal(new[] { Y2000 }, changes.SuppressedDates);
+        }
+
+        [Fact]
+        public void ARegenerationStaysSuppressedOnceTheRosterHasGrownPastIt()
+        {
+            // The regeneration is only recognisable because nothing in the roster predates it, and
+            // that stays true as the field grows: parties founded later are founded later. Counting
+            // the date's foundings against the roster's *size* instead would have unsuppressed all six
+            // rows the moment a seventh party appeared — and this is re-derived on every publish, so
+            // the archive would have changed under the player mid-save.
+            EngineTuning tuning = Tuning("\"newPartyEntryProbability\":1.0," +
+                                         "\"splitProbabilityPerCycle\":0.0," +
+                                         "\"mergeProbabilityPerCycle\":0.0");
+            List<Party> regenerated = PartyRegistry.GenerateInitial(SaveA, Y2000, RegionTheme.Eu, tuning);
+            PartyLifecycleOutcome outcome = Advance(tuning, regenerated, null, Y2003);
+            Assert.Equal(regenerated.Count + 1, outcome.Parties.Count);
+
+            PartyLifecycleChangeSet changes = PartyLifecycleChanges.Collect(outcome.Parties, Y1990);
+
+            Assert.Equal(new[] { Y2000 }, changes.SuppressedDates);
+            PartyLifecycleRecord only = Assert.Single(changes.Records);
+            Assert.Equal(PartyLifecycleKind.Founded, only.Kind);
+            Assert.Equal(Y2003, only.Date);
         }
 
         [Fact]
@@ -130,6 +158,38 @@ namespace Agora.Core.Tests
             Assert.Equal("party-01", only.PartyId);
             Assert.Equal(PartyLifecycleKind.Dissolved, only.Kind);
             Assert.Equal(Y1996, only.Date);
+        }
+
+        [Fact]
+        public void ThreeBrandsDyingAtTheSameElectionAreAllThreeReported()
+        {
+            // ApplyDeaths loops every party at or over the consecutive-elections threshold, so one
+            // election day really can carry three deaths — and three deaths in one month is the
+            // biggest political news the feed will ever have to carry, not a registry accident.
+            EngineTuning tuning = Quiet();
+            List<Party> parties = Field(7);   // one over the EU floor of four, times three deaths
+            var doomed = new[] { "party-01", "party-02", "party-03" };
+
+            PartyLifecycleOutcome first = Advance(tuning, parties,
+                Election(Y1993, parties, doomed, 0.01), Y1993);
+            PartyLifecycleOutcome second = Advance(tuning, new List<Party>(first.Parties),
+                Election(Y1996, first.Parties, doomed, 0.01), Y1996);
+
+            // Pre-condition: the engine, not the fixture, put three dissolutions on the one date.
+            for (int i = 0; i < doomed.Length; i++)
+            {
+                Party dead = Get(second, doomed[i]);
+                Assert.Equal(PartyStatus.Dissolved, dead.Status);
+                Assert.Equal(Y1996, dead.DissolvedDate);
+            }
+
+            PartyLifecycleChangeSet changes = PartyLifecycleChanges.Collect(second.Parties, Y1990);
+
+            Assert.Empty(changes.SuppressedDates);
+            Assert.Equal(
+                "1996-01-01/party-01/Dissolved;1996-01-01/party-02/Dissolved;" +
+                "1996-01-01/party-03/Dissolved",
+                Describe(changes));
         }
 
         // ============================ The accepted loss ===========================================
@@ -246,12 +306,16 @@ namespace Agora.Core.Tests
         private static IssueWeights Grievance(Issue issue, double value) =>
             new IssueWeights(0, 0, 0, 0, 0, 0).With(issue, value);
 
-        /// <summary>
-        /// An election where every on-ballot party gets an even share, except
-        /// <paramref name="punishedId"/> which gets <paramref name="punishedShare"/>.
-        /// </summary>
         private static ElectionResult Election(SimDate date, IReadOnlyList<Party> parties,
                                                string punishedId, double punishedShare)
+            => Election(date, parties, new[] { punishedId }, punishedShare);
+
+        /// <summary>
+        /// An election where every on-ballot party gets an even share, except those in
+        /// <paramref name="punishedIds"/>, which each get <paramref name="punishedShare"/>.
+        /// </summary>
+        private static ElectionResult Election(SimDate date, IReadOnlyList<Party> parties,
+                                               string[] punishedIds, double punishedShare)
         {
             var ballot = new List<Party>();
             for (int i = 0; i < parties.Count; i++)
@@ -259,7 +323,14 @@ namespace Agora.Core.Tests
                 if (PartyRegistry.IsOnBallot(parties[i])) ballot.Add(parties[i]);
             }
 
-            double even = ballot.Count > 1 ? (1.0 - punishedShare) / (ballot.Count - 1) : 0.0;
+            int punishedOnBallot = 0;
+            for (int i = 0; i < ballot.Count; i++)
+            {
+                if (IsPunished(punishedIds, ballot[i].Id)) punishedOnBallot++;
+            }
+
+            int rest = ballot.Count - punishedOnBallot;
+            double even = rest > 0 ? (1.0 - (punishedShare * punishedOnBallot)) / rest : 0.0;
 
             var result = new ElectionResult
             {
@@ -271,7 +342,7 @@ namespace Agora.Core.Tests
 
             foreach (Party p in ballot)
             {
-                double share = string.CompareOrdinal(p.Id, punishedId) == 0 ? punishedShare : even;
+                double share = IsPunished(punishedIds, p.Id) ? punishedShare : even;
                 result.PartyIdsOnBallot.Add(p.Id);
                 result.CityVoteShares.Add(new PartyVoteShare(p.Id, share));
                 result.Seats.Add(new SeatAllocation(p.Id, (int)Math.Round(share * 45.0),
@@ -281,6 +352,15 @@ namespace Agora.Core.Tests
             result.PartyIdsOnBallot.Sort(StringComparer.Ordinal);
             result.CityVoteShares.Sort((a, b) => string.CompareOrdinal(a.PartyId, b.PartyId));
             return result;
+        }
+
+        private static bool IsPunished(string[] punishedIds, string partyId)
+        {
+            for (int i = 0; i < punishedIds.Length; i++)
+            {
+                if (string.CompareOrdinal(punishedIds[i], partyId) == 0) return true;
+            }
+            return false;
         }
 
         private static PartyLifecycleOutcome Advance(EngineTuning tuning, List<Party> parties,
