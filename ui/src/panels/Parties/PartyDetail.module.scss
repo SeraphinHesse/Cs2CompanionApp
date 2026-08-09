@@ -12,7 +12,14 @@
   padding-right: 4rem;
 }
 
-// -- header (the seam W4 builds its rename and recolour controls into) -----------------------------
+// -- header (the identity line, and the party editors beneath it) ----------------------------------
+
+// Wraps the identity line and `PartyEditor`. It carries no spacing of its own: the line below keeps
+// the margin it always had, so a pane whose editors are not up yet looks exactly as it did before.
+.paneHeadBlock {
+  display: flex;
+  flex-direction: column;
+}
 
 .paneHead {
   display: flex;

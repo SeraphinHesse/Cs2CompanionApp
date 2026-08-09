@@ -1,4 +1,5 @@
-import { bindLocalValue, bindMap, bindValue } from "cs2/api";
+import { bindLocalValue, bindMap, bindValue, call } from "cs2/api";
+import { SETTING_CALL_TIMEOUT_MS, WriteOutcome } from "../../shell/bindings";
 
 /**
  * Every binding this panel consumes, declared once.
@@ -76,6 +77,22 @@ export const EMPTY_PARTY_DETAIL: Agora.PartyDetail = {
   factionIds: [],
 };
 
+/** Contract section 6, literally. An empty palette renders NO swatches - never a picker with none. */
+export const EMPTY_PARTY_PALETTE: Agora.PartyPalette = { colors: [] };
+
+/**
+ * Contract section 6, literally. All zeroes is not a usable limit - a counter reading `nameMax: 0`
+ * would declare every keystroke too long - so the editors are gated on `ready`, exactly as that
+ * section instructs, rather than treating the empty value as a real ceiling.
+ */
+export const EMPTY_PARTY_EDIT_LIMITS: Agora.PartyEditLimits = {
+  nameMax: 0,
+  shortNameMax: 0,
+  descriptionMax: 0,
+  sloganMax: 0,
+  colorPattern: "",
+};
+
 // -- agora.state (chrome) -----------------------------------------------------------------------
 
 /** Master toggle. When false the panel renders null, not a disabled shell. */
@@ -144,6 +161,35 @@ export const electionRecord$ = bindMap<string, Agora.PartyElectionRow[]>(
  */
 export const relations$ = bindMap<string, Agora.CoalitionOption[]>("agora.parties", "relations");
 
+/**
+ * The tuned chart palette the engine assigns party colours from.
+ *
+ * Published rather than hard-coded because the array lives in `EngineTuning.Parties.ColorPalette`; a
+ * copy in TypeScript would drift the first time the tuning was edited and the drift would be
+ * invisible. Rendered in the order published - never re-sorted, never de-duplicated: a swatch's
+ * position is how a player recognises it between sessions (contract section 4.2).
+ *
+ * Not a closed set. `setColor` accepts any legal hex, so the picker offers a free field beside it.
+ */
+export const colorPalette$ = bindValue<Agora.PartyPalette>(
+  "agora.parties",
+  "colorPalette",
+  EMPTY_PARTY_PALETTE
+);
+
+/**
+ * What the party editors will accept: four lengths and the colour pattern.
+ *
+ * The character counters read these and nothing else. A literal in the panel and `PartyIdentity` in
+ * C# would be two copies of one number, and when they disagree the wrong one is always the counter -
+ * the player finds out by being refused after typing (contract section 4.2).
+ */
+export const editLimits$ = bindValue<Agora.PartyEditLimits>(
+  "agora.parties",
+  "editLimits",
+  EMPTY_PARTY_EDIT_LIMITS
+);
+
 // -- agora.seats (rail columns and the coalition line) ---------------------------------------------
 
 export const allocation$ = bindValue<Agora.SeatRow[]>("agora.seats", "allocation", []);
@@ -171,6 +217,153 @@ export const government$ = bindValue<Agora.GovernmentSummary | null>(
  * grow with the roster. Accepted.
  */
 export const mandates$ = bindValue<Agora.MandateRow[]>("agora.news", "mandates", []);
+
+// -- the write channel (contract section 4.2, the six party editors) ---------------------------------
+
+/**
+ * Acceptance and the sentence to print, taken from the shell rather than reimplemented.
+ *
+ * Re-exported so a component in this folder has one import site, but deliberately NOT a second copy:
+ * two of the outcome codes are acceptances (`""` and `OkColorInUse`) and a panel that re-derived that
+ * rule would be one edit away from disagreeing with the engine. `writeMessage`'s map already covers
+ * `NotFound`, `ValueRequired`, `TooLong` and `OkColorInUse`, which are exactly the four these six
+ * bindings can return and the settings surface cannot.
+ */
+export { isAccepted, writeMessage } from "../../shell/bindings";
+export type { WriteOutcome } from "../../shell/bindings";
+
+/**
+ * One deadline for every write on the dashboard, imported rather than redeclared.
+ *
+ * `call` hands back a Promise and nothing guarantees it settles; a party editor whose Save button
+ * never came back would be indistinguishable from one that had been ignored. The same eight seconds
+ * the settings surface waits - the handlers are field writes under one lock, so the round trip is not
+ * the thing that would take the time.
+ */
+const PARTY_CALL_TIMEOUT_MS = SETTING_CALL_TIMEOUT_MS;
+
+/**
+ * The shared shape of all six: send, wait, and hand back a `WriteOutcome` whatever happens.
+ *
+ * `answered: false` is not an outcome code and is never turned into one - contract rule 5 forbids a
+ * panel reporting a rejection the C# side did not return, and "we never heard back" is a statement
+ * about the bridge, not a verdict about the write. This function decides nothing else: it does not
+ * validate, does not trim and does not read the code it is carrying. Trimming is the caller's job
+ * (the C# validators judge the raw input and deliberately do not trim); judging is the engine's.
+ */
+function requestPartyWrite(
+  label: string,
+  send: () => Promise<Agora.CommandOutcomeName>
+): Promise<WriteOutcome> {
+  return new Promise<WriteOutcome>(function (resolve) {
+    let settled = false;
+
+    function finish(result: WriteOutcome): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    }
+
+    const timer = setTimeout(function () {
+      finish({ answered: false });
+    }, PARTY_CALL_TIMEOUT_MS);
+
+    // The throw guard is for the binding not being registered at all - outside a loaded game the
+    // publishing system may not exist, and that must not escape as an unhandled rejection.
+    try {
+      send().then(
+        function (outcome) {
+          finish({ answered: true, outcome: outcome });
+        },
+        function (error) {
+          console.warn("[AGORA] " + label + " failed on the bridge", error);
+          finish({ answered: false });
+        }
+      );
+    } catch (error) {
+      console.warn("[AGORA] " + label + " could not be sent", error);
+      finish({ answered: false });
+    }
+  });
+}
+
+/**
+ * Rename a party. BOTH fields travel, and that is a requirement rather than a convenience:
+ * `nameLocked` covers `name` AND `shortName`, so a rename that could not also set the short name
+ * would take ownership of the short name and freeze it - flavor is barred from writing it from that
+ * moment and nothing else could.
+ */
+export function requestRename(
+  partyId: string,
+  name: string,
+  shortName: string
+): Promise<WriteOutcome> {
+  return requestPartyWrite("rename", function () {
+    return call<Agora.CommandOutcomeName>("agora.parties", "rename", partyId, name, shortName);
+  });
+}
+
+/** Rewrite a party's blurb. Both fields again: `descriptionLocked` covers the slogan as well. */
+export function requestDescription(
+  partyId: string,
+  description: string,
+  slogan: string
+): Promise<WriteOutcome> {
+  return requestPartyWrite("setDescription", function () {
+    return call<Agora.CommandOutcomeName>(
+      "agora.parties",
+      "setDescription",
+      partyId,
+      description,
+      slogan
+    );
+  });
+}
+
+/**
+ * Recolour a party. "#RRGGBB"; the engine normalises to upper case, so the value that comes back on
+ * the next roster publish may differ in case from what was sent. A colour another party already
+ * wears is ACCEPTED, under `OkColorInUse` - a warning to render, not a refusal.
+ */
+export function requestColor(partyId: string, colorHex: string): Promise<WriteOutcome> {
+  return requestPartyWrite("setColor", function () {
+    return call<Agora.CommandOutcomeName>("agora.parties", "setColor", partyId, colorHex);
+  });
+}
+
+/**
+ * Hand the name and short name back to flavor. The name RE-ROLLS on the spot - unlike the two resets
+ * below, this one has a visible effect immediately.
+ *
+ * A reset on a field that is not locked is a no-op returning `""`. The resets are idempotent and the
+ * panel must not suppress the call to avoid a refusal that does not happen.
+ */
+export function requestResetName(partyId: string): Promise<WriteOutcome> {
+  return requestPartyWrite("resetName", function () {
+    return call<Agora.CommandOutcomeName>("agora.parties", "resetName", partyId);
+  });
+}
+
+/**
+ * Hand the description and slogan back to flavor. The text is left EXACTLY as it stands; flavor
+ * reclaims the field at its next wake, which may be months of sim time away. A promise about the
+ * future, not a visible change, and the copy beside this control has to say so.
+ */
+export function requestResetDescription(partyId: string): Promise<WriteOutcome> {
+  return requestPartyWrite("resetDescription", function () {
+    return call<Agora.CommandOutcomeName>("agora.parties", "resetDescription", partyId);
+  });
+}
+
+/** Hand the colour back to the engine, which reassigns from the tuned palette. */
+export function requestResetColor(partyId: string): Promise<WriteOutcome> {
+  return requestPartyWrite("resetColor", function () {
+    return call<Agora.CommandOutcomeName>("agora.parties", "resetColor", partyId);
+  });
+}
 
 // -- UI-only selection ------------------------------------------------------------------------------
 
