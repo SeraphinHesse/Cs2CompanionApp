@@ -57,7 +57,7 @@ authority; this is the tracker.
 | **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed, **merged to `main`** |
 | **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed), **merged to `main`** · **needs the manual walkthrough** |
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed), **merged to `main`** · **needs the manual walkthrough** |
-| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–F merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, party history strip) · **chunk G in progress on a live worktree, chunk H (coalition relations) not started** |
+| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–G merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, party history strip, mandate scorecard) · **chunk H (coalition relations) in progress** |
 | **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed, merged to `main`** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab, not started |
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 **prose + model lane complete, reviewed, merged to `main`. Popup lane NOT STARTED.** See below. |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), and the drift re-run must repeat after W6 fully lands |
@@ -261,3 +261,15 @@ Run `.\tools\verify-setup.ps1 -Build` for the current state of all build precond
 - A shell opened **before** the toolchain install sees no `CSII_*` variables. `Mod.props` dodges this
   by reading the registry directly; our own scripts check both.
 - Gameface has **no `backdrop-filter`** — panel opacity is the only legibility lever (W1).
+- **`npm run check` is misnamed and checks less than it sounds like it does.** `ui/package.json:8`
+  maps it to `node tools/css-presence.js`, whose standalone entry point
+  (`ui/tools/css-presence.js:158-170`) runs **only the design-token guard**. It does *not* diff CSS
+  class names against the `.tsx` that reference them — `CSSPresencePlugin` is a webpack `hasCSS`
+  injector, not a parity check. **And neither `npm run check` nor `npm run build` typechecks**;
+  webpack is transpile-only. A green `check` + `build` is therefore *not* evidence of either class
+  parity or type safety. Run **`npx tsc --noEmit`** separately, and diff class names by hand in
+  review. Found during W6 chunk G's review, 2026-08-09.
+- **`npm run build` deploys.** It writes into the player's live `…\Mods\Agora.Mod` folder, and
+  `dotnet build Agora.sln` triggers it too once `node_modules` is installed. Use
+  `dotnet build src/Agora.Mod/Agora.Mod.csproj -p:UseCsiiToolchain=false` for a compile check that
+  does not clobber the deployed mod mid-session.

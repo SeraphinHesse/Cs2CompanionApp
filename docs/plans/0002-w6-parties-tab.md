@@ -1827,13 +1827,13 @@ Each chunk is independently landable. **Do D, E, F, G before H** — H is the on
 
 ### Chunk G — mandate scorecard (§15) — no C# at all
 
-- [ ] **G1.** Read `ui/src/panels/News/MandateTracker.tsx` first (§15.1). If what you are about to
+- [x] **G1.** Read `ui/src/panels/News/MandateTracker.tsx` first (§15.1). If what you are about to
       build is a list of mandate rows, stop — that is the tracker, and this is a scorecard.
-- [ ] **G2.** `Parties/bindings.ts`: add `mandates$ = bindValue<Agora.MandateRow[]>("agora.news", "mandates", [])`.
+- [x] **G2.** `Parties/bindings.ts`: add `mandates$ = bindValue<Agora.MandateRow[]>("agora.news", "mandates", [])`.
       No new binding is registered anywhere in C#.
-- [ ] **G3.** `Parties/MandateScorecard.tsx` + scss (§15.4). Delivery rate excludes `Active` and
+- [x] **G3.** `Parties/MandateScorecard.tsx` + scss (§15.4). Delivery rate excludes `Active` and
       `Pending` from the denominator; held mandates get their own line.
-- [ ] **G4.** `ui_bindings.md` §4.5 annotation on the `mandates` row (§15.5).
+- [x] **G4.** `ui_bindings.md` §4.5 annotation on the `mandates` row (§15.5).
 
 ### Chunk H — coalition relations (§16) — **only after H0**
 
