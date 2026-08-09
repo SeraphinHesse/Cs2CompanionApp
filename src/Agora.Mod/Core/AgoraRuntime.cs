@@ -151,13 +151,40 @@ namespace Agora.Mod.Core
         /// this.
         /// </para>
         /// <para>
-        /// Nothing fills it yet — emission, the de-duplication set, the bound, and the per-save clear
-        /// beside the prose block in <see cref="ResetForNewSave"/> all land with the raise path
-        /// (<c>docs/plans/0003-w5-popup-lane.md</c> §5.3). Until then the queue is permanently empty
-        /// and the dashboard publishes <c>[]</c>, which is the value the modal is built against.
+        /// Filled by <see cref="RaiseAlerts"/> once per sim month and by <see cref="RaiseArticleAlerts"/>
+        /// whenever prose lands, bounded by <see cref="AlertQueueMax"/>, de-duplicated through
+        /// <see cref="_raisedAlertIds"/>, and cleared with the prose block in
+        /// <see cref="ResetForNewSave"/> (<c>docs/plans/0003-w5-popup-lane.md</c> §5.3).
         /// </para>
         /// </remarks>
         private static readonly List<NewsAlert> _alerts = new List<NewsAlert>();
+
+        /// <summary>
+        /// Feed-row ids already raised this session. Membership only — never enumerated, so nothing
+        /// downstream can depend on a hash order (non-negotiable #3).
+        /// </summary>
+        /// <remarks>
+        /// This is what stops the same thing interrupting twice. Every raise path re-reads persisted
+        /// state rather than a diff — a party's founding date, a coalition's formed date, an article
+        /// in the payload currently in force — so a second <see cref="CollectProse"/> in the same
+        /// month, a replayed catch-up, or a re-publish would otherwise offer the same card again. The
+        /// set is the mechanism; it is session-scoped for the same reason <see cref="_alerts"/> is,
+        /// and an alert the player already answered before a reload simply never comes back because
+        /// the ring behind it is empty too.
+        /// </remarks>
+        private static readonly HashSet<string> _raisedAlertIds =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// How many unanswered alerts the ring will hold before it starts dropping the oldest.
+        /// </summary>
+        /// <remarks>
+        /// Not a tuning knob: it is a bound on a UI queue, not a political quantity, and
+        /// <c>data/engine_tuning.json</c> is for numbers the engine reasons with. A player who leaves
+        /// the game running through a decade at speed three with <c>ShowAllReports</c> on must not come
+        /// back to an unbounded stack of modals, and eight is already more than anyone will read.
+        /// </remarks>
+        private const int AlertQueueMax = 8;
 
         private static FlavorPayload _flavorPayload;
         private static SimDate? _lastFlavorDate;
@@ -247,6 +274,22 @@ namespace Agora.Mod.Core
         public static EngineTuning Tuning
         {
             get { return _tuning ?? EngineTuning.Default; }
+        }
+
+        /// <summary>
+        /// The save's first political date — January of the per-save start year — or the default date
+        /// before a sidecar has been read.
+        /// </summary>
+        /// <remarks>
+        /// Not a clock read and not a second calendar (non-negotiable #8): the start year is a
+        /// persisted setting and this is the value derived from it once, at load, in
+        /// <see cref="OnSidecarLoaded"/>. Exposed rather than re-derived because the news publisher
+        /// needs the same date for the opening-roster exclusion on party rows, and two derivations of
+        /// one fact is how they come to disagree.
+        /// </remarks>
+        public static SimDate StartDate
+        {
+            get { return _startDate; }
         }
 
         /// <summary>The engine's view of the city. Null before <see cref="Attach"/>.</summary>
@@ -586,6 +629,13 @@ namespace Agora.Mod.Core
                 _lastAttemptDate = null;
                 _pendingWake = false;
                 _lastFlavorState = FlavorProviderState.Idle;
+
+                // Same block, same bug class, and it lands in the same commit as the emission rather
+                // than after it: a queue of city A's alerts popping over city B is precisely the shape
+                // of the three carry-overs this method exists for. The ring is never persisted, so a
+                // reload is already clean; this is the quit-to-menu path, where the statics survive.
+                _alerts.Clear();
+                _raisedAlertIds.Clear();
 
                 // City B's party ids are not city A's, but an id that collided would arrive here
                 // already marked provisional and let a stopgap name be overwritten in a save that
@@ -1655,6 +1705,335 @@ namespace Agora.Mod.Core
             }
 
             MaybeWakeFlavor(today, snapshot, tick);
+
+            // Last, and beside the wake for the same reason: both are one-shot consequences of a tick
+            // that has already been stored. Article alerts are not raised here — they are raised from
+            // CollectProse, which also runs from Tick when a background generation lands mid-month.
+            RaiseAlerts(today, tick);
+        }
+
+        /// <summary>
+        /// Turns what this tick did into the interruptions the player is owed, once
+        /// (<c>docs/plans/0003-w5-popup-lane.md</c> §5.1–5.2).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Here and not in the projection.</b> The projection is a view, rebuilt from scratch on
+        /// every publish; an alert is an event and happens once. Deriving the queue over there would
+        /// re-raise everything on every republish, which is the bug <see cref="_raisedAlertIds"/> and
+        /// this method's placement exist to prevent between them.
+        /// </para>
+        /// <para>
+        /// Each block reads a dated fact the engine has already persisted and compares it to
+        /// <paramref name="today"/> — the date the tick was handed, never one computed here
+        /// (non-negotiable #8). Nothing model-authored enters an alert on this path; the only prose
+        /// that ever does is the validated article body, through
+        /// <see cref="RaiseArticleAlerts"/> (non-negotiable #1).
+        /// </para>
+        /// <para>
+        /// The order below is the order the cards come up in, and it is fixed: the result of the
+        /// ballot, then who is governing because of it, then who joined or left the field, then what
+        /// happened to the city. No collection with an undefined enumeration order is walked
+        /// (non-negotiable #3) — <c>FiredEvents</c> arrives sorted from the scheduler and
+        /// <see cref="PartyLifecycleChanges.Collect"/> returns a total order of its own.
+        /// </para>
+        /// </remarks>
+        private static void RaiseAlerts(SimDate today, EngineTickResult tick)
+        {
+            if (_state == null) return;
+
+            if (tick.Election != null)
+            {
+                Enqueue(new NewsAlert
+                {
+                    Id = "election:" + tick.Election.Id,
+                    Kind = "Election",
+                    Date = today,
+                    Headline = tick.Election.IsSnapElection ? "Snap election held" : "Election held",
+                    Summary = "Turnout " + tick.Election.Turnout.ToString("P1") + " across " +
+                              tick.Election.TotalSeats + " seats.",
+                    Major = true
+                });
+            }
+
+            RaiseCoalitionAlerts(today);
+            RaisePartyAlerts(today);
+            RaiseEventAlerts(tick);
+        }
+
+        /// <summary>
+        /// A government that took office, or one that fell, on this tick's date.
+        /// </summary>
+        /// <remarks>
+        /// The <c>":formed"</c> suffix is not decoration: <c>AgoraUiProjection.BuildFeed</c> keys the
+        /// formation row on it and the ending row on the bare id, so an alert missing it points the
+        /// player at the wrong row — the coalition's death instead of its birth.
+        /// </remarks>
+        private static void RaiseCoalitionAlerts(SimDate today)
+        {
+            Coalition government = _state.Government;
+            if (government != null && government.Status != CoalitionStatus.Negotiating &&
+                government.FormedDate == today)
+            {
+                Enqueue(new NewsAlert
+                {
+                    Id = "coalition:" + government.Id + ":formed",
+                    Kind = "Coalition",
+                    Date = today,
+                    Headline = string.IsNullOrEmpty(government.ElectionId)
+                        ? "New government formed mid-term"
+                        : "New government takes office",
+                    Summary = "The city has a new government. The News tab has who is in it.",
+                    PartyId = government.LeadPartyId,
+                    Major = true
+                });
+            }
+
+            // A list in the engine's own append order, not a dictionary. The date test does the
+            // filtering, so a long history costs a comparison per entry and raises nothing.
+            for (int i = 0; i < _state.CoalitionHistory.Count; i++)
+            {
+                Coalition ended = _state.CoalitionHistory[i];
+                if (ended == null || !ended.EndedDate.HasValue) continue;
+                if (ended.EndedDate.Value != today) continue;
+
+                Enqueue(new NewsAlert
+                {
+                    Id = "coalition:" + ended.Id,
+                    Kind = "Coalition",
+                    Date = today,
+                    Headline = ended.Status == CoalitionStatus.Collapsed
+                        ? "Government collapsed"
+                        : "Government's term ended",
+                    Summary = CollapseReasonSentence(ended.CollapseReason),
+                    PartyId = ended.LeadPartyId,
+                    Major = true
+                });
+            }
+        }
+
+        /// <summary>A brand that entered or left the field on this tick's date.</summary>
+        /// <remarks>
+        /// The same <see cref="PartyLifecycleChanges.Collect"/> the feed row uses, so an alert and the
+        /// row it points at can never disagree about which parties turned — including the
+        /// opening-roster exclusion, without which a new save's first tick would announce the founding
+        /// of the entire field.
+        /// </remarks>
+        private static void RaisePartyAlerts(SimDate today)
+        {
+            PartyLifecycleChangeSet lifecycle = PartyLifecycleChanges.Collect(_state.Parties, _startDate);
+
+            // The log the feed builder deliberately does not write. It is a view, rebuilt on every
+            // publish, so a warning there would repeat for the rest of the save; this runs once per sim
+            // month, and the dedupe set narrows that to once per occurrence. The set is shared with the
+            // alerts under a prefix no feed-row id uses, rather than a second set that would then need
+            // a second line in ResetForNewSave to stay honest.
+            for (int i = 0; i < lifecycle.SuppressedDates.Count; i++)
+            {
+                SimDate suppressed = lifecycle.SuppressedDates[i];
+                if (!_raisedAlertIds.Add("suppressed-lifecycle:" + suppressed)) continue;
+
+                AgoraMod.Log.Warn("Agora: more than " + PartyLifecycleChanges.MaxPerDate +
+                                  " party lifecycle changes are dated " + suppressed +
+                                  "; none is reported, in the news feed or as an alert. That date " +
+                                  "reads as a registry regeneration rather than as politics.");
+            }
+
+            for (int i = 0; i < lifecycle.Records.Count; i++)
+            {
+                PartyLifecycleRecord change = lifecycle.Records[i];
+                if (change.Date != today) continue;
+
+                bool founded = change.Kind == PartyLifecycleKind.Founded;
+
+                Enqueue(new NewsAlert
+                {
+                    // Merged and Dissolved share the ":dissolved" suffix, as the feed row does: one
+                    // thing from the reader's point of view — the brand leaving the ballot.
+                    Id = "party:" + change.PartyId + (founded ? ":founded" : ":dissolved"),
+                    Kind = "Party",
+                    Date = today,
+                    Headline = founded
+                        ? "New party founded"
+                        : change.Kind == PartyLifecycleKind.Merged
+                            ? "Party absorbed into another"
+                            : "Party dissolved",
+                    Summary = founded
+                        ? "A new party has entered the field."
+                        : change.Kind == PartyLifecycleKind.Merged
+                            ? "Its members and its seats pass to the party that took it in."
+                            : "It fell below the threshold once too often and leaves the ballot.",
+                    PartyId = change.PartyId,
+                    Major = true
+                });
+            }
+        }
+
+        /// <summary>Events that fired this tick and cleared the severity gate.</summary>
+        /// <remarks>
+        /// <b>The threshold is read, never written down here.</b>
+        /// <c>CatalogTuning.MajorSeverityThreshold</c> (<c>src/Agora.Core/Tuning/EngineTuning.cs:844</c>,
+        /// loaded from <c>data/engine_tuning.json</c>) is the same number
+        /// <c>EventScheduler.IsMajor</c> (<c>src/Agora.Core/Events/Scheduler/EventScheduler.cs:378</c>)
+        /// and <c>CoalitionStability</c> already decide "major" by. A literal here would be a second,
+        /// eventually disagreeing, definition of a serious event inside one build — so there is no
+        /// literal, and moving the number moves all three at once.
+        /// <para>
+        /// The feed itself is not filtered: it is an archive and shows every fired event at every
+        /// severity. The popup is an interruption and does not have the same admission policy.
+        /// </para>
+        /// </remarks>
+        private static void RaiseEventAlerts(EngineTickResult tick)
+        {
+            int threshold = Tuning.Catalog.MajorSeverityThreshold;
+
+            for (int i = 0; i < tick.FiredEvents.Count; i++)
+            {
+                TimelineEvent ev = tick.FiredEvents[i];
+                if (ev == null || string.IsNullOrEmpty(ev.Id)) continue;
+                if (ev.Severity < threshold) continue;
+
+                Enqueue(new NewsAlert
+                {
+                    Id = "event:" + ev.Id,
+                    Kind = "Event",
+                    Date = ev.FiredDate ?? _state.Date,
+                    Headline = ev.Title,
+                    Summary = ev.HeadlineBrief ?? "",
+                    Severity = ev.Severity,
+                    EventId = ev.Id,
+                    Major = true
+                });
+            }
+        }
+
+        /// <summary>
+        /// The month's prose, when the player asked to see all of it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Never major</b>, whatever the setting says. An ordinary month's press must not stop the
+        /// clock even for a player who asked to be shown everything, or a yearly wake with four pieces
+        /// in it becomes four consecutive forced pauses.
+        /// </para>
+        /// <para>
+        /// <b>Gated at emit time</b> (§5.4). <c>ShowAllReports</c> is read here, once, against the
+        /// settings as they stood when the prose landed: turning it off later does not retroactively
+        /// empty the ring, and turning it on does not retroactively fill it with last month's.
+        /// </para>
+        /// <para>
+        /// The id is the bare <see cref="Article.Id"/>, not a prefixed one — that is the key both the
+        /// feed row and the <c>agora.news.article</c> map are keyed on, and the modal passes it
+        /// straight to the map to fetch the body. Prefixing it would fetch nothing.
+        /// </para>
+        /// <para>
+        /// The headline and the summary here are model-authored prose that
+        /// <see cref="FlavorValidator"/> has already passed. They are text and stay text: no number on
+        /// this alert comes from the payload (non-negotiable #1).
+        /// </para>
+        /// </remarks>
+        private static void RaiseArticleAlerts(FlavorPayload payload)
+        {
+            if (payload == null) return;
+            if (_saveSettings == null || !_saveSettings.ShowAllReports) return;
+
+            for (int i = 0; i < payload.Articles.Count; i++)
+            {
+                Article article = payload.Articles[i];
+                if (article == null || string.IsNullOrEmpty(article.Id)) continue;
+
+                Enqueue(new NewsAlert
+                {
+                    Id = article.Id,
+                    Kind = "Article",
+                    Date = payload.GeneratedAt,
+                    Headline = article.Headline,
+                    Summary = FirstLine(article.Body),
+                    OutletName = article.Outlet ?? "",
+                    PartyId = article.PartyId ?? "",
+                    DistrictId = article.DistrictId ?? "",
+                    EventId = article.EventId ?? "",
+                    Major = false,
+                    HasArticle = true
+                });
+            }
+        }
+
+        /// <summary>
+        /// The opening sentence of a body, for a card that shows one line of it.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately the same rule as <c>AgoraUiProjection.FirstLine</c>, so an alert and the feed
+        /// row it points at open with the same words. Kept as its own copy rather than shared, because
+        /// the alternative is this file taking a dependency on <c>Agora.Mod.UiBindings</c> — the
+        /// publisher layer reads the runtime, and it must not start working the other way round for a
+        /// four-line string helper. Change one and change the other.
+        /// </remarks>
+        private static string FirstLine(string body)
+        {
+            if (string.IsNullOrEmpty(body)) return "";
+
+            int stop = body.IndexOf('.');
+            if (stop > 0 && stop + 1 < body.Length) return body.Substring(0, stop + 1);
+            return body.Length <= 160 ? body : body.Substring(0, 160);
+        }
+
+        /// <summary>
+        /// Plain English for a collapse. No enum member name may reach the player, and
+        /// <c>CollapseReason.ToString()</c> would put <c>"PartnerWithdrawal."</c> in front of one.
+        /// </summary>
+        /// <remarks>
+        /// A switch with a default rather than a lookup table, so a member added to
+        /// <see cref="CoalitionCollapseReason"/> cannot leak its own name while nobody is looking: the
+        /// worst an unmapped reason can do is say nothing.
+        /// </remarks>
+        internal static string CollapseReasonSentence(CoalitionCollapseReason reason)
+        {
+            switch (reason)
+            {
+                case CoalitionCollapseReason.StabilityDecay:
+                    return "It had been losing its grip for months.";
+                case CoalitionCollapseReason.MandateFailure:
+                    return "Too many of its promises were abandoned.";
+                case CoalitionCollapseReason.EventShock:
+                    return "It did not survive the crisis.";
+                case CoalitionCollapseReason.IdeologicalDrift:
+                    return "Its partners had drifted too far apart to govern together.";
+                case CoalitionCollapseReason.PartnerWithdrawal:
+                    return "A partner walked out and took the majority with it.";
+                default:
+                    return "";
+            }
+        }
+
+        /// <summary>
+        /// Puts one alert on the ring, if it is new and the ring will have it.
+        /// </summary>
+        /// <remarks>
+        /// The dedupe set is consulted before the bound, and is never rolled back by a drop: an alert
+        /// pushed off the front has already been superseded by eight newer ones and re-offering it
+        /// later would be worse than losing it.
+        /// </remarks>
+        private static void Enqueue(NewsAlert alert)
+        {
+            if (alert == null || string.IsNullOrEmpty(alert.Id)) return;
+            if (!_raisedAlertIds.Add(alert.Id)) return;
+
+            _alerts.Add(alert);
+
+            while (_alerts.Count > AlertQueueMax)
+            {
+                NewsAlert dropped = _alerts[0];
+                _alerts.RemoveAt(0);
+
+                AgoraMod.Log.Info("Agora: the alert queue is full at " + AlertQueueMax +
+                                  "; dropped the oldest unanswered card (" + dropped.Id +
+                                  "). It stays in the News tab.");
+            }
+
+            // The publishers republish on this and on nothing else, so an alert raised without it
+            // would sit in the ring until some unrelated change happened to move the version.
+            _stateVersion++;
         }
 
         /// <summary>
@@ -1949,6 +2328,10 @@ namespace Agora.Mod.Core
 
                     _state.LastFlavorDate = today;
                 }
+
+                // Here and not in OnMonth: this method also runs from Tick, so a CLI document that
+                // lands on day twelve would otherwise produce a feed the player is never told about.
+                RaiseArticleAlerts(payload);
             }
             finally
             {

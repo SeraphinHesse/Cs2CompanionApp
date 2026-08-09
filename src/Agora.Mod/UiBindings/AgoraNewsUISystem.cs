@@ -79,8 +79,9 @@ namespace Agora.Mod.UiBindings
         {
             var state = AgoraRuntime.State;
 
-            _feed.Update(AgoraUiProjection.BuildFeed(state, AgoraRuntime.Prose,
-                                                     AgoraUiProjection.SaveStartDate(state)));
+            // The runtime's own start date, not a second derivation of it: the alert path and the feed
+            // must agree about which parties the opening roster was minted with.
+            _feed.Update(AgoraUiProjection.BuildFeed(state, AgoraRuntime.Prose, AgoraRuntime.StartDate));
             _events.Update(AgoraUiProjection.BuildEvents(state));
             _mandates.Update(AgoraUiProjection.BuildMandates(state));
             _flavorStatus.Update(AgoraUiProjection.BuildFlavorStatus(state));

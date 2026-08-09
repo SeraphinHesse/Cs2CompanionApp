@@ -858,9 +858,9 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 #### C2 — the severity gate *(blocked on §0.1)*
 
-- [ ] **11.** Add `major` to the alert construction, reading
+- [x] **11.** Add `major` to the alert construction, reading
       `AgoraRuntime.Tuning.Catalog.MajorSeverityThreshold`. **No literal `3`, no literal `4`, anywhere.**
-- [ ] **12.** A comment at the comparison naming `EngineTuning.cs:844` and `EventScheduler.cs:378` as
+- [x] **12.** A comment at the comparison naming `EngineTuning.cs:844` and `EventScheduler.cs:378` as
       the other two consumers of the same number, so the next reader knows it is shared.
 
 #### C3 — coalition formed (§4.2)
@@ -881,12 +881,12 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 #### C5 — the ring and real emission (§5)
 
-- [ ] **18.** `NewsAlert`, `_alerts`, `_raisedAlertIds`, the `Alerts` getter, `AckAlert` (§8.4).
-- [ ] **19.** **The clears in `ResetForNewSave` (`AgoraRuntime.cs:535`), in the prose block at `:554`.**
+- [x] **18.** `NewsAlert`, `_alerts`, `_raisedAlertIds`, the `Alerts` getter, `AckAlert` (§8.4).
+- [x] **19.** **The clears in `ResetForNewSave` (`AgoraRuntime.cs:535`), in the prose block at `:554`.**
       Not last, not optional — this is the W0 bug class.
-- [ ] **20.** `RaiseAlerts` from `OnMonth`; the article raise from `CollectProse` (§5.1). Read
+- [x] **20.** `RaiseAlerts` from `OnMonth`; the article raise from `CollectProse` (§5.1). Read
       `ShowAllReports` at emit time (§5.4). Cap at 8, log on drop.
-- [ ] **21.** Build + test. Both green.
+- [x] **21.** Build + test. Both green.
 
 ---
 

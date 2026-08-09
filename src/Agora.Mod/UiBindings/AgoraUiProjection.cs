@@ -1234,8 +1234,10 @@ namespace Agora.Mod.UiBindings
         /// 120-word bodies attached would be the largest thing crossing the bridge, every month.
         /// </remarks>
         /// <param name="startDate">
-        /// The save's first political date, for the opening-roster exclusion on party rows
-        /// (<see cref="SaveStartDate"/>).
+        /// The save's first political date, for the opening-roster exclusion on party rows —
+        /// <c>AgoraRuntime.StartDate</c>, which derives it once at load from the persisted start year.
+        /// Every party the initial registry is minted with carries that date as its founding date, so
+        /// without it a new save's first publish would announce the founding of the entire field.
         /// </param>
         internal static List<NewsHeadlinePayload> BuildFeed(PoliticalState state, FlavorPayload prose,
                                                             SimDate startDate)
@@ -1317,9 +1319,10 @@ namespace Agora.Mod.UiBindings
                         Headline = coalition.Status == CoalitionStatus.Collapsed
                             ? "Government collapsed"
                             : "Government's term ended",
-                        Summary = coalition.CollapseReason == CoalitionCollapseReason.None
-                            ? ""
-                            : "Reason: " + coalition.CollapseReason + ".",
+                        // Not the enum's own name. AgoraRuntime.CollapseReasonSentence maps every
+                        // member to a sentence, because "Reason: PartnerWithdrawal." is C# leaking
+                        // into the player's news, and the same map is what the alert card shows.
+                        Summary = AgoraRuntime.CollapseReasonSentence(coalition.CollapseReason),
                         PartyId = coalition.LeadPartyId,
                         HasArticle = false
                     });
@@ -1430,30 +1433,6 @@ namespace Agora.Mod.UiBindings
                 PartyId = coalition.LeadPartyId,
                 HasArticle = false
             });
-        }
-
-        /// <summary>
-        /// The save's first political date — January of the per-save start year.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Not a clock read and not a second calendar (non-negotiable #8): the start year is a
-        /// persisted setting, and this is the same derivation <c>AgoraRuntime</c> performs once at
-        /// load to fill the start date it hands the engine. It is mirrored here rather than exposed
-        /// from the runtime so that the news publisher passes an argument instead of reaching into a
-        /// static from inside a loop, which is the convention every other builder here follows.
-        /// </para>
-        /// <para>
-        /// Its only consumer is the opening-roster exclusion on party rows. Every party the initial
-        /// registry is minted with carries the date the registry was handed, so without this a new
-        /// save's first publish would announce the founding of the entire field.
-        /// </para>
-        /// </remarks>
-        internal static SimDate SaveStartDate(PoliticalState state)
-        {
-            // Fully qualified: Agora.Mod.Core has a settings type of the same simple name.
-            Agora.Core.Contracts.AgoraSettings settings = state != null ? state.Settings : null;
-            return settings != null ? new SimDate(settings.StartYear, 1, 1) : default(SimDate);
         }
 
         private static int CompareFeedRows(NewsHeadlinePayload a, NewsHeadlinePayload b)
