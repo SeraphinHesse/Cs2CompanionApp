@@ -2,13 +2,14 @@
 
 **Current milestone:** M6 · The Spectacle (in progress) — with a **fix-plan pass** (`fixplan.md`)
 running ahead of it against defects found in the first real play session.
-**Updated:** 2026-08-08
+**Updated:** 2026-08-09
 
-> This file was stale by several milestones until 2026-08-08. It had been left reading
-> "M0 · Bootstrap, in-game verification pending" long after the mod was deployed, loading, ticking
-> and rendering. Statuses below are keyed to artifacts that exist in the tree; where a milestone's
-> **gate** has not been formally re-walked since the code landed, it says so rather than claiming a
-> pass.
+> This file was stale by several milestones until 2026-08-08, and this pass refreshes it again for
+> everything that landed on `main` since: W3's fixed/re-reviewed defects, W4 lanes A–C, W5's
+> prose+model lane, the backlog, and W6 chunks A–F. Statuses below are keyed to artifacts that exist
+> in the tree; where a milestone's **gate** has not been formally re-walked since the code landed, it
+> says so rather than claiming a pass. **W6 chunk G is in progress on a live worktree as of this
+> update** — the W6 row and the M6 milestone row will need one more pass once it and chunk H land.
 
 ---
 
@@ -30,13 +31,14 @@ elections, government, flavor and effects layers are all implemented in `Agora.C
 | **M5 · The World** | ✅ effect palette + dispatcher + resolver + schedule + validation; `Agora.Mod/Effects` ledger and application system; `data/timeline_eu.json`, `timeline_na.json`, `timeline_global.json` | ⚠️ 1990→2008 run not re-walked |
 | **M6 · The Spectacle** | 🟡 partial — crosstab explorer, mandate tracker, news archive present; **political map overlay and election-night broadcast mode not built** | ⬜ |
 
-**Test suite.** `tests/Agora.Core.Tests` now carries 25 test files and 1033 tests, spanning
-determinism, blocs, affinity, turnout, polling, indices, both electoral systems, coalitions,
-mandates, factions, party lifecycle, the effect palette and application, the per-save reset seam,
-the scheduler, sim-clock math, start-year planning, the shipped timeline/tuning catalogs, and the
-LLM response path — the CLI reader, the prompt builder, and the schema/numeric validation that
-enforces non-negotiable #1. It still runs with **no copy of the game installed** — that constraint
-is the test that the Core/Mod split is real.
+**Test suite.** `tests/Agora.Core.Tests` is at **1221 tests** as of the last merge to `main`
+(`42d4f31`), up from 1033 at the start of this pass, spanning determinism, blocs, affinity, turnout,
+polling, indices, both electoral systems, coalitions, mandates, factions, party lifecycle, the
+effect palette and application, the per-save reset seam, the scheduler, sim-clock math, start-year
+planning, the shipped timeline/tuning catalogs, party identity locks, and the LLM response path —
+the CLI reader, the prompt builder, and the schema/numeric validation that enforces
+non-negotiable #1. It still runs with **no copy of the game installed** — that constraint is the
+test that the Core/Mod split is real.
 
 Build: `dotnet build Agora.sln` · UI: `cd ui && npm run build` ·
 Test: `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj`
@@ -51,14 +53,14 @@ authority; this is the tracker.
 
 | WS | What | Phase | Status |
 |---|---|---|---|
-| **W0** | Per-save reset seam — three layers retain the previous city's state across a main-menu round trip. The only *data-corrupting* bug of the seven. | 1 | ✅ code complete, review passed · **ECS half needs the manual walkthrough** |
-| **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed |
-| **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed) · **needs the manual walkthrough** |
-| **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed) · **needs the manual walkthrough** |
-| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | ⬜ |
-| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab |
-| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 **prose + model lane complete, reviewed, committed. Popup lane NOT STARTED.** See below. |
-| — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, committed** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **2 owner decisions raised**, and the drift re-run must repeat after W4/W6 |
+| **W0** | Per-save reset seam — three layers retain the previous city's state across a main-menu round trip. The only *data-corrupting* bug of the seven. | 1 | ✅ code complete, review passed, **merged to `main`** · **ECS half needs the manual walkthrough** |
+| **W1** | Readability — four panels each declare their own opacity, lowest 0.62. Shared `_tokens.scss`. | 2 | ✅ code complete, review passed, **merged to `main`** |
+| **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed), **merged to `main`** · **needs the manual walkthrough** |
+| **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed), **merged to `main`** · **needs the manual walkthrough** |
+| **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–F merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, party history strip) · **chunk G in progress on a live worktree, chunk H (coalition relations) not started** |
+| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed, merged to `main`** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab, not started |
+| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 **prose + model lane complete, reviewed, merged to `main`. Popup lane NOT STARTED.** See below. |
+| — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), and the drift re-run must repeat after W6 fully lands |
 
 ### W5 — what shipped, and what did not
 
@@ -118,9 +120,20 @@ the envelope unwrap) · `npx tsc --noEmit` and `npm run check` clean. Four items
   fixed. **This must be re-run after W4 and W6 merge** — the plan is right that adding bindings is
   when drift appears, and neither workstream was in the tree for this pass.
 
-Two owner decisions came out of it, both recorded in `fixplan.md` § "Decisions for the owner":
-five `NewsArticle` wire fields with no engine source, and whether the Crosstab's Turnout mode should
-exist now that its copy admits it is a single district-wide number.
+Two owner decisions came out of it, both recorded in `fixplan.md` § "Decisions for the owner", and
+**both are now resolved (2026-08-09):**
+
+- **`NewsArticle` wire fields with no engine source** — `byline` and `tags` were the two that were
+  never populated by any layer (`""` and `[]` on every article, permanently) and are now **struck**
+  from the payload, the TS type, `ArticleReader`, and the contract doc. The other three id fields
+  (`refs` → `EventId`/`DistrictId`/`PartyId`) were kept and populated; they were already
+  catalog-validated and in active use.
+- **Crosstab's Turnout mode** — **struck.** Both the coder and reviewer who built it found it
+  rendered fifteen visually identical tints with real data, conveying no information. Turnout is
+  already readable in two other places that are unaffected by this: the district list row text
+  (`DistrictList.tsx`) and the district detail Conditions meter + no-data fallback line
+  (`DistrictDetail.tsx`). Routed to whichever lane owns `Crosstab.tsx` to remove the mode from the
+  selector and its related state, reviewed like any other change.
 
 ## W4 — player-owned party identity
 
