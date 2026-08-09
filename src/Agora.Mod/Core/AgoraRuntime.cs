@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using Agora.Core.Contracts;
 using Agora.Core.Engine;
@@ -160,10 +161,11 @@ namespace Agora.Mod.Core
         private static readonly List<NewsAlert> _alerts = new List<NewsAlert>();
 
         /// <summary>
-        /// Feed-row ids already raised this session. Membership only — never enumerated, so nothing
-        /// downstream can depend on a hash order (non-negotiable #3).
+        /// Keys of the alerts already raised this session, <c>Kind + "|" + Id</c>. Membership only —
+        /// never enumerated, so nothing downstream can depend on a hash order (non-negotiable #3).
         /// </summary>
         /// <remarks>
+        /// <para>
         /// This is what stops the same thing interrupting twice. Every raise path re-reads persisted
         /// state rather than a diff — a party's founding date, a coalition's formed date, an article
         /// in the payload currently in force — so a second <see cref="CollectProse"/> in the same
@@ -171,6 +173,17 @@ namespace Agora.Mod.Core
         /// set is the mechanism; it is session-scoped for the same reason <see cref="_alerts"/> is,
         /// and an alert the player already answered before a reload simply never comes back because
         /// the ring behind it is empty too.
+        /// </para>
+        /// <para>
+        /// <b>Why the key is compound.</b> Every kind but an article carries an engine-written prefix,
+        /// but an article's id is the bare, model-authored <c>Article.Id</c> — and
+        /// <see cref="FlavorValidator"/> only asks that it be non-empty and unique inside its own
+        /// payload. A model returning <c>"event:flood-2031"</c> would otherwise land on the same key as
+        /// the real event alert and suppress whichever came second. Adversarial rather than likely, but
+        /// it is model output deciding which cards a player sees (non-negotiable #1), and the kind
+        /// separates the namespaces for the cost of one concatenation. The payload's own <c>Id</c>
+        /// stays bare, because that is what the feed row and <c>agora.news.article</c> are keyed on.
+        /// </para>
         /// </remarks>
         private static readonly HashSet<string> _raisedAlertIds =
             new HashSet<string>(StringComparer.Ordinal);
@@ -1731,10 +1744,13 @@ namespace Agora.Mod.Core
         /// <see cref="RaiseArticleAlerts"/> (non-negotiable #1).
         /// </para>
         /// <para>
-        /// The order below is the order the cards come up in, and it is fixed: the result of the
-        /// ballot, then who is governing because of it, then who joined or left the field, then what
-        /// happened to the city. No collection with an undefined enumeration order is walked
-        /// (non-negotiable #3) — <c>FiredEvents</c> arrives sorted from the scheduler and
+        /// The order below is fixed: the result of the ballot, then who is governing because of it,
+        /// then who joined or left the field, then what happened to the city. It is not the whole
+        /// order the player sees, though — <see cref="CollectProse"/> runs earlier in the same month
+        /// and, with <c>ShowAllReports</c> on, has already enqueued that month's articles ahead of
+        /// all of these. Deliberate: the ring drops from the front, so a month that overflows loses
+        /// the press before it loses the ballot. No collection with an undefined enumeration order is
+        /// walked (non-negotiable #3) — <c>FiredEvents</c> arrives sorted from the scheduler and
         /// <see cref="PartyLifecycleChanges.Collect"/> returns a total order of its own.
         /// </para>
         /// </remarks>
@@ -1750,8 +1766,15 @@ namespace Agora.Mod.Core
                     Kind = "Election",
                     Date = today,
                     Headline = tick.Election.IsSnapElection ? "Snap election held" : "Election held",
-                    Summary = "Turnout " + tick.Election.Turnout.ToString("P1") + " across " +
-                              tick.Election.TotalSeats + " seats.",
+                    // Whole percent, away from zero, invariant — character for character what
+                    // AgoraUiProjection.Percent renders on the feed row this card points at. A
+                    // card reading "46.8%" beside a row reading "47%" is two answers about one
+                    // ballot, and "P1" would additionally say "46,8 %" under de-DE.
+                    Summary = "Turnout " +
+                              ((int)Math.Round(tick.Election.Turnout * 100.0,
+                                  MidpointRounding.AwayFromZero))
+                                  .ToString(CultureInfo.InvariantCulture) +
+                              "% across " + tick.Election.TotalSeats + " seats.",
                     Major = true
                 });
             }
@@ -1826,12 +1849,13 @@ namespace Agora.Mod.Core
             // The log the feed builder deliberately does not write. It is a view, rebuilt on every
             // publish, so a warning there would repeat for the rest of the save; this runs once per sim
             // month, and the dedupe set narrows that to once per occurrence. The set is shared with the
-            // alerts under a prefix no feed-row id uses, rather than a second set that would then need
-            // a second line in ResetForNewSave to stay honest.
+            // alerts, under the same Kind + "|" + Id key every other entry uses — "suppressed-lifecycle"
+            // is a kind no alert has — rather than a second set that would then need a second line in
+            // ResetForNewSave to stay honest.
             for (int i = 0; i < lifecycle.SuppressedDates.Count; i++)
             {
                 SimDate suppressed = lifecycle.SuppressedDates[i];
-                if (!_raisedAlertIds.Add("suppressed-lifecycle:" + suppressed)) continue;
+                if (!_raisedAlertIds.Add("suppressed-lifecycle|" + suppressed)) continue;
 
                 AgoraMod.Log.Warn("Agora: every party in existence on " + suppressed +
                                   " was founded on that date, so it reads as a whole-roster " +
@@ -2017,7 +2041,12 @@ namespace Agora.Mod.Core
         private static void Enqueue(NewsAlert alert)
         {
             if (alert == null || string.IsNullOrEmpty(alert.Id)) return;
-            if (!_raisedAlertIds.Add(alert.Id)) return;
+
+            // Keyed on the kind as well as the id: an article's id is model-authored and every other
+            // kind's is engine-minted, so without the kind an article calling itself "event:flood-2031"
+            // would take the real event's key and silently swallow the card (non-negotiable #1). The
+            // alert's own Id stays bare — it is what the feed row and the article map are keyed on.
+            if (!_raisedAlertIds.Add(alert.Kind + "|" + alert.Id)) return;
 
             _alerts.Add(alert);
 

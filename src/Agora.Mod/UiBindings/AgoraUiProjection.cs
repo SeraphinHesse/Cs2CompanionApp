@@ -1358,7 +1358,7 @@ namespace Agora.Mod.UiBindings
                 // of the save rather than reporting an event once. The one-shot log belongs on the
                 // emission path, which runs once per sim month — and now lives there:
                 // AgoraRuntime.RaisePartyAlerts logs it, keyed into _raisedAlertIds under a
-                // "suppressed-lifecycle:" prefix so it fires once per occurrence. This comment says
+                // "suppressed-lifecycle|" kind segment so it fires once per occurrence. This comment says
                 // "no log HERE", not "no log anywhere"; do not read the two as contradicting.
                 for (int i = 0; i < lifecycle.Records.Count; i++)
                 {
@@ -1651,6 +1651,15 @@ namespace Agora.Mod.UiBindings
             return copy;
         }
 
+        /// <summary>
+        /// First line of an article body, for a one-line preview.
+        /// </summary>
+        /// <remarks>
+        /// Byte-identical to <c>AgoraRuntime.FirstLine</c>, deliberately. Sharing it would make
+        /// Agora.Mod.Core depend on Agora.Mod.UiBindings, inverting the layering for a string
+        /// truncation helper, and a drift here changes how long a preview line is rather than any
+        /// decision. Change one, change the other.
+        /// </remarks>
         private static string FirstLine(string body)
         {
             if (string.IsNullOrEmpty(body)) return "";

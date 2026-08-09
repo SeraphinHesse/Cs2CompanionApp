@@ -4409,7 +4409,15 @@ declare namespace Agora {
    * `headline`, `summary` and `outletName` are FLAVOR.
    */
   interface NewsAlert {
-    /** The feed-row id: "article:…", "event:…", "election:…", "coalition:…", "party:…:founded". */
+    /**
+     * The feed-row id this alert points at, and the ack key.
+     *
+     * Prefixed for every kind — `"event:…"`, `"election:…"`, `"coalition:…"` (ending) and
+     * `"coalition:…:formed"`, `"party:…:founded"` / `":dissolved"` — **except an article, which is
+     * the bare article id with no prefix.** An article id is also the `agora.news.article` map key,
+     * so `useMapValue(article$, alert.id)` resolves the body directly off this field. Prefixing it
+     * would return an empty payload rather than throwing, i.e. a blank masthead with no error.
+     */
     id: IdString;
     kind: NewsAlertKindName;
     date: SimDateString;

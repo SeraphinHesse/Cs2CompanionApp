@@ -24,9 +24,23 @@ namespace Agora.Mod.Core
     public sealed class NewsAlert
     {
         /// <summary>
-        /// The feed-row id this points at: <c>"article:&lt;id&gt;"</c>, <c>"event:&lt;id&gt;"</c>,
-        /// <c>"election:&lt;id&gt;"</c>, <c>"coalition:&lt;id&gt;"</c> or
-        /// <c>"party:&lt;id&gt;:founded"</c> / <c>":dissolved"</c>. Also the ack key.
+        /// The feed-row id this points at, and the ack key.
+        /// <para>
+        /// Every kind is prefixed — <c>"event:&lt;id&gt;"</c>, <c>"election:&lt;id&gt;"</c>,
+        /// <c>"coalition:&lt;id&gt;"</c> for an ending and <c>"coalition:&lt;id&gt;:formed"</c> for a
+        /// formation, <c>"party:&lt;id&gt;:founded"</c> / <c>":dissolved"</c> — <b>except an article,
+        /// which carries the BARE <c>Article.Id</c> with no prefix at all.</b>
+        /// </para>
+        /// <para>
+        /// That asymmetry is deliberate and load-bearing. An article id is simultaneously the
+        /// <c>agora.news.article</c> map key, so the modal fetches the body with
+        /// <c>useMapValue(article$, id)</c> using this very string; it is what
+        /// <c>AgoraUiProjection.BuildFeed</c> keys the article row on and what <c>BuildArticle</c>
+        /// looks up. Prefixing it would break both, and would break them <b>silently</b> —
+        /// <c>BuildArticle</c> answers an unknown id with an empty payload rather than throwing, so
+        /// the player gets a blank masthead, not an error. The plan for this lane specified
+        /// <c>"article:&lt;id&gt;"</c> and was wrong; do not "correct" the code to match it.
+        /// </para>
         /// </summary>
         public string Id = "";
 

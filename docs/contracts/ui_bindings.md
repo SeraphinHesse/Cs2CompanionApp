@@ -500,6 +500,14 @@ that drifts on the next tuning pass (§7 rule 5). Whether the clock is actually 
 question `settings.pauseOnMajorNews` answers, and an article alert is never `major` — an ordinary
 month's prose must not stop the clock even for a player who asked to see all of it.
 
+**Every alert `id` is a feed row's id, and every kind is prefixed except one.** `event:`,
+`election:`, `coalition:` (an ending), `coalition:…:formed`, `party:…:founded` / `:dissolved` — but
+an **article alert carries the bare article id, unprefixed**, because that same string is the
+`agora.news.article` map key and the modal fetches the body with `useMapValue(article$, alert.id)`.
+The asymmetry is deliberate. Prefixing an article id breaks the fetch **silently**: `BuildArticle`
+answers an unknown key with an empty payload rather than throwing, so the player sees a blank
+masthead and nothing is logged.
+
 `agora.news.ackAlert` takes the alert's id, or the sentinel `"*"` for dismiss-all, and answers a
 `CommandOutcomeName` like every other inbound call. Acking an id the engine no longer holds is
 accepted (`""`), **not** `NotFound`: a double-click, or a dismiss racing a republish, is not
