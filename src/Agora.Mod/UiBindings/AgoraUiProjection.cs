@@ -1233,7 +1233,12 @@ namespace Agora.Mod.UiBindings
         /// and <c>agora.news.article</c> serves the body when an item is opened. Forty feed rows with
         /// 120-word bodies attached would be the largest thing crossing the bridge, every month.
         /// </remarks>
-        internal static List<NewsHeadlinePayload> BuildFeed(PoliticalState state, FlavorPayload prose)
+        /// <param name="startDate">
+        /// The save's first political date, for the opening-roster exclusion on party rows
+        /// (<see cref="SaveStartDate"/>).
+        /// </param>
+        internal static List<NewsHeadlinePayload> BuildFeed(PoliticalState state, FlavorPayload prose,
+                                                            SimDate startDate)
         {
             var rows = new List<NewsHeadlinePayload>();
 
@@ -1319,11 +1324,136 @@ namespace Agora.Mod.UiBindings
                         HasArticle = false
                     });
                 }
+
+                // The formation side. Two sources and both are needed: CoalitionHistory only ever
+                // receives governments that have already ended, so the sitting one — the only
+                // formation the player is likely to be looking for — is in state.Government alone.
+                for (int i = 0; i < state.CoalitionHistory.Count; i++)
+                {
+                    AddCoalitionFormedRow(rows, state.CoalitionHistory[i]);
+                }
+                AddCoalitionFormedRow(rows, state.Government);
+
+                // Party lifecycle. The query is in Agora.Core so that the opening-roster exclusion
+                // and the per-date cap are testable without the game; everything below is wording.
+                //
+                // KNOWN AND ACCEPTED — a revival erases its own dissolution row. PartyLifecycle
+                // clears Party.DissolvedDate when a brand returns, so this feed loses the death of
+                // any party that later comes back, retroactively, on the publish after the revival.
+                // Not an oversight: the fix is a persisted lifecycle log, which is a sidecar field
+                // this lane is not permitted to add, and the alert for the death already fired at
+                // the time. Recorded here so the next reader does not file it as a bug.
+                PartyLifecycleChangeSet lifecycle =
+                    PartyLifecycleChanges.Collect(state.Parties, startDate);
+
+                // Deliberately no log line for lifecycle.SuppressedDates. This builder is a view,
+                // rebuilt from scratch on every publish, so a warning here would repeat for the rest
+                // of the save rather than reporting an event once. The one-shot log belongs on the
+                // emission path, which runs once per sim month.
+                for (int i = 0; i < lifecycle.Records.Count; i++)
+                {
+                    PartyLifecycleRecord change = lifecycle.Records[i];
+                    bool founded = change.Kind == PartyLifecycleKind.Founded;
+
+                    rows.Add(new NewsHeadlinePayload
+                    {
+                        // Merged and Dissolved share the ":dissolved" suffix: they are one thing from
+                        // the feed's point of view — the brand leaving the ballot — and the headline
+                        // is where the two stories part.
+                        Id = "party:" + change.PartyId + (founded ? ":founded" : ":dissolved"),
+                        Date = change.Date,
+                        Kind = "Party",
+                        Headline = founded
+                            ? "New party founded"
+                            : change.Kind == PartyLifecycleKind.Merged
+                                ? "Party absorbed into another"
+                                : "Party dissolved",
+                        Summary = founded
+                            ? "A new party has entered the field."
+                            : change.Kind == PartyLifecycleKind.Merged
+                                ? "Its members and its seats pass to the party that took it in."
+                                : "It fell below the threshold once too often and leaves the ballot.",
+                        PartyId = change.PartyId,
+                        HasArticle = false
+                    });
+                }
             }
 
             rows.Sort(CompareFeedRows);
             if (rows.Count > NewsFeedMax) rows.RemoveRange(NewsFeedMax, rows.Count - NewsFeedMax);
             return rows;
+        }
+
+        /// <summary>
+        /// A "government formed" row, for a government that has actually formed.
+        /// </summary>
+        /// <remarks>
+        /// The <c>":formed"</c> suffix keeps this row distinct from the same coalition's ending row,
+        /// which is keyed on the bare id. Without it the two collide, and <see cref="CompareFeedRows"/>
+        /// — which falls back to the id when the dates differ by nothing else — would file them
+        /// adjacently, reading as one row printed twice.
+        /// </remarks>
+        private static void AddCoalitionFormedRow(List<NewsHeadlinePayload> rows, Coalition coalition)
+        {
+            // Talks are not a government. No engine path assigns Negotiating — it is the Coalition
+            // initialiser's value — so this guards a default-constructed or half-migrated coalition
+            // rather than a state the shipped engine reaches, and it stays for that reason.
+            if (coalition == null || coalition.Status == CoalitionStatus.Negotiating) return;
+
+            int members = coalition.MemberPartyIds != null ? coalition.MemberPartyIds.Count : 0;
+
+            rows.Add(new NewsHeadlinePayload
+            {
+                Id = "coalition:" + coalition.Id + ":formed",
+                Date = coalition.FormedDate,
+                Kind = "Coalition",
+
+                // An empty ElectionId means a government that no ballot produced. Today that branch
+                // is unreachable: CoalitionFormation.Form has exactly one caller and it always hands
+                // over the election's id, because a collapse schedules a snap election rather than
+                // reassembling a government mid-term. Kept, and kept first, because the alternative
+                // is a headline announcing an election that did not happen the day something else
+                // ever does form a government.
+                Headline = string.IsNullOrEmpty(coalition.ElectionId)
+                    ? "New government formed mid-term"
+                    : "New government takes office",
+
+                // A count and a mood, never a member id: the panel resolves names and colours through
+                // agora.parties.roster, and PartyId below carries the lead for it to resolve.
+                Summary = members <= 1
+                    ? (coalition.HasMajority
+                        ? "One party governs alone."
+                        : "One party governs without a majority.")
+                    : ("A coalition of " + members + " parties" +
+                       (coalition.HasMajority ? "." : ", governing without a majority.")),
+
+                PartyId = coalition.LeadPartyId,
+                HasArticle = false
+            });
+        }
+
+        /// <summary>
+        /// The save's first political date — January of the per-save start year.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Not a clock read and not a second calendar (non-negotiable #8): the start year is a
+        /// persisted setting, and this is the same derivation <c>AgoraRuntime</c> performs once at
+        /// load to fill the start date it hands the engine. It is mirrored here rather than exposed
+        /// from the runtime so that the news publisher passes an argument instead of reaching into a
+        /// static from inside a loop, which is the convention every other builder here follows.
+        /// </para>
+        /// <para>
+        /// Its only consumer is the opening-roster exclusion on party rows. Every party the initial
+        /// registry is minted with carries the date the registry was handed, so without this a new
+        /// save's first publish would announce the founding of the entire field.
+        /// </para>
+        /// </remarks>
+        internal static SimDate SaveStartDate(PoliticalState state)
+        {
+            // Fully qualified: Agora.Mod.Core has a settings type of the same simple name.
+            Agora.Core.Contracts.AgoraSettings settings = state != null ? state.Settings : null;
+            return settings != null ? new SimDate(settings.StartYear, 1, 1) : default(SimDate);
         }
 
         private static int CompareFeedRows(NewsHeadlinePayload a, NewsHeadlinePayload b)

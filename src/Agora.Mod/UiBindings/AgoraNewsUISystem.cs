@@ -79,7 +79,8 @@ namespace Agora.Mod.UiBindings
         {
             var state = AgoraRuntime.State;
 
-            _feed.Update(AgoraUiProjection.BuildFeed(state, AgoraRuntime.Prose));
+            _feed.Update(AgoraUiProjection.BuildFeed(state, AgoraRuntime.Prose,
+                                                     AgoraUiProjection.SaveStartDate(state)));
             _events.Update(AgoraUiProjection.BuildEvents(state));
             _mandates.Update(AgoraUiProjection.BuildMandates(state));
             _flavorStatus.Update(AgoraUiProjection.BuildFlavorStatus(state));
