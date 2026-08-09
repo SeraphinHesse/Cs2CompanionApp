@@ -894,23 +894,23 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 #### C6 — the modal shell, the pause and the interlock
 
-- [ ] **22.** `ArticleModalBoundary.tsx`, modelled on `FirstRunBoundary.tsx:30-77`. Fallback inline
+- [x] **22.** `ArticleModalBoundary.tsx`, modelled on `FirstRunBoundary.tsx:30-77`. Fallback inline
       (**not** through `Portal`), and its action **acks**.
-- [ ] **23.** `ArticleModal.tsx`: `Portal` + scrim + card; `alerts[0]` or `null`; counter; Dismiss and
+- [x] **23.** `ArticleModal.tsx`: `Portal` + scrim + card; `alerts[0]` or `null`; counter; Dismiss and
       Dismiss-all; `useSimulationHeldPaused(open && current.major && settings.pauseOnMajorNews)`; the
       interlock `enabled && !isFirstRun` (§7.4). Every hook above the early return.
-- [ ] **24.** The keyed child that calls `useMapValue(article$, id)`, mounted **only** when
+- [x] **24.** The keyed child that calls `useMapValue(article$, id)`, mounted **only** when
       `current.hasArticle` (§7.2).
-- [ ] **25.** `ui/src/index.tsx`: a fourth `moduleRegistry.append`, its own, with a comment in the
+- [x] **25.** `ui/src/index.tsx`: a fourth `moduleRegistry.append`, its own, with a comment in the
       register's style. Update the *"Three appends"* prose at `:11` and the mirror at
       `ui/src/shell/index.ts:2-4`.
 
 #### C7 — the masthead
 
-- [ ] **26.** `ArticleModal.module.scss`: nameplate with rules above and below, dateline, display
+- [x] **26.** `ArticleModal.module.scss`: nameplate with rules above and below, dateline, display
       headline, single-column body, party colour as a thin spot rule, scrim. **Flexbox only. No CSS
       grid. No `backdrop-filter`.** Tokens from `_tokens.scss`, no literal colours.
-- [ ] **27.** `npm run build` green, including `npm run check`.
+- [x] **27.** `npm run build` green, including `npm run check`.
 
 ---
 

@@ -58,8 +58,8 @@ authority; this is the tracker.
 | **W2** | Party names lock in — flavor roster is never set before the first prose poll, so parties render as `party-01`. | 2 | ✅ code complete, review passed (one blocking defect found and fixed), **merged to `main`** · **needs the manual walkthrough** |
 | **W3** | EU/US theme chosen by the player — `RegionTheme` has no selection surface; always defaults to `Eu`. First-run flag dialog. | 3 | ✅ code complete, review passed (two blocking defects found and fixed, then re-reviewed), **merged to `main`** · **needs the manual walkthrough** |
 | **W6** | Parties tab — panel does not exist; `PartyBriefPayload` lacks the fields. | 4 | 🟡 **chunks A–H all merged to `main`** (bindings, tab shell, manifesto/drift, poll trend, history strip, mandate scorecard, coalition relations) · **H1–H8 reviewed and approved; H9's review is outstanding** |
-| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **lanes A–C code complete, reviewed, merged to `main`** · **lane D (the UI controls) handed to W6** — they live in `PartyDetailHeader` inside the Parties tab, not started |
-| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 **prose + model lane complete, reviewed, merged to `main`. Popup lane NOT STARTED.** See below. |
+| **W4** | Player-owned party identity — inline rename/recolour, with locks that stop flavor clobbering them. | 4 | ✅ **complete.** Lanes A–C and **lane D** all code complete, reviewed, merged · lane D's five text fields are the **first text entry anywhere in `ui/src`** and carry a real manual gate (see below) |
+| **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | 🟡 prose + model lane complete. **Popup lane planned (`docs/plans/0003`) and part-built:** C1 (binding surface) and C6–C7 (modal, pause, interlock, masthead) merged and reviewed · **C3/C4 (the two missing feed rows) in progress; C2/C5 (severity gate, ring, emission) and C8 (join) not started** |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), and the drift re-run must repeat after W6 fully lands |
 
 ### W5 — what shipped, and what did not
@@ -218,6 +218,17 @@ Nothing in `fixplan.md` is complete until that passes **without restarting the g
 ---
 
 ## Known gaps found this pass, not yet closed
+
+0. **Text entry has never been rendered under Gameface.** W4 lane D's five fields
+   (`PartyEditor.tsx:253, 266, 338, 436` and the `<textarea>` at `:325`) are the **first
+   `<input>`/`<textarea>` anywhere in `ui/src`**. `cs2/ui` exports no text-input component — the only
+   trace is a `focusInputField` sound enum in `types/ui.d.ts:195`, i.e. the game has internal fields
+   it does not expose — so there was no in-repo pattern to copy and `refsrc/` is C#-only. Beyond "do
+   characters arrive", **the test that matters is key propagation**: focus a field and press space,
+   digits, `b`, `p`, and confirm the sim does not pause, change speed, or open bulldoze. Nothing in
+   the component stops propagation, because there was no established pattern to copy. If it fails,
+   the fix is `onKeyDown` stopping propagation or a `FOCUS_DISABLED` scope — a follow-up, not a
+   defect in what shipped. **`<textarea>` is the higher risk** of the two.
 
 1. **The test suite is insensitive to coalition majority-iteration order.** Found by W6 chunk H's
    review, which injected `majority.Reverse();` after `MajorityOf(candidates)` in
