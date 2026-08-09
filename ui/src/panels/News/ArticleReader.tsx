@@ -71,7 +71,6 @@ export const ArticleReader = ({ headline, lookups, onClose }: ArticleReaderProps
           </div>
 
           <div className={styles.articleHeadline}>{title}</div>
-          {article.byline ? <div className={styles.articleByline}>{article.byline}</div> : null}
 
           {paragraphs.length > 0 ? (
             paragraphs.map((paragraph, index) => (
@@ -86,16 +85,6 @@ export const ArticleReader = ({ headline, lookups, onClose }: ArticleReaderProps
               {headline.summary || "The full text of this piece is not available."}
             </div>
           )}
-
-          {article.tags.length > 0 ? (
-            <div className={styles.tagRow}>
-              {article.tags.map((tag) => (
-                <span key={tag} className={styles.chip}>
-                  {tag}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </div>
       </Scrollable>
     </div>

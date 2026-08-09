@@ -66,6 +66,13 @@ namespace Agora.Mod.Llm
         /// opposition, it is gone, and the engine leaves both flags false on one anyway. Endangered
         /// and revived qualify it, because both are worth writing about and neither states a figure.
         /// </para>
+        /// <para>
+        /// The endangered qualifier reads as lifecycle, not as a count. It used to say <c>losing
+        /// ground</c>, one adjective off <c>lost ground</c> - an exemplar the election block dropped
+        /// for being imitable loser-naming - and the roster sits a section above <c>Do not name a
+        /// winner or a loser</c>. <c>At risk of folding</c> says the same engine fact (below the
+        /// threshold once, one more result and the party dies) with no electoral reading.
+        /// </para>
         /// </remarks>
         public static string StandingWord(Party party)
         {
@@ -83,7 +90,7 @@ namespace Agora.Mod.Llm
 
             switch (party.Status)
             {
-                case PartyStatus.Endangered: return role + ", losing ground";
+                case PartyStatus.Endangered: return role + ", at risk of folding";
                 case PartyStatus.Revived: return role + ", recently revived";
                 default: return role;
             }

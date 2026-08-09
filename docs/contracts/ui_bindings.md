@@ -281,7 +281,7 @@ Sort keys:
 - `mandates`: **status rank** ascending — `Active` 0, `Pending` 1, `PartiallyFulfilled` 2,
   `Fulfilled` 3, `Defied` 4, `Abandoned` 5 — then `deadlineDate` ascending, then `id` ordinal
   ascending. So the tracker opens on what is live and closest to its deadline.
-- `article.tags`, `events[].tags`, `events[].districtIds`: ordinal ascending.
+- `events[].tags`, `events[].districtIds`: ordinal ascending.
 
 `agora.news.wakeFlavor` is the manual LLM wake from `politicsmodplan.md` §2. It **requests**; the
 engine decides. The panel must disable the control while `flavorStatus.pendingWake` is true and must
@@ -364,7 +364,7 @@ CityIndices         gini, brainDrain, serviceInequality, commuteMisery, polariza
                     discontent
 NewsHeadline        id, date, kind, headline, summary, outletId, outletName, severity, partyId,
                     districtId, eventId, hasArticle
-NewsArticle         id, date, headline, byline, body, tone, outletId, outletName, tags, partyId,
+NewsArticle         id, date, headline, body, tone, outletId, outletName, partyId,
                     districtId, eventId
 TimelineEventBrief  id, date, title, region, origin, severity, durationMonths, firedDate,
                     expiresDate, archetypeId, localAngle, tags, districtIds
@@ -426,8 +426,8 @@ const EMPTY_DISTRICT_DETAIL: Agora.DistrictDetail = {
 };
 
 const EMPTY_NEWS_ARTICLE: Agora.NewsArticle = {
-  id: "", date: "", headline: "", byline: "", body: "", tone: "", outletId: "", outletName: "",
-  tags: [], partyId: "", districtId: "", eventId: "",
+  id: "", date: "", headline: "", body: "", tone: "", outletId: "", outletName: "",
+  partyId: "", districtId: "", eventId: "",
 };
 
 const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {

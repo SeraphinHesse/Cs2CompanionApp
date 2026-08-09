@@ -50,14 +50,16 @@ namespace Agora.Core.Tests
         }
 
         [Theory]
-        [InlineData(PartyStatus.Endangered, "in opposition, losing ground")]
+        [InlineData(PartyStatus.Endangered, "in opposition, at risk of folding")]
         [InlineData(PartyStatus.Revived, "in opposition, recently revived")]
         public void ALifecycleWorthNamingQualifiesTheRoleRatherThanReplacingIt(PartyStatus status,
                                                                               string expected)
         {
             // Both are worth writing about and neither states a figure, so the phrase keeps the role
-            // and adds them. "Losing ground" is the same wording the prompt offers the model as the
-            // alternative to a vote share, deliberately.
+            // and adds them. The endangered qualifier is deliberately not "losing ground": that is
+            // one adjective off "lost ground", an imitable loser-naming phrase the election block
+            // dropped, and the roster reaches the model a section above "Do not name a winner or a
+            // loser". "At risk of folding" is the same engine fact with no electoral reading.
             Assert.Equal(expected, PartyBrief.StandingWord(Of(status, false, false)));
         }
 

@@ -4177,15 +4177,12 @@ declare namespace Agora {
     id: IdString;
     date: SimDateString;
     headline: string;
-    byline: string;
     /** At most 120 words by the flavor contract. */
     body: string;
     /** Free-form tone tag from the flavor layer, e.g. "wry", "alarmed". "" when unset. */
     tone: string;
     outletId: IdString;
     outletName: string;
-    /** Sorted ordinal ascending. */
-    tags: string[];
     partyId: IdString;
     districtId: IdString;
     eventId: IdString;
