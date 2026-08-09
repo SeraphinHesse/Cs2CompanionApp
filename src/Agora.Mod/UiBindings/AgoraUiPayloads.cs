@@ -1039,6 +1039,60 @@ namespace Agora.Mod.UiBindings
         }
     }
 
+    /// <summary>
+    /// One queued interruption: a pointer at a feed row that already exists, plus enough to render a
+    /// masthead card without a second round trip.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sibling of <see cref="NewsHeadlinePayload"/> and kept next to it deliberately — the two are
+    /// read side by side, and the field order below mirrors it so a drift between them is visible
+    /// without scrolling. What it adds is <c>major</c>; what it drops is <c>outletId</c>, which no
+    /// card renders.
+    /// </para>
+    /// <para>
+    /// <b><c>major</c> is published rather than recomputed in TypeScript from <c>severity</c>.</b>
+    /// Whether an item is grave enough to hold the clock is an engine judgement, not a rendering
+    /// decision (<c>docs/contracts/ui_bindings.md</c> §7 rule 5), and the threshold it is decided
+    /// against lives in <c>EngineTuning</c> — a number the dashboard must not learn, because a copy
+    /// of it in the UI is a second definition of "major" that drifts on the next tuning pass. The
+    /// UI never compares a severity to a number; it reads this flag.
+    /// </para>
+    /// </remarks>
+    public sealed class NewsAlertPayload : IJsonWritable
+    {
+        public string Id = "";
+        public string Kind = "Article";
+        public Agora.Core.Contracts.SimDate? Date;
+        public string Headline = "";
+        public string Summary = "";
+        public string OutletName = "";
+        public string PartyId = "";
+        public string DistrictId = "";
+        public string EventId = "";
+        public int Severity;
+        public bool Major;
+        public bool HasArticle;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.NewsAlert");
+            UiJson.Id(writer, "id", Id);
+            UiJson.Text(writer, "kind", Kind);
+            UiJson.Date(writer, "date", Date);
+            UiJson.Text(writer, "headline", Headline);
+            UiJson.Text(writer, "summary", Summary);
+            UiJson.Text(writer, "outletName", OutletName);
+            UiJson.Id(writer, "partyId", PartyId);
+            UiJson.Id(writer, "districtId", DistrictId);
+            UiJson.Id(writer, "eventId", EventId);
+            UiJson.Number(writer, "severity", Severity);
+            UiJson.Flag(writer, "major", Major);
+            UiJson.Flag(writer, "hasArticle", HasArticle);
+            writer.TypeEnd();
+        }
+    }
+
     /// <summary>A full article body, fetched per key. Every field is flavor; parse none of it.</summary>
     public sealed class NewsArticlePayload : IJsonWritable
     {

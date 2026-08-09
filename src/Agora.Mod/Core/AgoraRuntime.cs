@@ -138,6 +138,27 @@ namespace Agora.Mod.Core
         private static CitySnapshot _lastSnapshot;
         private static int _stateVersion;
 
+        /// <summary>
+        /// Alerts the player has not answered yet, oldest first. Published as
+        /// <c>agora.news.alerts</c>; the modal shows the head of it and acks its way down.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>In memory only, and never persisted.</b> That is what makes "an alert does not replay
+        /// after a reload" structural rather than a rule somebody has to remember: a resumed save
+        /// starts with an empty list because the list is fresh. Same reasoning as
+        /// <see cref="_provisionalNamePartyIds"/>, whose comment is worth reading before touching
+        /// this.
+        /// </para>
+        /// <para>
+        /// Nothing fills it yet — emission, the de-duplication set, the bound, and the per-save clear
+        /// beside the prose block in <see cref="ResetForNewSave"/> all land with the raise path
+        /// (<c>docs/plans/0003-w5-popup-lane.md</c> §5.3). Until then the queue is permanently empty
+        /// and the dashboard publishes <c>[]</c>, which is the value the modal is built against.
+        /// </para>
+        /// </remarks>
+        private static readonly List<NewsAlert> _alerts = new List<NewsAlert>();
+
         private static FlavorPayload _flavorPayload;
         private static SimDate? _lastFlavorDate;
         private static SimDate? _lastAttemptDate;
@@ -286,6 +307,15 @@ namespace Agora.Mod.Core
         public static CitySnapshot LastSnapshot
         {
             get { return _lastSnapshot; }
+        }
+
+        /// <summary>
+        /// The unanswered alert queue, oldest first. Never null, and empty for the whole of a resumed
+        /// save until something is raised on it.
+        /// </summary>
+        public static IList<NewsAlert> Alerts
+        {
+            get { return _alerts; }
         }
 
         /// <summary>The prose currently in force, or null when none has ever been produced.</summary>
@@ -963,6 +993,74 @@ namespace Agora.Mod.Core
             PersistSettings();
             _stateVersion++;
             return CommandOutcome.Ok;
+        }
+
+        /// <summary>
+        /// The player answered an alert: drops it from the queue, or drops all of them when the id is
+        /// the sentinel <c>"*"</c>. Backs <c>agora.news.ackAlert</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A call rather than a trigger for the same reason <see cref="SetSetting"/> is one: if the
+        /// ack did not land, the modal must not close over an alert the engine still holds, and a
+        /// trigger cannot say so.
+        /// </para>
+        /// <para>
+        /// <b>Acking an id the queue no longer holds is <see cref="CommandOutcome.Ok"/>, not
+        /// <see cref="CommandOutcome.NotFound"/>.</b> A double-click, or a second dismiss racing the
+        /// republish, is not something the player did wrong, and a refusal there would put a worrying
+        /// sentence in front of someone who did nothing.
+        /// </para>
+        /// <para>
+        /// Synchronous, and doing no ECS work, for the reasons set out at <see cref="SetSetting"/>:
+        /// this runs on the UI phase, which keeps ticking while the sim is held paused — and it will
+        /// be, because a major alert holds the pause barrier while it is up.
+        /// </para>
+        /// <para>
+        /// Nothing is persisted. The queue is session state, so unlike <see cref="SetFlag"/> there is
+        /// no <see cref="PersistSettings"/> call here; adding one would write the sidecar on every
+        /// dismiss.
+        /// </para>
+        /// </remarks>
+        public static CommandOutcome AckAlert(string id)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(id)) return CommandOutcome.BadValue;
+
+                    if (string.CompareOrdinal(id, "*") == 0)
+                    {
+                        _alerts.Clear();
+                    }
+                    else
+                    {
+                        for (int i = 0; i < _alerts.Count; i++)
+                        {
+                            if (_alerts[i] == null || string.CompareOrdinal(_alerts[i].Id, id) != 0)
+                                continue;
+
+                            _alerts.RemoveAt(i);
+                            break;
+                        }
+                    }
+
+                    // Not optional, and not tidiness. AgoraUISystemBase.OnUpdate republishes only when
+                    // StateVersion has moved, so without this bump agora.news.alerts never updates and
+                    // the modal stays on a card the engine has already dropped. The queue advances on
+                    // player input, not on an engine tick, and this is the only thing that tells the
+                    // publisher so. Do not remove it.
+                    _stateVersion++;
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: an alert could not be dismissed; the queue is " +
+                                           "unchanged and the card stays up.");
+                    return CommandOutcome.Failed;
+                }
+            }
         }
 
         /// <summary>

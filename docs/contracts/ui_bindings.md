@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 7**
+**schemaVersion: 8**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -46,6 +46,16 @@ on fetch rather than copied from stored state, which is why §4.2 states plainly
 the computing (`CoalitionFormation.RankCandidates`, pure and RNG-free) and this bridge only copies —
 rule 5 is unmoved.
 
+**Version 8 is W5's popup lane**, under plan `docs/plans/0003-w5-popup-lane.md`, and it unfreezes
+`agora.news` for the first time. What moves: one `ValueBinding` (`alerts`), one inbound
+`CallBinding` (`ackAlert`), and one payload shape (`NewsAlert`, with its own kind union
+`NewsAlertKindName`). Purely additive again — nothing renamed, no existing field moved or retyped,
+no sort key reordered, and the feed's own admission policy untouched: the News tab keeps every fired
+event at every severity, because the feed is an archive and the popup is an interruption and the two
+must not share a policy. No sidecar, settings or flavor schema moves with it; the alert queue is
+session state and is deliberately never persisted, which is what makes "an alert does not replay
+after a reload" structural rather than a rule.
+
 The freeze otherwise stands; these notes exist so the next reviewer reads authorised changes rather
 than violations.
 
@@ -72,7 +82,7 @@ exactly one publisher of its own.
 | `agora.parties` | the party/faction lookup table every panel renders labels and colours from | `src/Agora.Mod/UiBindings/AgoraStateUISystem.cs` |
 | `agora.seats` | seat chart, government breakdown, mayor, last election, latest poll | `src/Agora.Mod/UiBindings/AgoraSeatsUISystem.cs` |
 | `agora.districts` | per-district vote splits, wealth × education crosstabs, indices | `src/Agora.Mod/UiBindings/AgoraDistrictsUISystem.cs` |
-| `agora.news` | news feed, timeline events, mandate tracker, LLM health | `src/Agora.Mod/UiBindings/AgoraNewsUISystem.cs` |
+| `agora.news` | news feed, timeline events, mandate tracker, LLM health, the alert queue | `src/Agora.Mod/UiBindings/AgoraNewsUISystem.cs` |
 | `agora.debug` | M0 pipeline proof — not part of the dashboard, do not extend | `src/Agora.Mod/UiBindings/AgoraDebugUISystem.cs` |
 
 ---
@@ -137,9 +147,9 @@ Selection state (which district is open, which party is highlighted) is UI-only.
 
 ## 4. Registered bindings
 
-Direction is C# → UI unless a row says otherwise. Eight bindings run the other way and every one of
+Direction is C# → UI unless a row says otherwise. Nine bindings run the other way and every one of
 them is marked **UI → C#** in its own table: `agora.news.wakeFlavor` (the only trigger),
-`agora.state.setSetting`, and the six party editors in §4.2. "Cadence" is when the publisher calls
+`agora.news.ackAlert`, `agora.state.setSetting`, and the six party editors in §4.2. "Cadence" is when the publisher calls
 `Update`, not how often the UI re-renders. An inbound binding has no cadence and no empty value: its
 row reads `n/a` where the table has those columns, and §4.2 drops them entirely.
 
@@ -422,7 +432,7 @@ in `cityFallbackFields` is a city number wearing a district's name. The panel mu
 visually (dimmed + a tooltip) and must never present them as a local fact. This is
 `politicsmodplan.md` §6, and the reviewer checks it.
 
-### 4.5 `agora.news` — feed + mandate tracker
+### 4.5 `agora.news` — feed + mandate tracker + the alert queue
 
 | Binding | Kind | Direction | C# type | TS type | Cadence | Empty / loading | Since |
 |---|---|---|---|---|---|---|---|
@@ -432,6 +442,8 @@ visually (dimmed + a tooltip) and must never present them as a local fact. This 
 | `agora.news.mandates` | `ValueBinding<T>` | C# → UI | `List<MandateRow>` | `Agora.MandateRow[]` | monthly | `[]` | M4 |
 | `agora.news.flavorStatus` | `ValueBinding<T>` | C# → UI | `FlavorStatus` | `Agora.FlavorStatus` | on every flavor attempt, success or failure | `EMPTY_FLAVOR_STATUS` | M4 |
 | `agora.news.wakeFlavor` | `TriggerBinding` | **UI → C#** | — | `() => void` | on click | n/a | M4 |
+| `agora.news.alerts` | `ValueBinding<T>` | C# → UI | `List<NewsAlert>` | `Agora.NewsAlert[]` | on raise and on ack | `[]` | W5 |
+| `agora.news.ackAlert` | `CallBinding<string,string>` | **UI → C#** | alert id or `"*"` | `(id) => Promise<CommandOutcomeName>` | on dismiss | n/a | W5 |
 
 **`agora.news.mandates` row:** also consumed by the Parties tab, filtered by `partyId`, as a per-party
 scorecard (fixplan W6 addition 6). No per-party binding exists or should be added: it would publish
@@ -445,6 +457,10 @@ Sort keys:
   `Fulfilled` 3, `Defied` 4, `Abandoned` 5 — then `deadlineDate` ascending, then `id` ordinal
   ascending. So the tracker opens on what is live and closest to its deadline.
 - `events[].tags`, `events[].districtIds`: ordinal ascending.
+- `alerts`: **not sorted.** Emission order, oldest first — the order the alerts happened in, which is
+  the order the player is asked to answer them in. A view that re-sorted it would change which card
+  comes up first, which is §7 rule 7's territory. Bounded by the engine, which drops the oldest and
+  logs when it does.
 
 `agora.news.wakeFlavor` is the manual LLM wake from `politicsmodplan.md` §2. It **requests**; the
 engine decides. The panel must disable the control while `flavorStatus.pendingWake` is true and must
@@ -453,6 +469,27 @@ not assume the feed changes as a result — a failed wake keeps the last good fl
 
 `flavorStatus.lastError` is an **engine-authored** short code, never LLM output and never a raw
 exception message: `""`, `"CliMissing"`, `"Timeout"`, `"BadJson"`, `"Disabled"`, `"Unknown"`.
+
+`agora.news.alerts` is a **queue of pointers**, not a second feed. Every entry's `id` is a feed row's
+id, so anything the modal shows can be found again in the News tab; a body is fetched from
+`agora.news.article` under that same id, and **only when `hasArticle` is true** — the map binding
+answers an id it does not know with `EMPTY_NEWS_ARTICLE` rather than throwing, so a fetch for an
+event or a coalition renders a blank masthead instead of failing loudly. Branch on `hasArticle`,
+never on `kind`.
+
+`alerts[].major` is the **engine's** verdict on whether an item is grave enough to hold the clock,
+decided once when the alert is raised. The UI must never compare `severity` to a threshold of its
+own: the number lives in `EngineTuning` and a copy of it in a panel is a second definition of "major"
+that drifts on the next tuning pass (§7 rule 5). Whether the clock is actually held is the separate
+question `settings.pauseOnMajorNews` answers, and an article alert is never `major` — an ordinary
+month's prose must not stop the clock even for a player who asked to see all of it.
+
+`agora.news.ackAlert` takes the alert's id, or the sentinel `"*"` for dismiss-all, and answers a
+`CommandOutcomeName` like every other inbound call. Acking an id the engine no longer holds is
+accepted (`""`), **not** `NotFound`: a double-click, or a dismiss racing a republish, is not
+something the player did wrong. The panel must send it with a deadline — while a major alert is up
+the game forces the speed to zero every frame, so a call that never answers leaves a card that
+cannot be closed and a clock that cannot be started.
 
 A mandate with `isMeasurementStalled === true` is **held, not failing**. Render it as paused; do not
 render its progress bar as falling behind, and never show it as `Defied` because the clock ran out
@@ -554,6 +591,8 @@ CityIndices         gini, brainDrain, serviceInequality, commuteMisery, polariza
                     discontent
 NewsHeadline        id, date, kind, headline, summary, outletId, outletName, severity, partyId,
                     districtId, eventId, hasArticle
+NewsAlert           id, kind, date, headline, summary, outletName, partyId, districtId, eventId,
+                    severity, major, hasArticle
 NewsArticle         id, date, headline, body, tone, outletId, outletName, partyId,
                     districtId, eventId
 TimelineEventBrief  id, date, title, region, origin, severity, durationMonths, firedDate,
@@ -579,7 +618,8 @@ Three ownerships, not two, and the difference decides what the UI may offer to d
 **Flavor-owned** — `PartyBrief.name`/`shortName`/`description`/`slogan`,
 `PartyDetail.name`/`shortName`/`description`/`slogan`,
 `FactionBrief.name`/`shortName`/`leaderName`, `MayorSummary.name`, `PollSummary.pollsterName`,
-`NewsHeadline.headline`/`summary`/`outletName`, `NewsArticle.*` prose,
+`NewsHeadline.headline`/`summary`/`outletName`, `NewsAlert.headline`/`summary`/`outletName`,
+`NewsArticle.*` prose,
 `TimelineEventBrief.localAngle` and `MandateRow.text`. Render them; never parse them, never sort by
 them, never derive a number from them.
 
@@ -659,6 +699,11 @@ const EMPTY_NEWS_ARTICLE: Agora.NewsArticle = {
   partyId: "", districtId: "", eventId: "",
 };
 
+const EMPTY_NEWS_ALERT: Agora.NewsAlert = {
+  id: "", kind: "Article", date: "", headline: "", summary: "", outletName: "",
+  partyId: "", districtId: "", eventId: "", severity: 0, major: false, hasArticle: false,
+};
+
 const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {
   lastFlavorDate: "", lastAttemptDate: "", isStale: false, providerAvailable: false,
   pendingWake: false, lastError: "", articleCount: 0,
@@ -680,6 +725,11 @@ initialiser, and a swatch with no colour renders as a hole rather than as grey.
 
 `weeksToElection` is `-1` — not `0` — when no election is scheduled, so "the election is this week"
 stays distinguishable from "there is no election".
+
+`EMPTY_NEWS_ALERT` is a guard of the same kind, for a different reason: `agora.news.alerts` is an
+array binding and takes `[]`, so this is what a card substitutes for an index the queue no longer
+holds — the frame between a dismiss and the republish that removes it. Its `major` is `false`
+deliberately. An empty alert must never be the thing that takes the pause barrier.
 
 `EMPTY_PARTY_EDIT_LIMITS` is all zeroes, which is not a usable limit: a counter reading `nameMax: 0`
 would declare every keystroke too long. Gate the editors on `state.ready` (§4.1) like every other
@@ -734,6 +784,12 @@ gets an empty panel and no error.
 | `agora.districts.blocs` | the full 60-bloc breakdown behind a crosstab cell | M6 |
 | `agora.news.archive` | paged news archive beyond the 40-item feed | M6 |
 | `agora.news.markRead` | UI → C# read-state persistence | M6 |
+
+**`agora.news.markRead` stays reserved too, and W5 deliberately did not take it.** The alert ack is
+`agora.news.ackAlert` (§4.5), a new name, because the two mean different things: `markRead` is
+read-state *persistence*, and the alert queue is session state that is never written to disk.
+Repurposing a reserved name for something narrower is worse than adding one — the next reader would
+find `markRead` published and conclude read-state survives a reload, which it does not.
 
 **`agora.seats.pollTrend` stays reserved, on purpose.** W6 needed a poll trend and did **not** take
 this name: the Parties tab draws one party's series, and a city-wide series of per-party shares is a
