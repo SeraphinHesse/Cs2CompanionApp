@@ -833,15 +833,22 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 
 ### C1 — the shared binding surface. **One coder, alone. Nothing else in this commit.**
 
-- [ ] **4.** `AgoraUiPayloads.cs`: real `NewsAlertPayload` with its full `Write` (§8.1).
-- [ ] **5.** `AgoraUiProjection.BuildAlerts` (§8.3) — returns empty for now.
-- [ ] **6.** `AgoraNewsUISystem`: field, `AddBinding` ×2, **and the `_alerts.Update(...)` line in
+- [x] **4.** `AgoraUiPayloads.cs`: real `NewsAlertPayload` with its full `Write` (§8.1).
+- [x] **5.** `AgoraUiProjection.BuildAlerts` (§8.3) — returns empty for now.
+- [x] **6.** `AgoraNewsUISystem`: field, `AddBinding` ×2, **and the `_alerts.Update(...)` line in
       `Publish`** (§8.2). `AgoraRuntime.AckAlert` + `Alerts` as stubs over an empty ring.
-- [ ] **7.** `ui/types/bindings.d.ts`: `Agora.NewsAlert`, `Agora.NewsAlertKind`.
-- [ ] **8.** `ui/src/shell/bindings.ts`: `alerts$`, `EMPTY_NEWS_ALERT`, `ackAlert` wrapper — reuse
+- [x] **7.** `ui/types/bindings.d.ts`: `Agora.NewsAlert`, `Agora.NewsAlertKind`.
+- [x] **8.** `ui/src/shell/bindings.ts`: `alerts$`, `EMPTY_NEWS_ALERT`, `ackAlert` wrapper — reuse
       `requestSetting`'s timeout/`WriteOutcome` shape (`:105-156`) rather than a bare `call`.
-- [ ] **9.** `docs/contracts/ui_bindings.md`: all seven edits in §9. **Read `:3`, write value + 1.**
-- [ ] **10.** `dotnet build Agora.sln` · `cd ui && npm run build`. Both green.
+- [x] **9.** `docs/contracts/ui_bindings.md`: all seven edits in §9. **Read `:3`, write value + 1.**
+- [x] **10.** ~~`dotnet build Agora.sln` · `cd ui && npm run build`. Both green.~~ **Gated differently,
+      deliberately.** `dotnet build Agora.sln` triggers `npm run build`, which **deploys into the
+      player's live Mods folder** — not acceptable mid-session with lanes in flight. C1 was gated on
+      `dotnet build src/Agora.Mod/Agora.Mod.csproj -p:UseCsiiToolchain=false` (0 errors),
+      `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` (**1227 passing**), and
+      `ui\node_modules\.bin\tsc --noEmit` (clean). Note `npm run check` is **not** a typecheck and
+      **not** a class-parity check — it is only a design-token guard, despite the name. Use
+      `tsc --noEmit`, and never `npx tsc`, which fetches a decoy package.
 
 **C1 is the join. C2–C5 and C6–C7 may now run in parallel.**
 

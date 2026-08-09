@@ -1855,12 +1855,12 @@ Each chunk is independently landable. **Do D, E, F, G before H** — H is the on
 - [x] **H7.** `ui/types/bindings.d.ts`: `CoalitionOption`.
 - [x] **H8.** `ui_bindings.md`: §4.2 row, sort key, cap, §5 shape, and the "live view, not history"
       note (§16.4.5).
-- [ ] **H9.** `Parties/CoalitionRelations.tsx` + scss (§16.4.4). Branch on `summary.system` for the
+- [x] **H9.** `Parties/CoalitionRelations.tsx` + scss (§16.4.4). Branch on `summary.system` for the
       FPTP message. **Never label an absent pairing a "refusal".**
 
 ### Close Part II
 
-- [ ] **P1.** `docs/contracts/ui_bindings.md:3` — bump the `schemaVersion` **once** for the whole of
+- [x] **P1.** `docs/contracts/ui_bindings.md:3` — bump the `schemaVersion` **once** for the whole of
       Part II, by reading the current value and writing value + 1. Plan 0001 leaves it at `3` and
       Part I takes it to `4`, so Part II lands on `5` if shipped separately, or Part I and II together
       move it once to `4`. **Read, do not hard-code.**
