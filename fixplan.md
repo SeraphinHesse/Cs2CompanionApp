@@ -708,6 +708,19 @@ figure once as a scope-level line above the grid, which makes "one number for th
 structural rather than a caption. That is a layout change, so it is yours. Both the coder and the
 reviewer read it the same way; I agree, but did not act.
 
+**RESOLVED 2026-08-09 — struck, and the readout row with it.** The mode is gone from the metric
+union, the selector and both lookup branches. The review of that removal then found a sharper defect
+one row down, in the click-readout strip: `BuildCrosstab` sets `Turnout = eligible > 0 ? turnout : 0`,
+so an empty cell read `0%` and a populated one read the district figure. The number **varied between
+cells without meaning** — direct evidence in the UI for the very claim the mode was struck for, and
+worse than the flat wash, which is at least inert. That row went too.
+
+Nothing was lost: turnout still renders in `DistrictList`'s row text and in `DistrictDetail`'s
+Conditions meter, plus its not-yet-published fallback line. **No contract change** — `turnout` stays
+on the payload, the binding, the TS interface and in `AgoraUiProjection`; only the rendering went.
+The scope-level line above the grid was **not** built: turnout is already visible in two other
+places on the same screen, so a third would be redundant rather than clarifying.
+
 ---
 
 ## Sequencing
