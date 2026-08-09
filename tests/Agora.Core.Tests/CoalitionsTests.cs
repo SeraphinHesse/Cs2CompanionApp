@@ -515,6 +515,213 @@ namespace Agora.Core.Tests
             Assert.Empty(r.RankedCandidates);
         }
 
+        // ================================================================ ranking (read-only view)
+
+        /// <summary>Every ranked field, so a divergence in any of them shows up as a string diff.</summary>
+        private static string RankSignature(IReadOnlyList<CoalitionCandidate> ranked)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                CoalitionCandidate c = ranked[i];
+                sb.Append(c.Key).Append('/').Append(c.LeadPartyId).Append('/')
+                  .Append(c.Seats).Append('/').Append(F(c.SeatShare)).Append('/')
+                  .Append(c.HasMajority).Append('/').Append(F(c.MeanPairwiseDistance)).Append('/')
+                  .Append(F(c.MaxPairwiseDistance)).Append('/').Append(F(c.DistanceCap)).Append('/')
+                  .Append(F(c.Cohesion)).Append('/').Append(F(c.Score)).Append('/')
+                  .Append(c.IsMinimumWinning).Append('/').Append(c.IsGrandCoalition).Append(';');
+            }
+            return sb.ToString();
+        }
+
+        private static List<string> Keys(IReadOnlyList<CoalitionCandidate> ranked)
+        {
+            var keys = new List<string>(ranked.Count);
+            for (int i = 0; i < ranked.Count; i++) keys.Add(ranked[i].Key);
+            return keys;
+        }
+
+        [Fact]
+        public void RankCandidates_MatchesTheRankingFormationUsed()
+        {
+            // The anti-divergence guard: both callers must come out of the one shared helper. A
+            // dashboard ranking that could drift from the one formation used would read as
+            // authoritative while being wrong.
+            List<SeatAllocation> spreadSeats;
+            List<Party> spreadParties;
+            SpreadChamber(out spreadSeats, out spreadParties);
+
+            List<SeatAllocation> closeSeats;
+            List<Party> closeParties;
+            CloseChamber(out closeSeats, out closeParties);
+
+            // The grand-coalition chamber too: the slack pass replaces the whole candidate list, so it
+            // is the one path where the two callers could most easily part company.
+            var slackSeats = new List<SeatAllocation>
+            {
+                Alloc("party-a", 45, 100),
+                Alloc("party-b", 40, 100),
+                Alloc("party-c", 15, 100)
+            };
+            var slackParties = new List<Party>
+            {
+                MakeParty("party-a", -0.55),
+                MakeParty("party-b", 0.60),
+                MakeParty("party-c", 0.65)
+            };
+
+            var chambers = new List<(List<SeatAllocation>, List<Party>, EngineTuning)>
+            {
+                (spreadSeats, spreadParties, EngineTuning.Default),
+                (closeSeats, closeParties, EngineTuning.Default),
+                (slackSeats, slackParties, Tuned("{\"minSeatShareToGovern\":0.6}"))
+            };
+
+            for (int i = 0; i < chambers.Count; i++)
+            {
+                var chamber = chambers[i];
+
+                CoalitionFormationResult formed = CoalitionFormation.Form(
+                    SaveA, ElectionDay, "election-1994-06", ElectoralSystem.Proportional,
+                    chamber.Item1, chamber.Item2, null, chamber.Item3);
+
+                IReadOnlyList<CoalitionCandidate> viewed = CoalitionFormation.RankCandidates(
+                    ElectoralSystem.Proportional, chamber.Item1, chamber.Item2, chamber.Item3);
+
+                Assert.NotEmpty(viewed);
+                Assert.Equal(Keys(formed.RankedCandidates), Keys(viewed));
+
+                // Keys alone would miss a minimum-winning mark or a distance cap going astray.
+                Assert.Equal(RankSignature(formed.RankedCandidates), RankSignature(viewed));
+            }
+        }
+
+        [Fact]
+        public void RankCandidates_DrawsNoRandomness()
+        {
+            List<SeatAllocation> seats;
+            List<Party> parties;
+            CloseChamber(out seats, out parties);
+
+            string expected = RankSignature(CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, seats, parties, EngineTuning.Default));
+
+            // RankCandidates takes no seed, so calling it twice proves nothing on its own. What can be
+            // proven is that the ranking is the same one formation saw no matter how the draw fell:
+            // across 64 saves the government differs (Form_DependsOnTheSaveGuid) and the ranking must
+            // not, which is exactly "the RNG is out of this path".
+            var governments = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < 64; i++)
+            {
+                var guid = new Guid(i + 1, 0, 0, new byte[8]);
+                CoalitionFormationResult r = CoalitionFormation.Form(
+                    guid, new SimDate(1994 + i % 8, 1 + i % 12, 1 + i % 28),
+                    "election-" + i, ElectoralSystem.Proportional,
+                    seats, parties, null, EngineTuning.Default);
+
+                governments.Add(Signature(r.Government));
+                Assert.Equal(expected, RankSignature(r.RankedCandidates));
+            }
+
+            Assert.True(governments.Count > 1,
+                "the draw never moved, so this run proves nothing about the ranking being clear of it");
+        }
+
+        [Fact]
+        public void RankCandidates_ReturnsEmptyUnderFirstPastThePost()
+        {
+            List<SeatAllocation> seats;
+            List<Party> parties;
+            SpreadChamber(out seats, out parties);
+
+            // Not "no arrangement exists" — the same chamber ranks several under PR. Under FPTP the
+            // winner governs alone and there is no coalition arithmetic to report.
+            Assert.NotEmpty(CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, seats, parties, EngineTuning.Default));
+
+            Assert.Empty(CoalitionFormation.RankCandidates(
+                ElectoralSystem.FirstPastThePost, seats, parties, EngineTuning.Default));
+        }
+
+        [Fact]
+        public void RankCandidates_ExcludesDissolvedAndMergedBrands()
+        {
+            List<SeatAllocation> seats;
+            List<Party> parties;
+            SpreadChamber(out seats, out parties);
+            parties[1] = MakeParty("party-b", -0.4, PartyStatus.Dissolved);
+            parties[2] = MakeParty("party-c", 0.4, PartyStatus.Merged);
+
+            IReadOnlyList<CoalitionCandidate> ranked = CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, seats, parties, EngineTuning.Default);
+
+            Assert.NotEmpty(ranked); // party-a still holds 35 seats and can lead a minority
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                Assert.DoesNotContain("party-b", ranked[i].MemberPartyIds);
+                Assert.DoesNotContain("party-c", ranked[i].MemberPartyIds);
+            }
+        }
+
+        [Fact]
+        public void RankCandidates_HonoursFormationMaxPartners()
+        {
+            List<SeatAllocation> seats;
+            List<Party> parties;
+            CloseChamber(out seats, out parties); // every pair inside the cap, so nothing else prunes
+
+            IReadOnlyList<CoalitionCandidate> wide = CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, seats, parties, EngineTuning.Default);
+
+            bool sawThree = false;
+            for (int i = 0; i < wide.Count; i++)
+            {
+                Assert.InRange(wide[i].MemberPartyIds.Count, 1, 4); // formationMaxPartners = 4
+                if (wide[i].MemberPartyIds.Count >= 3) sawThree = true;
+            }
+
+            Assert.True(sawThree, "the default cap of 4 must not be enforcing a tighter limit by accident");
+
+            IReadOnlyList<CoalitionCandidate> narrow = CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, seats, parties, Tuned("{\"formationMaxPartners\":2}"));
+
+            Assert.NotEmpty(narrow);
+            for (int i = 0; i < narrow.Count; i++)
+                Assert.InRange(narrow[i].MemberPartyIds.Count, 1, 2);
+        }
+
+        [Fact]
+        public void RankCandidates_IsStableAcrossCallerListOrder()
+        {
+            List<SeatAllocation> seats;
+            List<Party> parties;
+            CloseChamber(out seats, out parties);
+
+            string inOrder = RankSignature(CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, seats, parties, EngineTuning.Default));
+
+            var reversedSeats = new List<SeatAllocation>(seats);
+            reversedSeats.Reverse();
+            var reversedParties = new List<Party>(parties);
+            reversedParties.Reverse();
+
+            string reversed = RankSignature(CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, reversedSeats, reversedParties, EngineTuning.Default));
+
+            // Every distance figure is a floating-point sum over member pairs, so an unsorted pool
+            // would move the last bit of the score and with it the tie order.
+            Assert.Equal(Hash(inOrder), Hash(reversed));
+
+            // A rotation as well as a reversal: reversing alone would pass on a symmetric fixture.
+            var rotatedSeats = new List<SeatAllocation> { seats[2], seats[0], seats[3], seats[1] };
+            var rotatedParties = new List<Party> { parties[3], parties[1], parties[2], parties[0] };
+
+            string rotated = RankSignature(CoalitionFormation.RankCandidates(
+                ElectoralSystem.Proportional, rotatedSeats, rotatedParties, EngineTuning.Default));
+
+            Assert.Equal(Hash(inOrder), Hash(rotated));
+        }
+
         // ================================================================ stability
 
         private static Coalition Governing(double stability = 0.8)

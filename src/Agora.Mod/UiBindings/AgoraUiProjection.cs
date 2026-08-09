@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Core.Engine.Government.Coalitions;
 using Agora.Core.Engine.Parties;
 using Agora.Core.Tuning;
 using Agora.Mod.Core;
@@ -24,6 +25,7 @@ namespace Agora.Mod.UiBindings
         internal const int EventsMax = 25;
         internal const int ElectionHistoryMax = 12;
         internal const int PollTrendMax = 24;
+        internal const int CoalitionOptionsMax = 8;
 
         private const int DaysPerWeek = 7;
 
@@ -519,6 +521,94 @@ namespace Agora.Mod.UiBindings
                 rows.RemoveRange(0, rows.Count - ElectionHistoryMax);
 
             return rows;
+        }
+
+        /// <summary>
+        /// Every arrangement this party could be part of, best first, capped at
+        /// <see cref="CoalitionOptionsMax"/> rows. Empty under first past the post.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A <b>live</b> view, not the historical record of who negotiated after the last election: the
+        /// ranking is recomputed from where the parties stand today, so it drifts as platforms drift.
+        /// The engine computes it — <c>CoalitionFormation.RankCandidates</c> is pure, draws nothing and
+        /// writes nothing — and this method only copies the answer, which is what contract rule 5 asks
+        /// for. Formation's own ranking comes out of the same helper, so the two cannot diverge.
+        /// </para>
+        /// <para>
+        /// Seats come from the latest election rather than from the sitting government: the chamber is
+        /// what the arithmetic is about, and a city between a collapse and a new formation still has
+        /// one. Cost is bounded by <c>coalitions.formationMaxPartners</c>, and this sits behind a map
+        /// binding fetched for one open pane rather than a value binding re-read every tick.
+        /// </para>
+        /// </remarks>
+        internal static List<CoalitionOptionPayload> BuildPartyRelations(
+            PoliticalState state, EngineTuning tuning, string partyId)
+        {
+            var rows = new List<CoalitionOptionPayload>();
+            if (state == null || tuning == null || string.IsNullOrEmpty(partyId)) return rows;
+            if (state.ElectionHistory == null || state.ElectionHistory.Count == 0) return rows;
+            if (state.Settings.System == ElectoralSystem.FirstPastThePost) return rows;
+
+            ElectionResult latest = state.ElectionHistory[state.ElectionHistory.Count - 1];
+            if (latest == null) return rows;
+
+            IReadOnlyList<CoalitionCandidate> ranked = CoalitionFormation.RankCandidates(
+                state.Settings.System, latest.Seats, state.Parties, tuning);
+
+            List<string> governing = state.Government != null ? state.Government.MemberPartyIds : null;
+
+            for (int i = 0; i < ranked.Count && rows.Count < CoalitionOptionsMax; i++)
+            {
+                CoalitionCandidate c = ranked[i];
+                if (!Contains(c.MemberPartyIds, partyId)) continue;
+
+                var members = new List<string>(c.MemberPartyIds.Count);
+                for (int j = 0; j < c.MemberPartyIds.Count; j++) members.Add(c.MemberPartyIds[j]);
+
+                rows.Add(new CoalitionOptionPayload
+                {
+                    MemberPartyIds = members,
+                    LeadPartyId = c.LeadPartyId,
+                    Seats = c.Seats,
+                    SeatShare = c.SeatShare,
+                    HasMajority = c.HasMajority,
+                    MeanDistance = c.MeanPairwiseDistance,
+                    MaxDistance = c.MaxPairwiseDistance,
+                    DistanceCap = c.DistanceCap,
+                    Cohesion = c.Cohesion,
+                    Score = c.Score,
+                    IsMinimumWinning = c.IsMinimumWinning,
+                    IsGrandCoalition = c.IsGrandCoalition,
+                    IsCurrentGovernment = SameMembers(members, governing)
+                });
+            }
+
+            return rows;
+        }
+
+        private static bool Contains(IReadOnlyList<string> ids, string id)
+        {
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (string.CompareOrdinal(ids[i], id) == 0) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Element-wise, because both lists are sorted ordinal ascending by contract — the candidate's
+        /// by <c>CoalitionMath.SortedIds</c> and the government's by <c>Coalition.MemberPartyIds</c>.
+        /// </summary>
+        private static bool SameMembers(List<string> a, List<string> b)
+        {
+            if (a == null || b == null || a.Count != b.Count) return false;
+
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (string.CompareOrdinal(a[i], b[i]) != 0) return false;
+            }
+            return true;
         }
 
         // ------------------------------------------------------------------ agora.seats

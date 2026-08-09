@@ -550,6 +550,65 @@ namespace Agora.Mod.UiBindings
         }
     }
 
+    /// <summary>
+    /// One arrangement the chamber could form, from this party's point of view. A live view, not
+    /// history: it is recomputed from current platforms, so it drifts between elections.
+    /// </summary>
+    /// <remarks>
+    /// There is deliberately no per-partner "refusal" flag. A set that never reaches the ranking was
+    /// rejected because its lead is too small or its members too far apart, and the pure ranking
+    /// cannot say which without re-running the evaluation for sets it never built. Absence is the
+    /// honest expression; a named refusal would be a political fact the engine does not model.
+    /// </remarks>
+    public sealed class CoalitionOptionPayload : IJsonWritable
+    {
+        public List<string> MemberPartyIds = new List<string>();
+        public string LeadPartyId = "";
+        public int Seats;
+        public double SeatShare;
+        public bool HasMajority;
+
+        /// <summary>Mean platform distance across member pairs, [0,1]. Lower is closer.</summary>
+        public double MeanDistance;
+
+        /// <summary>Widest gap between any two members, [0,1] — the figure judged against the cap.</summary>
+        public double MaxDistance;
+
+        /// <summary>The cap this set was judged against, including any grand-coalition slack.</summary>
+        public double DistanceCap;
+
+        /// <summary>Cohesion this arrangement would have, [0,1]. Also the odds talks succeed.</summary>
+        public double Cohesion;
+
+        /// <summary>Ranking score, [0,1].</summary>
+        public double Score;
+
+        public bool IsMinimumWinning;
+        public bool IsGrandCoalition;
+
+        /// <summary>True when this is the arrangement currently governing.</summary>
+        public bool IsCurrentGovernment;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.CoalitionOption");
+            UiJson.Ids(writer, "memberPartyIds", MemberPartyIds);
+            UiJson.Id(writer, "leadPartyId", LeadPartyId);
+            UiJson.Number(writer, "seats", Seats);
+            UiJson.Number(writer, "seatShare", SeatShare);
+            UiJson.Flag(writer, "hasMajority", HasMajority);
+            UiJson.Number(writer, "meanDistance", MeanDistance);
+            UiJson.Number(writer, "maxDistance", MaxDistance);
+            UiJson.Number(writer, "distanceCap", DistanceCap);
+            UiJson.Number(writer, "cohesion", Cohesion);
+            UiJson.Number(writer, "score", Score);
+            UiJson.Flag(writer, "isMinimumWinning", IsMinimumWinning);
+            UiJson.Flag(writer, "isGrandCoalition", IsGrandCoalition);
+            UiJson.Flag(writer, "isCurrentGovernment", IsCurrentGovernment);
+            writer.TypeEnd();
+        }
+    }
+
     // ---------------------------------------------------------------------------- agora.seats
 
     /// <summary>

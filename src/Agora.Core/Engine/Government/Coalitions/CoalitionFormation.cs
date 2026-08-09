@@ -126,26 +126,13 @@ namespace Agora.Core.Engine.Government.Coalitions
 
             // --- Proportional: enumerate, rank, negotiate -------------------------------------
 
-            bool usedSlack = false;
-            List<CoalitionCandidate> candidates = BuildCandidates(pool, totalSeats, t, false);
+            bool usedSlack;
+            List<CoalitionCandidate> candidates = RankOf(pool, totalSeats, t, out usedSlack);
+
+            // Re-derived from the ranked list rather than returned alongside it: the marks
+            // MarkMinimumWinning wrote are on the candidate objects themselves, and filtering an
+            // already-sorted list by a key the sort ranks first yields the same sorted subsequence.
             List<CoalitionCandidate> majority = MajorityOf(candidates);
-
-            if (majority.Count == 0 && t.GrandCoalitionDistanceBonus > 0.0)
-            {
-                // "Slack granted to a two-largest-parties coalition when nothing else works."
-                List<CoalitionCandidate> withSlack = BuildCandidates(pool, totalSeats, t, true);
-                List<CoalitionCandidate> majorityWithSlack = MajorityOf(withSlack);
-                if (majorityWithSlack.Count > 0)
-                {
-                    usedSlack = true;
-                    candidates = withSlack;
-                    majority = majorityWithSlack;
-                }
-            }
-
-            MarkMinimumWinning(majority);
-            candidates.Sort(CoalitionCandidate.Order);
-            majority.Sort(CoalitionCandidate.Order);
 
             int attempts = 0;
             int maxAttempts = t.FormationAttemptsMax < 1 ? 1 : t.FormationAttemptsMax;
@@ -184,6 +171,44 @@ namespace Agora.Core.Engine.Government.Coalitions
 
             return new CoalitionFormationResult(
                 null, attempts, date.AddMonths(Months(t.FormationWindowMonths)), candidates, usedSlack);
+        }
+
+        /// <summary>
+        /// Every viable arrangement the current chamber could form, in formation order, WITHOUT
+        /// running the negotiation draw.
+        /// </summary>
+        /// <remarks>
+        /// A read-only view for the dashboard (fixplan W6): it answers "who could govern, given where
+        /// the parties stand today", which drifts as platforms drift. <see cref="Form"/> answers a
+        /// different question — who actually did — and is the only one that touches the RNG.
+        /// <para>
+        /// Pure: no seed, no draw, no state written. Callable from a UI publisher without violating
+        /// docs/contracts/ui_bindings.md rule 5, because the computation happens here in the engine
+        /// and the caller only copies the result.
+        /// </para>
+        /// </remarks>
+        /// <param name="system">Electoral system in force. FPTP forms no coalition, so it answers with
+        /// an empty list rather than a fabricated one.</param>
+        /// <param name="seats">Seat allocation to read the chamber from. Order-independent.</param>
+        /// <param name="parties">Parties, for platforms and status. Order-independent.</param>
+        /// <param name="tuning">Engine tuning; the <c>coalitions</c> section is read.</param>
+        public static IReadOnlyList<CoalitionCandidate> RankCandidates(
+            ElectoralSystem system,
+            IReadOnlyList<SeatAllocation> seats,
+            IReadOnlyList<Party> parties,
+            EngineTuning tuning)
+        {
+            if (tuning == null) throw new ArgumentNullException(nameof(tuning));
+
+            var none = new List<CoalitionCandidate>();
+            if (seats == null || system == ElectoralSystem.FirstPastThePost) return none;
+
+            int totalSeats;
+            List<PartySeat> pool = CoalitionMath.BuildPool(seats, parties, out totalSeats);
+            if (pool.Count == 0 || totalSeats <= 0) return none;
+
+            bool usedSlack;
+            return RankOf(pool, totalSeats, tuning.Coalitions, out usedSlack);
         }
 
         /// <summary>Stable id from the formation month, e.g. <c>gov-1994-06</c>.</summary>
@@ -247,6 +272,40 @@ namespace Agora.Core.Engine.Government.Coalitions
         }
 
         // --- candidate construction -----------------------------------------------------------
+
+        /// <summary>
+        /// Enumerates, grants the grand-coalition slack if nothing else reaches a majority, marks the
+        /// minimum-winning arrangements and sorts into formation order.
+        /// </summary>
+        /// <remarks>
+        /// One implementation, called by both <see cref="Form"/> and <see cref="RankCandidates"/>. Two
+        /// would be worse than no dashboard readout at all: a ranking that could drift from the one
+        /// formation actually used would put a wrong political fact on screen and look authoritative.
+        /// </remarks>
+        private static List<CoalitionCandidate> RankOf(
+            List<PartySeat> pool, int totalSeats, CoalitionsTuning t, out bool usedSlack)
+        {
+            usedSlack = false;
+            List<CoalitionCandidate> candidates = BuildCandidates(pool, totalSeats, t, false);
+            List<CoalitionCandidate> majority = MajorityOf(candidates);
+
+            if (majority.Count == 0 && t.GrandCoalitionDistanceBonus > 0.0)
+            {
+                // "Slack granted to a two-largest-parties coalition when nothing else works."
+                List<CoalitionCandidate> withSlack = BuildCandidates(pool, totalSeats, t, true);
+                List<CoalitionCandidate> majorityWithSlack = MajorityOf(withSlack);
+                if (majorityWithSlack.Count > 0)
+                {
+                    usedSlack = true;
+                    candidates = withSlack;
+                    majority = majorityWithSlack;
+                }
+            }
+
+            MarkMinimumWinning(majority);
+            candidates.Sort(CoalitionCandidate.Order);
+            return candidates;
+        }
 
         private static List<CoalitionCandidate> BuildCandidates(
             List<PartySeat> pool, int totalSeats, CoalitionsTuning t, bool allowGrandSlack)
