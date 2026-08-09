@@ -48,6 +48,24 @@ already in use by `AgoraDistrictsUISystem`, so no scout report is required and n
    the Parties tab needs no equivalent of the Districts panel's "District gone" branch
    (`DistrictsPanel.tsx:126-142`). It still needs the empty-payload branch, for the frames before
    the engine's first publish.
+
+   > **AMENDED 2026-08-09 — the assumption above is true per save and false per session.** The
+   > review of chunk C found the resulting defect in the shipped panel. `PartyRegistry` never drops
+   > an id *within one save*, but `selectedPartyId$` is a module-level `bindLocalValue` and lives for
+   > the whole **session**, so the roster underneath it can be replaced while the selection persists:
+   >
+   > - **A theme switch.** `PoliticalEngine` does `state.Parties = PartyRegistry.GenerateInitial(...)`
+   >   — *"Replaced, never merged: a party the old theme placed at party-03 and the new one places
+   >   there too are different brands that happen to share a slot."* The settings drawer offers this,
+   >   and EU→NA shrinks the roster, so a stored `party-05` resolves to nothing.
+   > - **Loading a second save in the same session**, which swaps the roster outright.
+   >
+   > **Requirement.** The panel must validate the stored selection against the live roster and fall
+   > back to the first row when it is absent — at render time, in `resolveSelection`, with no
+   > `useEffect` and no write-back (§2's constraint is unchanged). What it must NOT grow is a
+   > "District gone" branch: the correct behaviour is to select a party, not to explain the absence
+   > of one. Returning the stored id unchecked made the pane report *"No parties are published for
+   > this save yet"* while the rail beside it listed the full register.
 3. **The detail payload does not repeat what `agora.parties.roster` already carries.**
    `ui_bindings.md:127-129` — *"Every other payload in this contract identifies a party by `partyId`
    only"*. `coreGrievance`, `isIncumbent` and `isInGovernment` are read from the `PartyBrief` the
@@ -658,18 +676,52 @@ the label derives from `brief.status`, never from a name string.
    component, `PartyDetailHeader`, taking `{ detail, brief }` and rendering only text. W4 adds the
    rename field, the colour picker and the lock affordances *inside* it, reading `brief.nameLocked` /
    `brief.colorLocked` (plan 0001 §7). W6 adds no button, no input, no `trigger`.
+
+   > **AMENDED 2026-08-09, and W4 must read this.** The shipped signature is
+   > `{ partyId, detail, brief }` — three props, not the two written above. `partyId` was added in
+   > chunk C's fix round so the header's identity assertion is local: it now tests
+   > `detail.id === props.partyId` directly, where before it tested `detail.id === brief.id`, which
+   > held only by an invariant of the caller (`PartiesPanel` looks `selected` up by `selectedId`).
+   > The change is purely additive and the component is still text-only, so W4's edit controls drop
+   > in exactly as planned — but W4 is being built against this paragraph in a sibling worktree, so
+   > the third prop is recorded here rather than discovered at merge.
 2. **Slogan**, if non-empty — one line, quoted, dimmed. Flavor.
 3. **Description**, if non-empty — one paragraph. Flavor. When both are empty the pane says so in one
    sentence ("The press has not written this party up yet"), because that is a real state on a save
    whose flavor provider has never run (`fixplan.md` W2).
 4. **Standing** — a four-cell stat row: `Seats` (`seats`, with `pct(seatShare)` beneath), `Last vote`
    (`pct(lastVoteShare)`), `Polling` (`pct(currentPollShare)`), `Since the election`
-   (`signedPoints(pollDeltaSinceElection)` tinted `$good`/`$bad` by sign). When
+   (`signedPoints(pollDeltaSinceElection)` tinted `$good`/`$bad` by sign). ~~When
    `!hasContestedElection` the last two cells render `-` and a one-line note — a delta against a vote
-   share that does not exist is a lie, not a zero. When `hasContestedElection && !hasPoll`, `Polling`
-   falls back to `currentStandingShare` **labelled differently** ("Standing", not "Polling") so a
-   modelled figure is never presented as a published poll.
+   share that does not exist is a lie, not a zero.~~ When `hasContestedElection && !hasPoll`,
+   `Polling` falls back to `currentStandingShare` **labelled differently** ("Standing", not
+   "Polling") so a modelled figure is never presented as a published poll.
    *(Chunk E appends the sparkline to this row.)*
+
+   > **AMENDED 2026-08-09 — the struck sentence was wrong twice, and shipped wrong.** It is replaced
+   > by the two rules below; the fallback sentence after it still stands unchanged.
+   >
+   > **(a) The gate was too wide.** The stated reason — *"a delta against a vote share that does not
+   > exist is a lie"* — is true of the **delta alone**. It is not true of the poll. A party founded
+   > mid-term (an EU split, or a new entry) has never been on a ballot, so
+   > `HasContestedElection` is false — it comes from `latest.PartyIdsOnBallot.Contains(partyId)` —
+   > but `PollingEngine` polls every party currently standing, so `HasPoll` and `CurrentPollShare`
+   > are set independently and are real published figures. Gating the poll cell on
+   > `hasContestedElection` made the rail say "8% poll" and the pane one flex row to its right say
+   > Polling `-`, with a note claiming the blank avoided showing a zero when the suppressed value was
+   > a published poll. **Rule: the Polling cell is gated on `hasPoll` ALONE. The delta cell stays
+   > gated on `hasContestedElection && hasPoll` — that gate is what the honesty rule is actually
+   > about, and it is correct.** The four cases are: `hasPoll` → "Polling" with `currentPollShare`;
+   > `hasContestedElection && !hasPoll` → "Standing" with `currentStandingShare`; neither → `-`.
+   > The `!hasContestedElection` note must describe only the missing seats, vote share and delta —
+   > never the poll, which may well be populated beside it.
+   >
+   > **(b) "the last two cells" contradicted §10.** Checklist item 13 says *"seats/vote/poll cells
+   > read `-` with the note"* — three cells. **The checklist is right and this item was wrong.**
+   > Every path that creates or revives a party leaves `SeatsHeld` at zero, so `seats` is always 0
+   > when `hasContestedElection` is false, and `-` is strictly more honest than "0% of a chamber that
+   > does not exist". So under `!hasContestedElection`: `Seats` and `Last vote` render `-`, the delta
+   > renders `-`, and `Polling` renders `-` **only if there is also no poll**.
 5. **Threshold** — one line carrying both facts (§1c). Under FPTP
    (`summary.system === "FirstPastThePost"`) the electoral threshold does not apply; the line renders
    the survival counter alone.

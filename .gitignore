@@ -21,3 +21,6 @@ ui/.parcel-cache/
 
 # Local runtime artifacts
 *.log
+
+# Agent worktrees - transient, never part of the repo
+.claude/worktrees/

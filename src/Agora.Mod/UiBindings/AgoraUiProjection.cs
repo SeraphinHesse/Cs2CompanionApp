@@ -23,6 +23,7 @@ namespace Agora.Mod.UiBindings
         internal const int NewsFeedMax = 40;
         internal const int EventsMax = 25;
         internal const int ElectionHistoryMax = 12;
+        internal const int PollTrendMax = 24;
 
         private const int DaysPerWeek = 7;
 
@@ -199,6 +200,325 @@ namespace Agora.Mod.UiBindings
             if (bySupport != 0) return bySupport;
 
             return string.CompareOrdinal(a.Id, b.Id);
+        }
+
+        /// <summary>
+        /// One party's full detail. An unknown id returns an empty payload rather than throwing — a
+        /// party can dissolve while its pane is open.
+        /// </summary>
+        /// <remarks>
+        /// <c>PollResult.TrueShares</c> is never read here, for the same reason as
+        /// <see cref="BuildLatestPoll"/>: the pane would be showing the model's own answer next to
+        /// the published estimate of it.
+        /// </remarks>
+        internal static PartyDetailPayload BuildPartyDetail(PoliticalState state, string partyId)
+        {
+            var payload = new PartyDetailPayload();
+            if (state == null || string.IsNullOrEmpty(partyId)) return payload;
+
+            Party party = null;
+            for (int i = 0; i < state.Parties.Count; i++)
+            {
+                if (state.Parties[i] == null) continue;
+                if (string.CompareOrdinal(state.Parties[i].Id, partyId) == 0)
+                {
+                    party = state.Parties[i];
+                    break;
+                }
+            }
+
+            if (party == null) return payload;
+
+            payload.Id = party.Id;
+            payload.Name = party.Name;
+            payload.ShortName = party.ShortName;
+            payload.ColorHex = party.ColorHex;
+            payload.ArchetypeId = party.ArchetypeId;
+            payload.Description = party.Description;
+            payload.Slogan = party.Slogan;
+
+            IssuePosition platform = party.Platform;
+            payload.PlatformServices = platform.Services;
+            payload.PlatformCostOfLiving = platform.CostOfLiving;
+            payload.PlatformEnvironment = platform.Environment;
+            payload.PlatformTransit = platform.Transit;
+            payload.PlatformGrowth = platform.Growth;
+            payload.PlatformHeritageOrder = platform.HeritageOrder;
+
+            IssuePosition manifesto = party.LastManifesto;
+            payload.ManifestoServices = manifesto.Services;
+            payload.ManifestoCostOfLiving = manifesto.CostOfLiving;
+            payload.ManifestoEnvironment = manifesto.Environment;
+            payload.ManifestoTransit = manifesto.Transit;
+            payload.ManifestoGrowth = manifesto.Growth;
+            payload.ManifestoHeritageOrder = manifesto.HeritageOrder;
+
+            // The live count, not the last election's allocation: a lifecycle event between ballots
+            // moves seats without producing an ElectionResult.
+            payload.Seats = party.SeatsHeld;
+
+            int totalSeats = TotalSeats(state);
+            payload.SeatShare = totalSeats > 0 ? (double)party.SeatsHeld / totalSeats : 0.0;
+            payload.LastVoteShare = party.LastVoteShare;
+            payload.ConsecutiveElectionsBelowThreshold = party.ConsecutiveElectionsBelowThreshold;
+
+            if (state.ElectionHistory != null && state.ElectionHistory.Count > 0)
+            {
+                ElectionResult latest = state.ElectionHistory[state.ElectionHistory.Count - 1];
+                if (latest != null)
+                {
+                    payload.HasContestedElection =
+                        latest.PartyIdsOnBallot != null && latest.PartyIdsOnBallot.Contains(partyId);
+
+                    if (latest.Seats != null)
+                    {
+                        for (int i = 0; i < latest.Seats.Count; i++)
+                        {
+                            SeatAllocation seat = latest.Seats[i];
+                            if (string.CompareOrdinal(seat.PartyId, partyId) != 0) continue;
+
+                            payload.PassedThreshold = seat.PassedThreshold;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (state.RecentPolls != null)
+            {
+                // A party absent from the newest published poll has no current polling figure, and
+                // hasPoll: false is how that is said. Walking back to an older poll would put a stale
+                // number under currentPollShare while agora.seats.latestPoll shows a different one.
+                for (int i = state.RecentPolls.Count - 1; i >= 0; i--)
+                {
+                    PollResult poll = state.RecentPolls[i];
+                    if (poll == null || !poll.IsPublished) continue;
+
+                    if (poll.Shares != null)
+                    {
+                        for (int j = 0; j < poll.Shares.Count; j++)
+                        {
+                            PartyVoteShare share = poll.Shares[j];
+                            if (string.CompareOrdinal(share.PartyId, partyId) != 0) continue;
+
+                            payload.HasPoll = true;
+                            payload.CurrentPollShare = share.Share;
+                            payload.PollDate = poll.Date;
+                            break;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            payload.PollDeltaSinceElection = payload.HasPoll && payload.HasContestedElection
+                ? payload.CurrentPollShare - party.LastVoteShare
+                : 0.0;
+
+            if (state.CurrentVoteShares != null)
+            {
+                for (int i = 0; i < state.CurrentVoteShares.Count; i++)
+                {
+                    PartyVoteShare share = state.CurrentVoteShares[i];
+                    if (string.CompareOrdinal(share.PartyId, partyId) != 0) continue;
+
+                    payload.CurrentStandingShare = share.Share;
+                    break;
+                }
+            }
+
+            payload.Status = party.Status.ToString();
+            payload.FoundedDate = party.FoundedDate;
+            payload.DissolvedDate = party.DissolvedDate;
+
+            // Both are nullable string? on Party; the wire carries "" for an absent id, never null.
+            payload.PredecessorPartyId = party.PredecessorPartyId ?? "";
+            payload.SuccessorPartyId = party.SuccessorPartyId ?? "";
+            payload.RevivalCount = party.RevivalCount;
+            payload.AbsorbedPartyIds = AbsorbedBy(state, partyId);
+
+            payload.GovernmentRole = RoleOf(state, partyId);
+            payload.FactionIds = SortedCopy(party.FactionIds);
+            return payload;
+        }
+
+        private static PartyGovernmentRole RoleOf(PoliticalState state, string partyId)
+        {
+            Coalition government = state.Government;
+            if (government == null) return PartyGovernmentRole.None;
+
+            // Lead first: MemberPartyIds always contains LeadPartyId, so the member test would
+            // swallow the leadership.
+            if (string.CompareOrdinal(government.LeadPartyId, partyId) == 0)
+                return PartyGovernmentRole.Lead;
+
+            if (government.MemberPartyIds != null && government.MemberPartyIds.Contains(partyId))
+                return PartyGovernmentRole.Member;
+
+            if (government.OppositionPartyIds != null && government.OppositionPartyIds.Contains(partyId))
+                return PartyGovernmentRole.Opposition;
+
+            return PartyGovernmentRole.None;
+        }
+
+        /// <summary>
+        /// The reverse index of <c>Party.SuccessorPartyId</c>: every party that merged into this one,
+        /// ascending. The forward pointer only tells a brand where it went; without this a party that
+        /// absorbed three rivals has nothing at all to show for it.
+        /// </summary>
+        private static List<string> AbsorbedBy(PoliticalState state, string partyId)
+        {
+            var absorbed = new List<string>();
+            if (state == null || state.Parties == null) return absorbed;
+
+            for (int i = 0; i < state.Parties.Count; i++)
+            {
+                Party other = state.Parties[i];
+                if (other == null || string.IsNullOrEmpty(other.Id)) continue;
+                if (string.CompareOrdinal(other.Id, partyId) == 0) continue;
+                if (string.CompareOrdinal(other.SuccessorPartyId ?? "", partyId) != 0) continue;
+
+                absorbed.Add(other.Id);
+            }
+
+            return SortedCopy(absorbed);
+        }
+
+        /// <summary>
+        /// One party's published poll shares over time, oldest first, capped at
+        /// <see cref="PollTrendMax"/> points.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Oldest first is deliberate and is the one list in the contract that is not newest-first: a
+        /// trend reads left to right in time, so the cap drops from the <b>front</b> — the reverse of
+        /// <see cref="BuildHistory"/>, which trims the tail of a newest-first list.
+        /// </para>
+        /// <para>
+        /// A poll with no entry for this party contributes no point at all rather than a zero. A party
+        /// that did not exist yet did not poll at 0%, and a sparkline that says it did is inventing a
+        /// collapse. <c>PollResult.TrueShares</c> is never read, for the same reason as
+        /// <see cref="BuildPartyDetail"/>.
+        /// </para>
+        /// </remarks>
+        internal static List<PollTrendPointPayload> BuildPollTrend(PoliticalState state, string partyId)
+        {
+            var rows = new List<PollTrendPointPayload>();
+            if (state == null || string.IsNullOrEmpty(partyId) || state.RecentPolls == null) return rows;
+
+            // Forward, because RecentPolls is stored oldest first and that is the order this list
+            // publishes in.
+            for (int i = 0; i < state.RecentPolls.Count; i++)
+            {
+                PollResult poll = state.RecentPolls[i];
+                if (poll == null || !poll.IsPublished || poll.Shares == null) continue;
+
+                for (int j = 0; j < poll.Shares.Count; j++)
+                {
+                    PartyVoteShare share = poll.Shares[j];
+                    if (string.CompareOrdinal(share.PartyId, partyId) != 0) continue;
+
+                    rows.Add(new PollTrendPointPayload
+                    {
+                        Date = poll.Date,
+                        Share = share.Share,
+                        MarginOfError = poll.MarginOfError,
+
+                        // WeeksToElection is only meaningful against a scheduled ballot; without one
+                        // the field is whatever the pollster last carried, so the sentinel is used.
+                        WeeksToElection = poll.ElectionDate.HasValue ? poll.WeeksToElection : -1
+                    });
+                    break;
+                }
+            }
+
+            if (rows.Count > PollTrendMax) rows.RemoveRange(0, rows.Count - PollTrendMax);
+            return rows;
+        }
+
+        /// <summary>
+        /// One party's result at every election it took part in, oldest first, capped at
+        /// <see cref="ElectionHistoryMax"/> rows.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// An election this party had no part in — absent from the ballot and absent from the seat
+        /// table — contributes no row. A blank column for a brand that did not yet exist would read as
+        /// a wipeout it never suffered.
+        /// </para>
+        /// <para>
+        /// <c>WasOnBallot</c> is the ballot list's own answer, and it is the only thing that separates
+        /// "stood and took nothing" from "did not stand". A row carrying it false — seats recorded
+        /// against a party the ballot list does not name — is a <b>defensive guard</b>, not a shape any
+        /// current engine path produces: FPTP indexes its seat table by ballot position, and the
+        /// proportional path builds both lists from a ballot fixed earlier in the same tick, with
+        /// lifecycle running only after the count. The guard stands because this is a persisted,
+        /// versioned structure: a future allocator change, or an older sidecar, must not be able to
+        /// drop real seats silently. So the row is emitted rather than dropped.
+        /// </para>
+        /// <para>
+        /// <c>HasSeatRecord</c> is the converse, and it does occur: a party on the ballot with no
+        /// matching <c>SeatAllocation</c> at all, which FPTP's empty result produces for a city with no
+        /// districts. <c>SeatAllocation</c> is a readonly struct, so such a row's <c>PassedThreshold</c>
+        /// is an unset default rather than a verdict, and the pane needs to be told which it is.
+        /// </para>
+        /// <para>
+        /// Oldest first, and the cap therefore drops from the <b>front</b>, exactly as
+        /// <see cref="BuildPollTrend"/> does and the reverse of <see cref="BuildHistory"/>.
+        /// </para>
+        /// </remarks>
+        internal static List<PartyElectionRowPayload> BuildPartyElectionRecord(
+            PoliticalState state, string partyId)
+        {
+            var rows = new List<PartyElectionRowPayload>();
+            if (state == null || string.IsNullOrEmpty(partyId) || state.ElectionHistory == null)
+                return rows;
+
+            // Forward, because ElectionHistory is append-only and stored oldest first, which is the
+            // order this list publishes in.
+            for (int i = 0; i < state.ElectionHistory.Count; i++)
+            {
+                ElectionResult election = state.ElectionHistory[i];
+                if (election == null) continue;
+
+                bool onBallot = election.PartyIdsOnBallot != null &&
+                                election.PartyIdsOnBallot.Contains(partyId);
+
+                bool hasSeatRow = false;
+                var row = new PartyElectionRowPayload();
+
+                if (election.Seats != null)
+                {
+                    for (int j = 0; j < election.Seats.Count; j++)
+                    {
+                        SeatAllocation seat = election.Seats[j];
+                        if (string.CompareOrdinal(seat.PartyId, partyId) != 0) continue;
+
+                        hasSeatRow = true;
+                        row.Seats = seat.Seats;
+                        row.SeatShare = seat.SeatShare;
+                        row.VoteShare = seat.VoteShare;
+                        row.PassedThreshold = seat.PassedThreshold;
+                        break;
+                    }
+                }
+
+                if (!onBallot && !hasSeatRow) continue;
+
+                row.ElectionId = election.Id;
+                row.Date = election.Date;
+                row.TermNumber = election.TermNumber;
+                row.IsSnapElection = election.IsSnapElection;
+                row.WasOnBallot = onBallot;
+                row.HasSeatRecord = hasSeatRow;
+                rows.Add(row);
+            }
+
+            if (rows.Count > ElectionHistoryMax)
+                rows.RemoveRange(0, rows.Count - ElectionHistoryMax);
+
+            return rows;
         }
 
         // ------------------------------------------------------------------ agora.seats

@@ -15,13 +15,22 @@ import { bindLocalValue } from "cs2/api";
  * once — so the binding object below is a single instance both trees subscribe to.
  */
 
-export type AgoraTab = "council" | "districts" | "news";
+export type AgoraTab = "council" | "parties" | "districts" | "news";
 
-/** Left-to-right order of the tab strip. */
-export const TAB_ORDER: AgoraTab[] = ["council", "districts", "news"];
+/**
+ * Left-to-right order of the tab strip. Parties sits second deliberately: Council answers "who
+ * governs" and Parties answers "who are they", and the two are read together. Districts and News
+ * are drill-downs.
+ *
+ * Every tab here needs a matching `case` in `renderTab` (Dashboard.tsx). The `default:` branch
+ * falls through to the Council panel, so a tab added here and nowhere else renders the wrong panel
+ * with no error anywhere.
+ */
+export const TAB_ORDER: AgoraTab[] = ["council", "parties", "districts", "news"];
 
 export const TAB_LABEL: { [tab in AgoraTab]: string } = {
   council: "Council",
+  parties: "Parties",
   districts: "Districts",
   news: "News",
 };
@@ -39,7 +48,8 @@ export const activeTab$ = bindLocalValue<AgoraTab>("council");
  *
  * View state, like the two above it — the settings it *contains* are per-save and live in the
  * sidecar, but "is the drawer open" resets every session and never crosses the bridge. It is not a
- * fourth tab: a queued plan puts Parties in that slot, and this is chrome, not political data.
+ * tab: the tab strip carries political data and now runs Council, Parties, Districts, News, while
+ * the settings are chrome and sit beside the close control.
  */
 export const settingsOpen$ = bindLocalValue<boolean>(false);
 

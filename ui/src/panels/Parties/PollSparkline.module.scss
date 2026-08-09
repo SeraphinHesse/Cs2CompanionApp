@@ -1,0 +1,171 @@
+// Panel 26 — Parties, the poll trend sparkline. Flex only - Gameface has no CSS grid and fails
+// silently on it, and there is no SVG guarantee either, so the chart is a row of flex columns.
+// `gap` is avoided throughout; spacing is done with margins and padding.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+/** The plot height. Bar heights are percentages of it, so it has to be a definite length. */
+$plot-height: 52rem;
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  margin: 2rem 0 4rem 0;
+}
+
+.empty {
+  display: flex;
+  margin: 2rem 0 4rem 0;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.plotRow {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: $plot-height;
+}
+
+// -- axis ------------------------------------------------------------------------------------------
+//
+// The ceiling is auto-scaled, so it is printed. Without it a party at 2% and a party at 40% draw the
+// same shape, and the shape is the whole message.
+
+.axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  width: 32rem;
+  margin-right: 4rem;
+  padding-right: 3rem;
+  border-right: 1rem solid $line;
+}
+
+@mixin axis-label {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 9rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-faint;
+  white-space: nowrap;
+}
+
+.axisTop {
+  @include axis-label;
+}
+
+.axisBottom {
+  @include axis-label;
+}
+
+// -- columns ---------------------------------------------------------------------------------------
+
+.plot {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding-bottom: 1rem;
+  border-bottom: 1rem solid $line;
+  background-color: $surface-track;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0 1rem;
+}
+
+@mixin bar-base {
+  display: flex;
+  align-self: flex-end;
+  width: 100%;
+  min-height: 1rem;
+  border-radius: 1rem;
+}
+
+.bar {
+  @include bar-base;
+}
+
+/** The week of the ballot. Tinted rather than shaped, so the series still reads as one run. */
+.barElection {
+  @include bar-base;
+  background-color: $accent;
+}
+
+// -- footer ----------------------------------------------------------------------------------------
+
+.footer {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin-top: 2rem;
+}
+
+.footerEnd {
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 9rem;
+  color: $text-faint;
+  white-space: nowrap;
+}
+
+.footerEndRight {
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 9rem;
+  color: $text-faint;
+  white-space: nowrap;
+}
+
+.footerNote {
+  display: flex;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 9rem;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// -- tooltip ---------------------------------------------------------------------------------------
+
+.tip {
+  display: flex;
+  flex-direction: column;
+  max-width: 220rem;
+}
+
+.tipTitle {
+  display: flex;
+  font-size: 11rem;
+  font-weight: bold;
+}
+
+.tipBody {
+  display: flex;
+  margin-top: 1rem;
+  font-size: 10rem;
+  line-height: 1.35;
+}
+
+.tipNote {
+  display: flex;
+  margin-top: 2rem;
+  font-size: 10rem;
+  line-height: 1.35;
+  color: $text-dim;
+}

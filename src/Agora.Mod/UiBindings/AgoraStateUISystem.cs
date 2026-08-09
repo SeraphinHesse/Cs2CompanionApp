@@ -27,6 +27,9 @@ namespace Agora.Mod.UiBindings
         private ValueBinding<List<FactionBriefPayload>> _factions;
         private ValueBinding<PartyPalettePayload> _colorPalette;
         private ValueBinding<PartyEditLimitsPayload> _editLimits;
+        private GetterMapBinding<string, PartyDetailPayload> _partyDetail;
+        private GetterMapBinding<string, List<PollTrendPointPayload>> _pollTrend;
+        private GetterMapBinding<string, List<PartyElectionRowPayload>> _electionRecord;
 
         protected override void CreateBindings()
         {
@@ -64,6 +67,23 @@ namespace Agora.Mod.UiBindings
             AddBinding(_editLimits = new ValueBinding<PartyEditLimitsPayload>(
                 PartiesGroup, "editLimits", new PartyEditLimitsPayload()));
 
+            // AddBinding, not AddUpdateBinding — for the reason given in
+            // AgoraDistrictsUISystem.CreateBindings, above its own detail map binding.
+            AddBinding(_partyDetail = new GetterMapBinding<string, PartyDetailPayload>(
+                PartiesGroup, "detail", GetPartyDetail));
+
+            // Named argument: keyReader and keyWriter come first in the signature, and this value is
+            // a list, so it needs the same explicit writer a ValueBinding<List<T>> does — omitting it
+            // throws MissingMethodException on construction. Same shape as the districts crosstab.
+            AddBinding(_pollTrend = new GetterMapBinding<string, List<PollTrendPointPayload>>(
+                PartiesGroup, "pollTrend", GetPollTrend,
+                valueWriter: ListOf<PollTrendPointPayload>()));
+
+            // A list again, so the explicit writer again — same trap as the trend above.
+            AddBinding(_electionRecord = new GetterMapBinding<string, List<PartyElectionRowPayload>>(
+                PartiesGroup, "electionRecord", GetPartyElectionRecord,
+                valueWriter: ListOf<PartyElectionRowPayload>()));
+
             // The party editors. Paired fields travel together — a rename that could not also set
             // the short name would lock the short name away from flavor with no way to write it.
             AddBinding(new CallBinding<string, string, string, string>(
@@ -86,6 +106,27 @@ namespace Agora.Mod.UiBindings
             AddBinding(new CallBinding<string, string>(
                 PartiesGroup, "resetColor", OnResetPartyColor));
         }
+
+        /// <summary>
+        /// One party's detail. An unknown key returns the empty payload rather than throwing: a map
+        /// binding that threw would take the interface down with it.
+        /// </summary>
+        private static PartyDetailPayload GetPartyDetail(string partyId) =>
+            AgoraUiProjection.BuildPartyDetail(AgoraRuntime.State, partyId);
+
+        /// <summary>
+        /// One party's published poll shares over time, oldest first. An unknown key returns an empty
+        /// list, for the same reason the detail returns an empty payload.
+        /// </summary>
+        private static List<PollTrendPointPayload> GetPollTrend(string partyId) =>
+            AgoraUiProjection.BuildPollTrend(AgoraRuntime.State, partyId);
+
+        /// <summary>
+        /// One party's result at every election it took part in, oldest first. An unknown key returns
+        /// an empty list, as the two maps above do.
+        /// </summary>
+        private static List<PartyElectionRowPayload> GetPartyElectionRecord(string partyId) =>
+            AgoraUiProjection.BuildPartyElectionRecord(AgoraRuntime.State, partyId);
 
         /// <summary>
         /// The master toggle. Panels render <c>null</c> when this is false — not a disabled shell,
@@ -157,6 +198,12 @@ namespace Agora.Mod.UiBindings
             // limits would count characters against zero.
             _colorPalette.Update(AgoraUiProjection.BuildPalette(AgoraRuntime.Tuning));
             _editLimits.Update(AgoraUiProjection.BuildEditLimits());
+
+            // UpdateAll only pushes keys the panel has actually subscribed, so this costs nothing
+            // when the Parties tab is closed.
+            _partyDetail.UpdateAll();
+            _pollTrend.UpdateAll();
+            _electionRecord.UpdateAll();
         }
     }
 }

@@ -1,0 +1,177 @@
+// Panel 26 — Parties, the rail. Flex only - no CSS grid in Gameface. The rail is a fixed-width
+// column beside a flexible detail pane; min-height: 0 on the scroll child is what lets it actually
+// scroll inside a flex column.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.list {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 190rem;
+  width: 190rem;
+  min-height: 0;
+  margin-right: 10rem;
+  border-right: 1rem solid $line;
+  padding-right: 8rem;
+}
+
+.listHead {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5rem;
+  flex: 0 0 auto;
+}
+
+.listTitle {
+  display: flex;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-dim;
+}
+
+.listCount {
+  display: flex;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-faint;
+}
+
+.scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@mixin row-base {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-bottom: 3rem;
+  padding: 4rem 5rem;
+  border-radius: 3rem;
+  border: 1rem solid transparent;
+  flex: 0 0 auto;
+}
+
+.row {
+  @include row-base;
+  background-color: $surface-inset;
+
+  &:hover {
+    background-color: $surface-hover;
+  }
+}
+
+// A dissolved or merged brand is still in the roster and still clickable - the tab exists partly to
+// show them - but it must not read as one of the parties currently contesting the city.
+.rowGone {
+  @include row-base;
+  background-color: $surface-inset;
+  opacity: 0.6;
+
+  &:hover {
+    background-color: $surface-hover;
+  }
+}
+
+.rowSelected {
+  @include row-base;
+  background-color: $surface-hover;
+  border-color: $line-strong;
+}
+
+.rowStripe {
+  display: flex;
+  flex: 0 0 3rem;
+  width: 3rem;
+  border-radius: 2rem;
+  margin-right: 5rem;
+}
+
+.rowBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rowTop {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rowShort {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowChip {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: 4rem;
+  padding: 0 3rem;
+  border: 1rem solid $line-strong;
+  border-radius: 2rem;
+  color: $text-faint;
+  font-size: 8rem;
+  letter-spacing: 1rem;
+  line-height: 12rem;
+  white-space: nowrap;
+}
+
+.rowName {
+  display: flex;
+  margin-top: 1rem;
+  font-size: 10rem;
+  color: $text-dim;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowMeta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 2rem;
+  font-size: 10rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.rowSeats {
+  display: flex;
+}
+
+.rowSep {
+  display: flex;
+  margin: 0 3rem;
+}
+
+.rowPoll {
+  display: flex;
+}
+
+.emptyRow {
+  display: flex;
+  padding: 6rem 4rem;
+  font-size: 10rem;
+  line-height: 1.4;
+  color: $text-dim;
+}

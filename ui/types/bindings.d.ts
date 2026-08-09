@@ -3698,6 +3698,9 @@ declare namespace Agora {
 
   type PartyStatusName = "Active" | "Endangered" | "Dissolved" | "Merged" | "Revived";
 
+  /** Derived in the UI publisher from PoliticalState.Government; no engine field carries it. */
+  type PartyGovernmentRoleName = "None" | "Lead" | "Member" | "Opposition";
+
   type FactionStatusName = "Active" | "Endangered" | "Dissolved" | "Merged" | "Revived";
 
   type CoalitionStatusName = "Negotiating" | "Governing" | "Minority" | "Collapsed" | "Expired";
@@ -3844,6 +3847,127 @@ declare namespace Agora {
     descriptionLocked: boolean;
     /** Player has recoloured this party; `colorHex` is player-owned. */
     colorLocked: boolean;
+  }
+
+  /**
+   * A stance on each issue, each in [-1, +1]. Sign convention (see the one documented on
+   * `IssuePosition` in `Issues.cs`): +1 is "spend/protect/restrict more", -1 is "less". Never
+   * render an enum member name for these — see ISSUE_LABEL in the Parties panel.
+   */
+  interface IssuePositionView {
+    services: number;
+    costOfLiving: number;
+    environment: number;
+    transit: number;
+    growth: number;
+    heritageOrder: number;
+  }
+
+  /**
+   * `agora.parties.detail` — a MAP binding keyed by `PartyBrief.id`. An unknown key returns
+   * EMPTY_PARTY_DETAIL (`id: ""`), never throws.
+   *
+   * `name`, `shortName`, `description` and `slogan` are FLAVOR. Everything else is engine-owned.
+   * `coreGrievance`, `isIncumbent` and `isInGovernment` are deliberately NOT here — resolve them
+   * through `agora.parties.roster`. `name`, `shortName` and `colorHex` are the deliberate
+   * exception to that rule: they are the detail pane's own header.
+   */
+  interface PartyDetail {
+    id: IdString;
+    name: string;
+    shortName: string;
+    /** "#RRGGBB". Engine-owned, from the tuned palette. */
+    colorHex: string;
+    archetypeId: IdString;
+    description: string;
+    slogan: string;
+    /** Current stance. */
+    platform: IssuePositionView;
+    /** The stance it ran on at the last election. Meaningless when `!hasContestedElection`. */
+    lastManifesto: IssuePositionView;
+    /** Live seat count, which can differ from the last election's allocation. */
+    seats: number;
+    /** [0,1]. Zero before the first election. */
+    seatShare: number;
+    /** [0,1]. Zero before the first election. */
+    lastVoteShare: number;
+    hasContestedElection: boolean;
+    /** Cleared the electoral threshold at the last count. False when there has been none. */
+    passedThreshold: boolean;
+    /** Survival counter toward dissolution — a different fact from `passedThreshold`. */
+    consecutiveElectionsBelowThreshold: number;
+    /** [0,1] from the newest PUBLISHED poll. Zero when `!hasPoll`. */
+    currentPollShare: number;
+    hasPoll: boolean;
+    /** "" when `!hasPoll`. */
+    pollDate: SimDateString;
+    /** Signed: `currentPollShare - lastVoteShare`. Zero unless both flags are true. */
+    pollDeltaSinceElection: number;
+    /** [0,1] city-wide standing, the same figure as `agora.seats.voteShares`. */
+    currentStandingShare: number;
+    status: PartyStatusName;
+    foundedDate: SimDateString;
+    /** "" while the party still exists. */
+    dissolvedDate: SimDateString;
+    /** The party this one split from. "" when it was not a split. Resolve the label via the roster. */
+    predecessorPartyId: IdString;
+    /** The party this one merged into. "" unless `status` is "Merged". */
+    successorPartyId: IdString;
+    /** Times this brand has come back from dissolution. Render as words, never as a bare "1". */
+    revivalCount: number;
+    /** Ascending. The reverse index of `successorPartyId` — the parties this one absorbed. */
+    absorbedPartyIds: IdString[];
+    governmentRole: PartyGovernmentRoleName;
+    /** Ascending. Empty under the EU theme, which models no factions. */
+    factionIds: IdString[];
+  }
+
+  /**
+   * `agora.parties.pollTrend` — a MAP binding keyed by `PartyBrief.id`. Oldest first, capped at
+   * AGORA_POLL_TREND_MAX = 24. An unknown key returns []. Published polls only; the engine's own
+   * PollResult.TrueShares never crosses the bridge (contract rule 8).
+   */
+  interface PollTrendPoint {
+    date: SimDateString;
+    /** [0,1] as published. */
+    share: number;
+    /** [0,1], e.g. 0.031 for ±3.1 points. */
+    marginOfError: number;
+    /** -1 when the poll anticipated no scheduled election. */
+    weeksToElection: number;
+  }
+
+  /**
+   * `agora.parties.electionRecord` — a MAP binding keyed by `PartyBrief.id`: one party's result at
+   * each election it took part in. Oldest first, capped at AGORA_ELECTION_HISTORY_MAX = 12, keeping
+   * the newest twelve. An unknown key returns [].
+   *
+   * An election the party had no part in contributes NO ROW, so the series is not a calendar. A row
+   * with `wasOnBallot` false is the rare disagreement between the ballot list and the seat table:
+   * seats recorded against a party the ballot does not name.
+   */
+  interface PartyElectionRow {
+    electionId: IdString;
+    date: SimDateString;
+    /** The term this election opened, starting at 1. */
+    termNumber: number;
+    /** Triggered by a coalition collapse rather than by the calendar. */
+    isSnapElection: boolean;
+    seats: number;
+    /** [0,1] of the chamber. */
+    seatShare: number;
+    /** [0,1] that produced the seats. */
+    voteShare: number;
+    /** Cleared the electoral threshold at this count. Meaningless unless `hasSeatRecord`. */
+    passedThreshold: boolean;
+    /** Named on the ballot. False means the seats and the ballot list disagree — see above. */
+    wasOnBallot: boolean;
+    /**
+     * The seat table contained a row for this party. False is a party that stood while the count
+     * produced no allocation at all, in which case `passedThreshold`, `seats`, `seatShare` and
+     * `voteShare` are unset defaults rather than results, and no threshold verdict may be shown.
+     */
+    hasSeatRecord: boolean;
   }
 
   /**

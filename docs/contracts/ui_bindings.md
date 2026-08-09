@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 5**
+**schemaVersion: 6**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -10,7 +10,7 @@ must be listed here, and this file is the authority when the two sides disagree.
 rename, do not add a field, do not reorder a sort key. If a panel needs something that is not here,
 report it — do not invent a binding name locally.
 
-**Unfrozen three times, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`) added
+**Unfrozen four times, on the record.** Plan 0001 (`docs/plans/0001-batched-schema-change.md`) added
 three fields to `PartyBrief` on 2026-08-08 under `/schema-change`, which is the only route through the
 freeze: a version bump on this file, both sides moved in the same pass, and the reason written down.
 W3 then published `agora.state.settings` and `agora.state.isFirstRun` out of §8 and added
@@ -26,6 +26,18 @@ publish out of. What moved: two fields on `PartyBrief` (`description`, `slogan`)
 (`NotFound`, `ValueRequired`, `TooLong`, `OkColorInUse`). **Nothing was renamed and no existing
 payload field moved or changed type** — which is the property the freeze actually protects; a purely
 additive change cannot break a consumer that has not been updated.
+
+**W6, on 2026-08-08**, unfroze `agora.parties` a second time, under plan
+`docs/plans/0002-w6-parties-tab.md`, to add the read side of the Parties tab: three map bindings
+(`detail`, `pollTrend`, `electionRecord`) and four new payload shapes — `PartyDetail`,
+`IssuePositionView`, `PollTrendPoint` and `PartyElectionRow`. Nothing existing was renamed or
+reordered; this too is purely additive.
+
+**Version 6 covers the W4 and W6 work landing together in this pass** — the party editors and the
+whole of plan 0002, Part I and Part II, which move this file once rather than once per chunk. Both
+branches independently wrote version 5 for their own half; merging them is a further change, so the
+merged file reads value + 1. Any later landing that changes a shape here reads the current value and
+writes value + 1; the number is read from this file, never hard-coded.
 
 The freeze otherwise stands; these notes exist so the next reviewer reads authorised changes rather
 than violations.
@@ -84,7 +96,8 @@ These cross a Gameface bridge on every update. Keep them flat and bounded:
 - No payload nests more than one level (a row may contain a small named group like `wealth`; it may
   not contain a list of rows that themselves contain lists).
 - Unbounded histories are capped and the cap is part of the contract:
-  `AGORA_NEWS_FEED_MAX = 40`, `AGORA_EVENTS_MAX = 25`, `AGORA_ELECTION_HISTORY_MAX = 12`.
+  `AGORA_NEWS_FEED_MAX = 40`, `AGORA_EVENTS_MAX = 25`, `AGORA_ELECTION_HISTORY_MAX = 12`,
+  `AGORA_POLL_TREND_MAX = 24`.
 - Anything per-district and expensive is a **map binding**, fetched only for the key the panel is
   actually showing — never a city-wide array of every district's full detail.
 - Prose bodies never ride in a list payload. The feed carries headline + one-line summary; the body
@@ -196,6 +209,48 @@ Reads — every row here is C# → UI:
 | `agora.parties.factions` | `ValueBinding<T>` | `List<FactionBrief>` | `Agora.FactionBrief[]` | on faction lifecycle change (rare) + monthly | `[]` | M4 |
 | `agora.parties.colorPalette` | `ValueBinding<T>` | `PartyPalette : IJsonWritable` | `Agora.PartyPalette` | with the roster, on the same version-gated tick | `EMPTY_PARTY_PALETTE` | W4 |
 | `agora.parties.editLimits` | `ValueBinding<T>` | `PartyEditLimits : IJsonWritable` | `Agora.PartyEditLimits` | with the roster, on the same version-gated tick | `EMPTY_PARTY_EDIT_LIMITS` | W4 |
+| `agora.parties.detail` | `GetterMapBinding<string,T>` | `PartyDetail` per key | `Agora.PartyDetail` | on demand, per subscribed key | `EMPTY_PARTY_DETAIL` | W6 |
+| `agora.parties.pollTrend` | `GetterMapBinding<string,T>` | `List<PollTrendPoint>` per key | `Agora.PollTrendPoint[]` | on demand, per subscribed key | `[]` | W6 |
+| `agora.parties.electionRecord` | `GetterMapBinding<string,T>` | `List<PartyElectionRow>` per key | `Agora.PartyElectionRow[]` | on demand, per subscribed key | `[]` | W6 |
+
+The map key is the **party id** exactly as it appears in `PartyBrief.id`. An unknown key returns the
+empty value, never throws. Unlike a district, a party id is never removed from the roster — a dead
+party becomes `Dissolved` — so an id that resolves once resolves for the life of the save.
+
+`detail` is a map rather than fields on `PartyBrief` for the reason every map binding here exists:
+the roster is pushed to every panel on every monthly tick, and twelve issue positions plus polling
+per party is not something the seat chart or the news feed needs to carry.
+
+On `agora.parties.detail`: `platform` and `lastManifesto` are rendered together as a drift comparison
+(fixplan W6 addition 1); both were in the binding from the start. No payload changed and no version
+moved on its account — the pane draws the manifesto as a tick over the current-platform bars and
+suppresses both the tick and the drift line when `hasContestedElection` is false, because
+`lastManifesto` defaults to dead centre.
+
+`pollTrend` is the detail pane's sparkline: one party's published poll shares over time, fetched for
+the open party alone. It is party-scoped rather than city-wide because a city-wide series of
+per-party shares is a list of rows containing lists, which §2 forbids, and flattening it to one row
+per (date × party) would push hundreds of rows every monthly tick for a chart the player sees only
+when one pane is open. `agora.seats.pollTrend` stays reserved (§8) for M6's city-wide chart. Points
+carry the **published** share only — `PollResult.TrueShares` never crosses the bridge (rule 8) — and
+a poll with no entry for the party contributes no point rather than a zero, because a party that did
+not exist yet did not poll at 0%.
+
+`electionRecord` is the detail pane's history strip: one party's result at each election it took part
+in, fetched for the open party alone. It is a separate list rather than a field on `PartyDetail`
+because seats-per-election is a list of rows and §2 allows one level of nesting, not two. An election
+the party had **no part in — absent from the ballot and absent from the seat table — contributes no
+row**, so the series is not a calendar and a gap in it is not a wipeout. `wasOnBallot` is the ballot
+list's own answer and separates *stood and took nothing* from *did not stand*; a row carrying it
+**false** is the rare case where the seat table names a party the ballot list does not, and the row is
+published rather than dropped, because the seats are real. `hasSeatRecord` is the converse and says
+whether the seat table produced a row at all: a party that stood while the count allocated nothing —
+FPTP's empty result for a city with no districts — has `passedThreshold`, `seats`, `seatShare` and
+`voteShare` at their unset defaults, so the strip shows the contest but states no threshold verdict.
+`PartyDetail` carries the lineage scalars
+that go beside it — `predecessorPartyId`, `successorPartyId`, `revivalCount` and `absorbedPartyIds`,
+the last being the reverse index of `successorPartyId`, since the forward pointer alone cannot tell a
+party that absorbed three rivals that it did.
 
 Writes — **UI → C#**, all six. Every one returns a `CommandOutcome` in wire form (§4.6); none has a
 cadence or an empty value:
@@ -263,6 +318,11 @@ Sort: `roster` by `id` ordinal ascending. `factions` by `partyId` ordinal ascend
 `internalSupport` **descending**, then `id` ordinal ascending. `colorPalette.colors` is in
 **tuning order** — the order the engine assigns from — and is never re-sorted; a swatch's position
 is how a player recognises it between sessions. `editLimits` is a flat object with no list in it.
+`detail.factionIds`: ordinal ascending. `pollTrend`: `date` ascending (oldest first) — a trend reads
+left to right in time. This is the one list in the contract that is **not** newest-first, and it is
+capped by dropping from the **front**, so the newest `AGORA_POLL_TREND_MAX = 24` points survive.
+`electionRecord`: `date` ascending (oldest first), capped at `AGORA_ELECTION_HISTORY_MAX = 12`,
+keeping the newest twelve. `detail.absorbedPartyIds`: ordinal ascending.
 
 ### 4.3 `agora.seats` — seat chart + government breakdown
 
@@ -422,6 +482,17 @@ PartyBrief          id, name, shortName, description, slogan, colorHex, status, 
                     descriptionLocked, colorLocked
 PartyPalette        colors  — "#RRGGBB", UPPERCASE, in EngineTuning.Parties.ColorPalette order
 PartyEditLimits     nameMax, shortNameMax, descriptionMax, sloganMax, colorPattern
+IssuePositionView   services, costOfLiving, environment, transit, growth, heritageOrder
+PartyDetail         id, name, shortName, colorHex, archetypeId, description, slogan,
+                    platform{…IssuePositionView}, lastManifesto{…IssuePositionView}, seats,
+                    seatShare, lastVoteShare, hasContestedElection, passedThreshold,
+                    consecutiveElectionsBelowThreshold, currentPollShare, hasPoll, pollDate,
+                    pollDeltaSinceElection, currentStandingShare, status, foundedDate,
+                    dissolvedDate, governmentRole, factionIds, predecessorPartyId,
+                    successorPartyId, revivalCount, absorbedPartyIds
+PollTrendPoint      date, share, marginOfError, weeksToElection
+PartyElectionRow    electionId, date, termNumber, isSnapElection, seats, seatShare, voteShare,
+                    passedThreshold, wasOnBallot, hasSeatRecord
 FactionBrief        id, partyId, name, shortName, leaderName, internalSupport, isDominant,
                     tensionWithParty, status, coreGrievance
 PartyShare          partyId, share
@@ -474,6 +545,7 @@ into a panel.
 Three ownerships, not two, and the difference decides what the UI may offer to do with a field.
 
 **Flavor-owned** — `PartyBrief.name`/`shortName`/`description`/`slogan`,
+`PartyDetail.name`/`shortName`/`description`/`slogan`,
 `FactionBrief.name`/`shortName`/`leaderName`, `MayorSummary.name`, `PollSummary.pollsterName`,
 `NewsHeadline.headline`/`summary`/`outletName`, `NewsArticle.*` prose,
 `TimelineEventBrief.localAngle` and `MandateRow.text`. Render them; never parse them, never sort by
@@ -518,6 +590,22 @@ const EMPTY_PARTY_EDIT_LIMITS: Agora.PartyEditLimits = {
   nameMax: 0, shortNameMax: 0, descriptionMax: 0, sloganMax: 0, colorPattern: "",
 };
 
+const EMPTY_PARTY_DETAIL: Agora.PartyDetail = {
+  id: "", name: "", shortName: "", colorHex: "#808080", archetypeId: "", description: "",
+  slogan: "",
+  platform: {
+    services: 0, costOfLiving: 0, environment: 0, transit: 0, growth: 0, heritageOrder: 0,
+  },
+  lastManifesto: {
+    services: 0, costOfLiving: 0, environment: 0, transit: 0, growth: 0, heritageOrder: 0,
+  },
+  seats: 0, seatShare: 0, lastVoteShare: 0, hasContestedElection: false, passedThreshold: false,
+  consecutiveElectionsBelowThreshold: 0, currentPollShare: 0, hasPoll: false, pollDate: "",
+  pollDeltaSinceElection: 0, currentStandingShare: 0, status: "Active", foundedDate: "",
+  dissolvedDate: "", predecessorPartyId: "", successorPartyId: "", revivalCount: 0,
+  absorbedPartyIds: [], governmentRole: "None", factionIds: [],
+};
+
 const EMPTY_CITY_INDICES: Agora.CityIndices = {
   gini: 0, brainDrain: 0, serviceInequality: 0, commuteMisery: 0,
   polarization: 0, legitimacy: 0, discontent: 0,
@@ -547,6 +635,16 @@ const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {
 
 Array bindings take `[]`. `agora.seats.government`, `agora.seats.mayor`, `agora.seats.lastElection`
 and `agora.seats.latestPoll` take `null`.
+
+**Map bindings are the exception: `bindMap` takes no fallback argument**, and
+`useMapValue(binding, key)` cannot return `undefined` for a key the panel has asked for. So
+`EMPTY_DISTRICT_DETAIL`, `EMPTY_NEWS_ARTICLE` and `EMPTY_PARTY_DETAIL` are not wired into a binding
+declaration — they are module-local guard constants the panel substitutes for whatever `useMapValue`
+hands back, `const detail = raw || EMPTY_PARTY_DETAIL`, covering the frame before the getter has run
+and any nested group the payload did not write. The C# side answers an unknown key with its own
+empty payload, so the two must agree field for field; the literal above is why this section exists.
+`EMPTY_PARTY_DETAIL.colorHex` is `"#808080"` rather than `""` for that reason — it matches the C#
+initialiser, and a swatch with no colour renders as a hole rather than as grey.
 
 `weeksToElection` is `-1` — not `0` — when no election is scheduled, so "the election is this week"
 stays distinguishable from "there is no election".
@@ -599,11 +697,17 @@ gets an empty panel and no error.
 
 | Binding | Intended for | Milestone |
 |---|---|---|
-| `agora.seats.pollTrend` | trend chart of published poll shares over time | M6 |
+| `agora.seats.pollTrend` | city-wide multi-party trend chart of published poll shares over time | M6 |
 | `agora.districts.overlay` | political map overlay tint data per district | M6 |
 | `agora.districts.blocs` | the full 60-bloc breakdown behind a crosstab cell | M6 |
 | `agora.news.archive` | paged news archive beyond the 40-item feed | M6 |
 | `agora.news.markRead` | UI → C# read-state persistence | M6 |
+
+**`agora.seats.pollTrend` stays reserved, on purpose.** W6 needed a poll trend and did **not** take
+this name: the Parties tab draws one party's series, and a city-wide series of per-party shares is a
+list of rows containing lists, which §2 forbids. It published the party-scoped map
+`agora.parties.pollTrend` (§4.2) instead. This name is still M6's, for the city-wide multi-party
+chart that is a different consumer with a different shape.
 
 **Moved out in W3, on 2026-08-08.** `agora.state.settings`, `agora.state.setSetting` and
 `agora.state.isFirstRun` were reserved here with `SettingsPayload`'s eight-field shape fixed in
