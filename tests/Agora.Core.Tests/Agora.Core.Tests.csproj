@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <!--
-    Twenty-seven Agora.Mod files compiled in BY LINK, not by project reference.
+    Twenty-eight Agora.Mod files compiled in BY LINK, not by project reference.
 
     politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
     this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
@@ -67,6 +67,16 @@
     "a numeric field smuggled into politics_flavor.json fails the build", and that sentence is only
     true if the sweep is compiled here and exercised here. Leaving the rule to be enforced by an
     assembly the test suite cannot load is how #1 comes to be enforced by nobody.
+
+    FileFlavorCache came with the validation chain, one milestone later and for the load path rather
+    than the write one. It re-runs the same validator over what is on disk, which means every
+    tightening of that validator is retroactive: an article rule added today is applied to a file
+    written a year ago, by a build that had never heard of it. The refs rule is exactly that case —
+    every cache written before it holds refless articles — and the difference between "the filter
+    took some" and "the filter took all of them" decides whether the load restores degraded prose or
+    installs an empty document as the last good one, permanently. That is one branch in Load() and
+    invisible to read; it is a fixture away from obvious. The file was already written against
+    System.IO and Newtonsoft only, so linking it costs nothing.
 
     The canned pool — StaticPoolProvider and the word lists in StaticPoolContent — is here because a
     party's name is identity that persists for the life of a save, and the draw that produces it is
@@ -101,11 +111,11 @@
     ClaudeCliProvider, the one game-facing type among the CLI files, is in a file of its own so that
     it does not come along.
 
-    All twenty-seven files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
+    All twenty-eight files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
     use only System.*, Newtonsoft and Agora.Core), so linking them keeps the property this suite
     exists to protect: it still builds and passes on a machine with no copy of Cities: Skylines II.
     Adding a file here that does reference the game will fail this project's build immediately, which
-    is the guard — and if a game type is ever added to one of these twenty-seven, that is the alarm
+    is the guard — and if a game type is ever added to one of these twenty-eight, that is the alarm
     we want, because it means logic the tests cover has drifted out of their reach.
 
     Everything is in THIS project rather than in a sibling test project so that the one gate command
@@ -135,6 +145,7 @@
     <Compile Include="..\..\src\Agora.Mod\Llm\JsonSchemaSubsetValidator.cs" Link="ModLlm\JsonSchemaSubsetValidator.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\NumericFieldScanner.cs" Link="ModLlm\NumericFieldScanner.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\FlavorValidator.cs" Link="ModLlm\FlavorValidator.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\FlavorCache.cs" Link="ModLlm\FlavorCache.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolContent.cs" Link="ModLlm\StaticPoolContent.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolProvider.cs" Link="ModLlm\StaticPoolProvider.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliOptions.cs" Link="ModLlm\ClaudeCliOptions.cs" />

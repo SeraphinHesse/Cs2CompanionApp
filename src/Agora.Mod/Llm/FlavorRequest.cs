@@ -35,8 +35,59 @@ namespace Agora.Mod.Llm
         /// <summary>The issue this party leads on.</summary>
         public Issue CoreGrievance;
 
-        /// <summary>Governing, in opposition, newly founded, dissolving - a word, not a number.</summary>
+        /// <summary>
+        /// Where the party stands as things are: <c>leads the government</c>, <c>in government</c>,
+        /// <c>in opposition</c>, or the lifecycle word when that is the whole story - a phrase, never
+        /// a figure. Built by <see cref="StandingWord"/>; see its remarks for what it is not.
+        /// </summary>
         public string StatusWord = string.Empty;
+
+        /// <summary>
+        /// The standing phrase for <paramref name="party"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This used to be <c>Status.ToString()</c>, which is a lifecycle word - Active, Endangered,
+        /// Dissolved, Merged, Revived - and says nothing at all about who governs. The prompt's
+        /// election block meanwhile told the model this word was the whole of the outcome it might
+        /// write from, so between them they invited a result to be written out of nothing, which is
+        /// the invention non-negotiable #1 exists to stop. A governing word is the smallest honest
+        /// thing to send instead.
+        /// </para>
+        /// <para>
+        /// It is still not an election result. <c>IsInGovernment</c> and <c>IsIncumbent</c> describe
+        /// the arrangement standing at the moment the brief is built, and on the morning after a
+        /// count that is usually the arrangement the count has just unseated - government formation
+        /// has not run yet. <c>FlavorPromptBuilder.AppendElectionCoverage</c> says exactly that to the
+        /// model rather than overstating it; keep the two in step.
+        /// </para>
+        /// <para>
+        /// Dissolved and merged override the role, because a party that is off the ballot is not in
+        /// opposition, it is gone, and the engine leaves both flags false on one anyway. Endangered
+        /// and revived qualify it, because both are worth writing about and neither states a figure.
+        /// </para>
+        /// </remarks>
+        public static string StandingWord(Party party)
+        {
+            if (party == null) return string.Empty;
+
+            switch (party.Status)
+            {
+                case PartyStatus.Dissolved: return "dissolved, off the ballot";
+                case PartyStatus.Merged: return "merged into another party";
+            }
+
+            string role = party.IsIncumbent
+                ? "leads the government"
+                : party.IsInGovernment ? "in government" : "in opposition";
+
+            switch (party.Status)
+            {
+                case PartyStatus.Endangered: return role + ", losing ground";
+                case PartyStatus.Revived: return role + ", recently revived";
+                default: return role;
+            }
+        }
 
         /// <summary>Existing name, when there is one worth keeping continuity with.</summary>
         public string CurrentName = string.Empty;

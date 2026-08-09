@@ -25,6 +25,26 @@ namespace Agora.Mod.Llm
         /// </summary>
         public IReadOnlyList<string> Discarded { get; internal set; }
 
+        /// <summary>
+        /// How many articles the response carried before the catalog filter ran. Zero on a failed
+        /// validation, and zero on a response that asked for no articles in the first place.
+        /// </summary>
+        public int ArticlesReceived { get; internal set; }
+
+        /// <summary>
+        /// The response carried articles and the filter dropped every last one of them.
+        /// </summary>
+        /// <remarks>
+        /// Not an error - the document is still structurally valid, and a partial drop is merely
+        /// degraded prose. But a round reduced to no articles at all is a round with nothing to show,
+        /// and accepting it would let the most likely model deviation of the lot - omitting
+        /// <c>refs</c>, which every article is now dropped for - overwrite good prose with none
+        /// (non-negotiable #7). Callers that hold a last-good document treat this as a failed round.
+        /// Zero in and zero out is not this: it is a round nobody asked articles of.
+        /// </remarks>
+        public bool ArticlesAllDiscarded =>
+            Document != null && ArticlesReceived > 0 && Document.Articles.Count == 0;
+
         public bool IsValid => Document != null;
 
         internal FlavorValidationResult()
@@ -59,7 +79,11 @@ namespace Agora.Mod.Llm
     /// <item><description>
     /// <b>ID check</b> against <see cref="FlavorCatalog"/>. Unknown IDs drop the entry; they do not
     /// fail the response, because losing one article to a hallucinated district is much better than
-    /// losing a whole year of prose.
+    /// losing a whole year of prose. An article carrying no IDs at all goes the same way: the prompt
+    /// requires refs, and a rule the validator does not enforce is a rule the model learns to ignore.
+    /// A round in which that check takes <i>every</i> article is reported as
+    /// <see cref="FlavorValidationResult.ArticlesAllDiscarded"/> rather than as an error, because the
+    /// document is still well-formed - but it is the caller's cue to keep what it already has.
     /// </description></item>
     /// </list>
     ///
@@ -152,13 +176,15 @@ namespace Agora.Mod.Llm
             }
 
             var discarded = new List<string>();
+            int articlesReceived = document.Articles.Count;
             FilterAgainstCatalog(document, catalog, discarded);
 
             return new FlavorValidationResult
             {
                 Document = document,
                 Errors = new string[0],
-                Discarded = discarded
+                Discarded = discarded,
+                ArticlesReceived = articlesReceived
             };
         }
 
@@ -218,6 +244,17 @@ namespace Agora.Mod.Llm
                 if (!seenArticles.Add(entry.Id))
                 {
                     discarded.Add("duplicate article id '" + entry.Id + "'");
+                    return true;
+                }
+                if (string.IsNullOrEmpty(entry.PartyId) && string.IsNullOrEmpty(entry.DistrictId) &&
+                    string.IsNullOrEmpty(entry.EventId))
+                {
+                    // The prompt requires refs and tells the model an article without them is
+                    // dropped. This is where that becomes true. A story pointing at no party, no
+                    // district and no event cannot be placed on the dashboard beside the thing it is
+                    // about, and cannot be checked against anything the engine knows - which is how a
+                    // round of prose about nobody in particular used to reach the player.
+                    discarded.Add("article '" + entry.Id + "' carries no refs");
                     return true;
                 }
                 if (!string.IsNullOrEmpty(entry.PartyId) && !catalog.HasParty(entry.PartyId))

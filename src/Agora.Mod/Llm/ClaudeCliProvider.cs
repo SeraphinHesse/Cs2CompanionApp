@@ -336,6 +336,25 @@ namespace Agora.Mod.Llm
                     continue;
                 }
 
+                // A round whose every article was dropped is a failed round, not a degraded one. The
+                // document validates, so the gate above lets it through, and Succeed below would then
+                // make an empty last-good out of it AND write that to flavor_cache.json - a model that
+                // simply forgot refs would have destroyed the last good prose permanently, which is
+                // the exact outcome non-negotiable #7 forbids. Same shape as a validation failure,
+                // retry included: the next attempt may well remember the refs.
+                //
+                // Deliberately not a partial drop. Eight in and one out is thin prose, and thin prose
+                // beats no prose; it is logged below with the rest of the discards and kept.
+                if (validation.ArticlesAllDiscarded)
+                {
+                    string emptied = "all " + validation.ArticlesReceived +
+                                     " articles were dropped: " + Summarise(validation.Discarded);
+                    failures.Add("attempt " + attempt + ": " + emptied);
+                    _log.Warn("Claude CLI attempt " + attempt + " of " + attempts +
+                              " left no articles standing: " + emptied);
+                    continue;
+                }
+
                 if (validation.Discarded.Count > 0)
                 {
                     _log.Info("dropped " + validation.Discarded.Count +

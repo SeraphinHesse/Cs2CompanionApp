@@ -142,12 +142,20 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// The consequence, end to end: handed the copy, the pool files an ordinary round and no two
-        /// articles carry the same body. The second half asserts what handing it the request itself
-        /// used to do, so the fixture cannot go vacuous if the template lists grow.
+        /// The consequence, end to end: the count the pool files is the count on the object it was
+        /// handed, and nothing it files repeats itself.
         /// </summary>
+        /// <remarks>
+        /// The second half used to reproduce the defect directly — eight slots against three district
+        /// body templates made the pool file the same paragraph twice — and it carried a message
+        /// saying what to do if the template lists ever grew. W5-3 grew them, so that half is gone and
+        /// this is what is left of it: the two counts, asserted side by side. The copy is still the
+        /// only thing deciding which one the pool writes, and that is the property the seam exists
+        /// for; the repetition was a symptom, and it was never the reason a raised count must not leak
+        /// into a roster that outlives the request.
+        /// </remarks>
         [Fact]
-        public void PoolHandedTheCopy_FilesAnOrdinaryRoundWithNoRepeatedBody()
+        public void PoolFilesTheCountItWasHanded_AndTheCopyIsWhatDecidesIt()
         {
             var date = new SimDate(2031, 5, 1);
             FlavorRequest request = ElectionRequest(date);
@@ -156,30 +164,24 @@ namespace Agora.Core.Tests
             Assert.NotNull(fromCopy);
             Assert.Equal(FlavorRequest.DefaultArticleCount, fromCopy.Articles.Count);
 
-            var bodies = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = 0; i < fromCopy.Articles.Count; i++)
-            {
-                Assert.True(bodies.Add(fromCopy.Articles[i].Body),
-                            "two canned articles were filed with the same body.");
-            }
-
-            // The defect, reproduced. Eight slots against three district body templates: the pool
-            // repeats itself, which is what the copy is here to prevent the player ever seeing.
             FlavorDocument fromRequest = Pool().Generate(request);
             Assert.NotNull(fromRequest);
             Assert.Equal(FlavorRequest.ElectionArticleCountEu, fromRequest.Articles.Count);
 
-            var repeated = new HashSet<string>(StringComparer.Ordinal);
-            int duplicates = 0;
-            for (int i = 0; i < fromRequest.Articles.Count; i++)
-            {
-                if (!repeated.Add(fromRequest.Articles[i].Body)) duplicates++;
-            }
+            // Neither round repeats itself. At the raised count this is the stronger claim of the
+            // two, and it is the one the enlarged template lists have to keep earning.
+            AssertNoRepeatedBody(fromCopy);
+            AssertNoRepeatedBody(fromRequest);
+        }
 
-            Assert.True(duplicates > 0,
-                        "the canned pool no longer repeats itself at " + FlavorRequest.ElectionArticleCountEu +
-                        " articles; if the template lists grew, this half of the test has nothing left to " +
-                        "pin and the roster copy still owns the count.");
+        private static void AssertNoRepeatedBody(FlavorDocument document)
+        {
+            var bodies = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < document.Articles.Count; i++)
+            {
+                Assert.True(bodies.Add(document.Articles[i].Body),
+                            "two canned articles were filed with the same body.");
+            }
         }
     }
 }

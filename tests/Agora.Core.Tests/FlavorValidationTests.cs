@@ -240,11 +240,12 @@ namespace Agora.Core.Tests
         }
 
         [Fact]
-        public void AnArticleWithoutRefsCarriesEmptyIdsRatherThanNulls()
+        public void APartlyReferencedArticleCarriesEmptyIdsRatherThanNulls()
         {
-            // refs is optional in the schema, and a city-wide story legitimately has none. The
-            // consumers concatenate and compare these, so the absent case has to be "" — a null here
-            // would surface as a NullReferenceException in the projection, months from this change.
+            // refs is optional in the schema and each of its three fields is optional within it, so
+            // an article that names a district and nothing else is the ordinary case. The consumers
+            // concatenate and compare these, so the two absent ids have to be "" — a null here would
+            // surface as a NullReferenceException in the projection, months from this change.
             var validator = new FlavorValidator(ShippedSchema(), null);
 
             FlavorValidationResult result = validator.Validate(
@@ -252,15 +253,41 @@ namespace Agora.Core.Tests
                 @", ""generatedAtSimDate"": ""1997-06-01"",
                     ""articles"": [ { ""id"": ""article-02"", ""outlet"": ""Harbour Register"",
                                       ""headline"": ""Council adjourns early"",
-                                      ""body"": ""Nobody could agree on the agenda."", ""tone"": ""neutral"" } ] }",
+                                      ""body"": ""Nobody could agree on the agenda."", ""tone"": ""neutral"",
+                                      ""refs"": { ""districtId"": ""district-harbour"" } } ] }",
                 Catalog(), RequestDate);
 
             Assert.True(result.IsValid, string.Join("; ", result.Errors));
 
             Article article = Assert.Single(result.Document!.ToPayload(RequestDate).Articles);
+            Assert.Equal("district-harbour", article.DistrictId);
             Assert.Equal(string.Empty, article.PartyId);
-            Assert.Equal(string.Empty, article.DistrictId);
             Assert.Equal(string.Empty, article.EventId);
+        }
+
+        [Theory]
+        [InlineData(@"""tone"": ""neutral""")]
+        [InlineData(@"""tone"": ""neutral"", ""refs"": { }")]
+        [InlineData(@"""tone"": ""neutral"", ""refs"": { ""districtId"": """" }")]
+        public void AnArticleThatPointsAtNothingIsDropped(string tail)
+        {
+            // The prompt tells the model that an article without refs is dropped. This is the check
+            // that makes the sentence true, and all three shapes of "no refs" have to reach it: the
+            // key absent, the object empty, and the one id present but blank. Dropped rather than
+            // fatal, like every other catalog miss beside it — the rest of the round survives.
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(
+                @"{ ""schemaVersion"": " + FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture) +
+                @", ""generatedAtSimDate"": ""1997-06-01"",
+                    ""articles"": [ { ""id"": ""article-02"", ""outlet"": ""Harbour Register"",
+                                      ""headline"": ""Council adjourns early"",
+                                      ""body"": ""Nobody could agree on the agenda."", " + tail + @" } ] }",
+                Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+            Assert.Empty(result.Document!.Articles);
+            Assert.Contains(result.Discarded, d => d.Contains("article-02") && d.Contains("no refs"));
         }
 
         // --- schemaVersion: the one number, and what it is allowed to do -------------------------

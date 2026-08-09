@@ -286,7 +286,11 @@ namespace Agora.Mod.Llm
             {
                 sb.Append("- partyFlavor for every party listed, with a name, a short name, ");
                 sb.Append("a description of who it speaks for, and a slogan. Keep an existing name unless ");
-                sb.Append("the party's standing says it has just been founded, merged or revived.\n");
+                // Only the absorbed side of a merge carries the merged standing word, and that party
+                // is off the ballot - the survivor keeps its own name and its own word (see
+                // PartyLifecycle.ApplyMerges). So a merge is not a rename occasion for anyone the
+                // model can write about, and the clause names only the revived case.
+                sb.Append("there is none, or the party's standing says it has recently revived.\n");
             }
             if (request.Factions.Count > 0)
             {
@@ -296,17 +300,25 @@ namespace Agora.Mod.Llm
             sb.Append(" articles from local outlets covering the city as described above.\n");
             sb.Append("  1. Lead with what happened, to whom, and why it matters. ");
             sb.Append("The concrete change goes in the first sentence, not the last.\n");
-            // TODO(W5-3): the requirement is stated, but not yet enforced — FilterAgainstCatalog
-            // skips an article whose refs are absent rather than dropping it, and tightening it today
-            // would delete every city-branch article the canned pool files, because StaticPoolProvider
-            // sets refs only on the district branch. W5-3 gives the canned articles refs and tightens
-            // the filter in the same change; the stronger "and is dropped" claim belongs there, once it
-            // is true. Softened deliberately until then: the prompt must not describe a check that does
-            // not run.
-            sb.Append("  2. Always include refs: name at least one party or district in the prose by the ");
-            sb.Append("id given in the lists above, and put that same id in refs. refs takes at least one ");
-            sb.Append("of eventId, districtId or partyId, and only ids from the lists above. ");
-            sb.Append("Write nothing you cannot point at.\n");
+            // The claim in the last sentence is now true: FilterAgainstCatalog drops an article whose
+            // three ref fields are all empty. Do not soften it again without loosening that check in
+            // the same edit - the prompt must not describe a check that does not run, and it must not
+            // understate one that does. The round-level consequence is stated for the same reason:
+            // FlavorValidationResult.ArticlesAllDiscarded turns an emptied round into a failed one in
+            // both holders (ClaudeCliProvider retries it, FlavorCache refuses to load it), so a prompt
+            // that mentioned only the per-article drop would understate what a missing refs costs.
+            sb.Append("  2. Every article must include refs: name at least one party or district in the ");
+            sb.Append("prose by the id given in the lists above, and put that same id in refs. refs takes ");
+            sb.Append("at least one of eventId, districtId or partyId, and only ids from the lists above. ");
+            sb.Append("Write nothing you cannot point at; an article without refs is dropped. ");
+            // The embedded schema is a verbatim copy of data/schemas/politics_flavor.schema.json and
+            // FlavorSchemaDriftTests pins the two together, so making it agree with this rule would be
+            // a /schema-change. Saying which of the two surfaces governs is the honest fix here.
+            sb.Append("The schema below lists refs among the optional properties; that is the schema's ");
+            sb.Append("reading and not the rule - the drop runs after schema validation, so an article ");
+            sb.Append("that satisfies the schema without refs is discarded all the same. ");
+            sb.Append("If that leaves no articles at all, the whole response is rejected, the previous ");
+            sb.Append("round's prose is kept and the round is asked for again.\n");
             sb.Append("  3. Never attribute to a subject you have not named. Do not write \"residents say\", ");
             sb.Append("\"officials say\", \"critics say\", \"sources say\", \"some argue\", \"many feel\", ");
             sb.Append("or any variant of them. Name the party, the faction or the district, or do not attribute at all.\n");
@@ -334,33 +346,67 @@ namespace Agora.Mod.Llm
         /// prompt is unchanged byte for byte.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Neither <see cref="FlavorRequest"/> nor <see cref="PartyBrief"/> carries a vote share, a
-        /// seat count or a turnout figure — deliberately, see the remarks on <c>PartyBrief</c> — so the
-        /// only account of the outcome the model has is the standing word in the party list. The block
-        /// says that outright rather than leaving the gap for the model to fill, because "write the
-        /// result" with no result in the brief is an invitation to invent one (non-negotiable #1).
+        /// seat count or a turnout figure — deliberately, see the remarks on <c>PartyBrief</c>. The
+        /// block says that outright rather than leaving the gap for the model to fill, because "write
+        /// the result" with no result in the brief is an invitation to invent one (non-negotiable #1).
+        /// </para>
+        /// <para>
+        /// It no longer claims the standing word is "the whole of the outcome you may write from",
+        /// because it is not one. <see cref="PartyBrief.StandingWord"/> says who governs as things
+        /// stand, and on the morning after a count that is the arrangement the count has just
+        /// unseated — formation has not run. So the block tells the model there is no winner in the
+        /// brief and not to name one, which is the true statement and the safe one.
+        /// </para>
+        /// <para>
+        /// The slot list says the same thing as that prohibition, which it did not always do. Slots
+        /// asking for "the winning side's reaction" and "the losing side's reaction" required the
+        /// model to decide the outcome before it could write them, and a specific instruction beats
+        /// an abstract ban every time — so the two reaction slots ask instead for a party's own claim
+        /// on the mandate and a party's own challenge to the reading of the count, both of which are
+        /// true of a party whichever way the count went. That is the framing
+        /// <see cref="StaticPoolContent.ElectionClaimHeadlines"/> and
+        /// <see cref="StaticPoolContent.ElectionChallengeHeadlines"/> already file under; keep the
+        /// prompt and the pool describing one set of slots.
+        /// </para>
+        /// <para>
+        /// The closing sentence carries no worked example, and must not gain one. It used to end
+        /// "and write \"held the council\" or \"lost ground\" rather than any figure" — an exemplar
+        /// pair naming a winner and a loser one clause after forbidding both, which is the same shape
+        /// as the reaction slots above: a concrete imitable phrase next to an abstract ban, and the
+        /// concrete one wins. Its job — words instead of figures — is already carried by rule 2 in
+        /// <see cref="AppendRules"/> and by the first half of this paragraph, so it was redundant as
+        /// well as contradictory. Any example added here has to be sayable without knowing the
+        /// outcome; the whole block is pinned verbatim by the golden strings in
+        /// <c>FlavorPromptBuilderTests</c>, so an edit has to be made in both places on purpose.
+        /// </para>
         /// </remarks>
         private static void AppendElectionCoverage(StringBuilder sb, FlavorRequest request)
         {
             if (request.Reason != FlavorWakeReason.Election) return;
 
             sb.Append("  The election just decided is the round's lead. Among those articles, include:\n");
-            sb.Append("  a) a result piece,\n");
-            sb.Append("  b) a piece carrying the winning side's reaction,\n");
-            sb.Append("  c) a piece carrying the losing side's reaction");
+            sb.Append("  a) a result piece: that the count has happened and what it changes procedurally, ");
+            sb.Append("not what it decided,\n");
+            sb.Append("  b) a piece carrying one party's own claim on the mandate,\n");
+            sb.Append("  c) a piece carrying one party's own challenge to the reading of the count");
             if (request.Theme == RegionTheme.Eu)
             {
                 sb.Append(",\n");
-                sb.Append("  d) a piece on the coalition outlook - who might govern with whom, and on what.\n");
+                sb.Append("  d) a piece on the coalition outlook - who might govern with whom, and on what, ");
+                sb.Append("with nothing settled yet.\n");
             }
             else
             {
                 sb.Append(".\n");
             }
             sb.Append("  Name the parties involved by id only. You have not been given the vote shares, the ");
-            sb.Append("seat counts or the turnout, and you must not invent them: the standing word in the ");
-            sb.Append("party list above is the whole of the outcome you may write from, and the dashboard ");
-            sb.Append("carries the figures. Write \"held the council\" or \"lost ground\", never a figure.\n");
+            sb.Append("seat counts or the turnout, and you must not invent them; the dashboard carries the ");
+            sb.Append("figures. You have not been given the winner either. The standing word in the party ");
+            sb.Append("list says who governs as things stand, which is the arrangement the count may have ");
+            sb.Append("just unseated - it is not the result. Do not name a winner or a loser. Write the two ");
+            sb.Append("reactions as what a party says of the count, not as what the count decided.\n");
         }
 
         private static void AppendSchema(StringBuilder sb)

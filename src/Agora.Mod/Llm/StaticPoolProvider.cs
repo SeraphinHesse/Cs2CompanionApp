@@ -35,9 +35,25 @@ namespace Agora.Mod.Llm
     /// same ID catalog. A template that grew past its length limit, or a stray digit in a slogan,
     /// fails here exactly as a bad model response would, rather than shipping as the trusted path.
     /// </para>
+    ///
+    /// <para>
+    /// <b>Every article points at something.</b> <see cref="FlavorValidator"/> drops an article whose
+    /// three ref fields are all empty, because the prompt tells the model it will - so the pool is
+    /// held to its own rule rather than exempted from it. Each article names a party or a district
+    /// and refs that same id, and a save with neither files no articles at all. That empty round is
+    /// the correct output for a city with no politics yet, not a gap to be filled with prose about
+    /// nobody.
+    /// </para>
     /// </summary>
     public sealed class StaticPoolProvider : IFlavorProvider
     {
+        /// <summary>
+        /// The schema's limit on <c>outlet</c>. Named rather than typed twice, and unlike the article
+        /// limits it has no home in <see cref="FlavorCacheMigration"/> because no migration ever moved
+        /// it - <c>FlavorSchemaDriftTests</c> is what pins it against the schema.
+        /// </summary>
+        private const int OutletMaxLength = 60;
+
         private readonly Guid _saveGuid;
         private readonly RegionTheme _theme;
         private readonly FlavorValidator _validator;
@@ -133,13 +149,19 @@ namespace Agora.Mod.Llm
 
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
 
-            JArray parties = BuildParties(request, usedNames);
+            // Party id to the name this document gives it. Written by BuildParties, read by
+            // BuildArticles so that an article naming a party in its prose names it exactly as the
+            // partyFlavor entry does. Looked up by key only, never iterated: a Dictionary's order is
+            // not one this class is allowed to depend on.
+            var partyNames = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            JArray parties = BuildParties(request, usedNames, partyNames);
             if (parties.Count > 0) root["partyFlavor"] = parties;
 
             JArray factions = BuildFactions(request, usedNames);
             if (factions.Count > 0) root["factionFlavor"] = factions;
 
-            JArray articles = BuildArticles(request);
+            JArray articles = BuildArticles(request, partyNames);
             if (articles.Count > 0) root["articles"] = articles;
 
             JArray eventProse = BuildEventProse(request);
@@ -148,7 +170,8 @@ namespace Agora.Mod.Llm
             return root;
         }
 
-        private JArray BuildParties(FlavorRequest request, HashSet<string> usedNames)
+        private JArray BuildParties(FlavorRequest request, HashSet<string> usedNames,
+                                    Dictionary<string, string> partyNames)
         {
             var array = new JArray();
 
@@ -165,8 +188,7 @@ namespace Agora.Mod.Llm
             // parties wearing one name with nothing left to repair it. Party ids are handed out
             // ascending (PartyRegistry.NextPartyId), so with the full roster a newly founded party
             // sorts last and settles its own collisions without disturbing anyone already named.
-            var parties = new List<PartyBrief>(request.Parties);
-            parties.Sort((a, b) => string.CompareOrdinal(a.PartyId, b.PartyId));
+            List<PartyBrief> parties = SortedParties(request);
 
             string[] adjectives = _theme == RegionTheme.Na
                 ? StaticPoolContent.NaPartyAdjectives
@@ -178,7 +200,6 @@ namespace Agora.Mod.Llm
             for (int i = 0; i < parties.Count; i++)
             {
                 PartyBrief party = parties[i];
-                if (string.IsNullOrEmpty(party.PartyId)) continue;
 
                 // Keyed on the party's founding date, not the request date. A name is identity, and a
                 // pool regenerated next month must produce the same one - seeding from request.Date
@@ -188,6 +209,8 @@ namespace Agora.Mod.Llm
 
                 string name = UniqueName(rng, adjectives, nouns, usedNames);
                 int issue = IssueIndex(party.CoreGrievance);
+
+                partyNames[party.PartyId] = name;
 
                 array.Add(new JObject
                 {
@@ -246,7 +269,36 @@ namespace Agora.Mod.Llm
             return array;
         }
 
-        private JArray BuildArticles(FlavorRequest request)
+        /// <summary>
+        /// What one article in a round is about. Every kind but <see cref="District"/> is about a
+        /// party and names it, so every article can carry a ref either way - which is what lets
+        /// <see cref="FlavorValidator"/> drop a refless article outright.
+        /// </summary>
+        private enum ArticleKind
+        {
+            /// <summary>The whole city, through one party's week. <c>{party}</c> and <c>{mood}</c>.</summary>
+            CityMood,
+
+            /// <summary>One district. <c>{district}</c>.</summary>
+            District,
+
+            /// <summary>Election slot (a): the result piece.</summary>
+            ElectionResult,
+
+            /// <summary>Election slot (b): a party's own claim on the mandate, not an outcome.</summary>
+            ElectionClaim,
+
+            /// <summary>
+            /// Election slot (c): a party's own challenge to the reading of the count, likewise - and
+            /// never the same party as <see cref="ElectionClaim"/> while the roster holds two.
+            /// </summary>
+            ElectionChallenge,
+
+            /// <summary>Election slot (d): the coalition outlook. EU only.</summary>
+            ElectionCoalition
+        }
+
+        private JArray BuildArticles(FlavorRequest request, Dictionary<string, string> partyNames)
         {
             var array = new JArray();
 
@@ -265,6 +317,17 @@ namespace Agora.Mod.Llm
                 : FlavorPromptBuilder.HappinessBandIndex(request.Snapshot.Happiness);
 
             List<DistrictSnapshot> districts = SortedDistricts(request.Snapshot);
+            List<PartyBrief> parties = SortedParties(request);
+
+            // NOTHING TO POINT AT, SO NOTHING TO FILE. Every article carries a ref, and the only ids
+            // this pool can honestly reference are a party's and a district's. A save with neither -
+            // the first months, before the roster is built - therefore gets no canned articles at
+            // all, on purpose. That is the correct outcome, not a gap: refless articles would be
+            // dropped by FlavorValidator anyway, and inventing an id to satisfy the rule would put a
+            // reference in front of the player that points at nothing.
+            if (parties.Count == 0 && districts.Count == 0) return array;
+
+            List<ArticleKind> kinds = PlanRound(request, count, parties.Count > 0, districts.Count > 0);
             string datePart = request.Date.ToString();
 
             // A news round in which two outlets run the identical headline reads as a bug, so
@@ -274,60 +337,138 @@ namespace Agora.Mod.Llm
             var usedBodies = new HashSet<string>(StringComparer.Ordinal);
             var usedOutlets = new HashSet<string>(StringComparer.Ordinal);
 
-            for (int i = 0; i < count; i++)
+            // The party the claim piece landed on, so the challenge piece can avoid it. Two
+            // independent draws over three parties put the same party on both sides of the argument
+            // about one round in three, which reads as a bug rather than as politics. PlanRound always
+            // files the claim before the challenge, so this is set by the time it is read.
+            string claimPartyId = null;
+
+            for (int i = 0; i < kinds.Count; i++)
             {
+                ArticleKind kind = kinds[i];
                 string id = "static-" + datePart + "-" + (i + 1).ToString(CultureInfo.InvariantCulture);
 
                 // One sub-stream per article, keyed by the article's own id: article three's text
-                // does not shift because article two's template changed.
+                // does not shift because article two's template changed. The party draw below rides
+                // this same stream - RngFor's fourth argument is a sub-stream key under
+                // StreamNames.NameSelection, so naming a party costs no new named stream.
                 var rng = SeedStreams.RngFor(_saveGuid, request.Date, StreamNames.NameSelection, "article:" + id);
 
-                string outlet = UniqueLine(rng, StaticPoolContent.Outlets, null, null, usedOutlets);
+                string outlet = UniqueLine(rng, StaticPoolContent.Outlets, NoSubstitution, NoSubstitution,
+                                           usedOutlets, 0);
                 string tone = StaticPoolContent.Pick(StaticPoolContent.TonesByMood[moodIndex], rng);
 
-                // Alternate city and district pieces so a run of articles is not all one shape.
-                bool local = districts.Count > 0 && (i % 2 == 1);
+                Substitution subject;
+                Substitution second = NoSubstitution;
+                string[] headlines;
+                string[] bodies;
+                JObject refs;
 
-                JObject article;
-                if (local)
+                if (kind == ArticleKind.District)
                 {
                     DistrictSnapshot district = districts[rng.NextInt(0, districts.Count)];
-                    string districtName = SafeName(district);
-
-                    article = new JObject
-                    {
-                        ["id"] = id,
-                        ["outlet"] = Cap(outlet, 60),
-                        ["headline"] = Cap(UniqueLine(rng, StaticPoolContent.DistrictHeadlines,
-                                                      "{district}", districtName, usedHeadlines),
-                                           FlavorCacheMigration.HeadlineMaxLength),
-                        ["body"] = Cap(UniqueLine(rng, StaticPoolContent.DistrictBodies,
-                                                  "{district}", districtName, usedBodies),
-                                       FlavorCacheMigration.BodyMaxLength),
-                        ["tone"] = tone,
-                        ["refs"] = new JObject { ["districtId"] = district.Id }
-                    };
+                    subject = Substitution.Of("{district}", SafeName(district));
+                    headlines = StaticPoolContent.DistrictHeadlines;
+                    bodies = StaticPoolContent.DistrictBodies;
+                    refs = new JObject { ["districtId"] = district.Id };
                 }
                 else
                 {
-                    article = new JObject
+                    // Every other kind is about a party. The id goes in refs and the same party's
+                    // name goes in the prose, so the reference is one the reader can check.
+                    PartyBrief party = PickParty(rng, parties,
+                                                 kind == ArticleKind.ElectionChallenge ? claimPartyId : null);
+                    if (kind == ArticleKind.ElectionClaim) claimPartyId = party.PartyId;
+
+                    subject = Substitution.Of("{party}", PartyName(partyNames, party));
+                    refs = new JObject { ["partyId"] = party.PartyId };
+
+                    switch (kind)
                     {
-                        ["id"] = id,
-                        ["outlet"] = Cap(outlet, 60),
-                        ["headline"] = Cap(UniqueLine(rng, StaticPoolContent.CityHeadlines,
-                                                      "{mood}", mood, usedHeadlines),
-                                           FlavorCacheMigration.HeadlineMaxLength),
-                        ["body"] = Cap(UniqueLine(rng, StaticPoolContent.CityBodies,
-                                                  "{mood}", mood, usedBodies),
-                                       FlavorCacheMigration.BodyMaxLength),
-                        ["tone"] = tone
-                    };
+                        case ArticleKind.ElectionResult:
+                            headlines = StaticPoolContent.ElectionResultHeadlines;
+                            bodies = StaticPoolContent.ElectionResultBodies;
+                            break;
+                        case ArticleKind.ElectionClaim:
+                            headlines = StaticPoolContent.ElectionClaimHeadlines;
+                            bodies = StaticPoolContent.ElectionClaimBodies;
+                            break;
+                        case ArticleKind.ElectionChallenge:
+                            headlines = StaticPoolContent.ElectionChallengeHeadlines;
+                            bodies = StaticPoolContent.ElectionChallengeBodies;
+                            break;
+                        case ArticleKind.ElectionCoalition:
+                            headlines = StaticPoolContent.ElectionCoalitionHeadlines;
+                            bodies = StaticPoolContent.ElectionCoalitionBodies;
+                            break;
+                        default:
+                            headlines = StaticPoolContent.CityHeadlines;
+                            bodies = StaticPoolContent.CityBodies;
+                            second = Substitution.Of("{mood}", mood);
+                            break;
+                    }
                 }
 
-                array.Add(article);
+                array.Add(new JObject
+                {
+                    ["id"] = id,
+                    ["outlet"] = Cap(outlet, OutletMaxLength),
+                    ["headline"] = Fitting(rng, headlines, subject, second, StaticPoolContent.GenericHeadlines,
+                                           usedHeadlines, FlavorCacheMigration.HeadlineMaxLength),
+                    ["body"] = Fitting(rng, bodies, subject, second, StaticPoolContent.GenericBodies,
+                                       usedBodies, FlavorCacheMigration.BodyMaxLength),
+                    ["tone"] = tone,
+                    ["refs"] = refs
+                });
             }
 
             return array;
+        }
+
+        /// <summary>
+        /// Decides what each article in the round is before any of them is written.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Four combinations of "are there parties" and "are there districts", and all four have to
+        /// work. With both, the round alternates city and district pieces as it always has. With only
+        /// parties, every article is a city piece; with only districts, every article is a district
+        /// piece - because the missing side has no id to put in refs, and the old <c>i % 2 == 1</c>
+        /// alternation would have filed a refless city article on a save with no parties. With
+        /// neither, the caller has already returned an empty round.
+        /// </para>
+        /// <para>
+        /// An election wake leads with the same four pieces <c>FlavorPromptBuilder.AppendElectionCoverage</c>
+        /// asks the model for, and only when there is a party to name in them.
+        /// </para>
+        /// </remarks>
+        private List<ArticleKind> PlanRound(FlavorRequest request, int count, bool haveParties, bool haveDistricts)
+        {
+            var kinds = new List<ArticleKind>(count);
+
+            if (request.Reason == FlavorWakeReason.Election && haveParties)
+            {
+                kinds.Add(ArticleKind.ElectionResult);
+                kinds.Add(ArticleKind.ElectionClaim);
+                kinds.Add(ArticleKind.ElectionChallenge);
+
+                // _theme rather than request.Theme, for the same reason BuildParties reads _theme:
+                // a round whose coverage came from one theme and whose party names came from the
+                // other would be a visible split down the middle of one document.
+                if (_theme == RegionTheme.Eu) kinds.Add(ArticleKind.ElectionCoalition);
+
+                // A round asked for fewer articles than the election set has pieces keeps the first
+                // ones, which is the order the prompt lists them in.
+                if (kinds.Count > count) kinds.RemoveRange(count, kinds.Count - count);
+            }
+
+            for (int i = kinds.Count; i < count; i++)
+            {
+                bool local = haveDistricts && (!haveParties || (i % 2 == 1));
+                kinds.Add(local ? ArticleKind.District : ArticleKind.CityMood);
+            }
+
+            return kinds;
         }
 
         private JArray BuildEventProse(FlavorRequest request)
@@ -374,24 +515,175 @@ namespace Agora.Mod.Llm
             return name;
         }
 
-        /// <summary>
-        /// Draws a template, substitutes one placeholder, and retries within the caller's stream
-        /// until the result is unused. Bounded like <see cref="UniqueName"/>: with more articles than
-        /// templates a repeat is unavoidable, and hanging is not an acceptable alternative.
-        /// </summary>
-        private static string UniqueLine(DeterministicRng rng, string[] templates,
-                                         string placeholder, string value, HashSet<string> used)
+        /// <summary>One placeholder and what it is replaced with. An unset one substitutes nothing.</summary>
+        private struct Substitution
         {
-            string line = string.Empty;
+            public string Placeholder;
+            public string Value;
+
+            public static Substitution Of(string placeholder, string value) =>
+                new Substitution { Placeholder = placeholder, Value = value ?? string.Empty };
+        }
+
+        /// <summary>No substitution at all - the outlet picker and the generic template pools.</summary>
+        private static readonly Substitution NoSubstitution = new Substitution();
+
+        private static string Apply(string line, Substitution first, Substitution second)
+        {
+            if (string.IsNullOrEmpty(line)) return string.Empty;
+
+            // string.Replace throws on an empty needle, so an unset Substitution means "no
+            // substitution" - which is how this doubles as the outlet picker.
+            if (!string.IsNullOrEmpty(first.Placeholder)) line = line.Replace(first.Placeholder, first.Value);
+            if (!string.IsNullOrEmpty(second.Placeholder)) line = line.Replace(second.Placeholder, second.Value);
+            return line;
+        }
+
+        /// <summary>
+        /// Draws a line that fits <paramref name="maxLength"/> whole, preferring the specific
+        /// templates and falling back to the placeholder-free generic pool.
+        /// </summary>
+        /// <remarks>
+        /// The rule is: drop the placeholder rather than cut a name in half. A district name is the
+        /// player's, so it can be any length; substituting a long one used to push the template past
+        /// the cap, and the blunt cap then chopped the template's own last word off. A clean generic
+        /// headline is a better article than a mangled specific one - the same call
+        /// <see cref="FlavorCacheMigration"/> makes when it prunes an over-long cached article rather
+        /// than trimming it. The final <see cref="TrimToWord"/> is unreachable while the generic pool
+        /// is authored inside both caps, which a test pins; it is here so this cannot return
+        /// something the schema would reject and take the whole document down with it.
+        /// </remarks>
+        private static string Fitting(DeterministicRng rng, string[] templates, Substitution first,
+                                      Substitution second, string[] generic, HashSet<string> used,
+                                      int maxLength)
+        {
+            string line = UniqueLine(rng, templates, first, second, used, maxLength);
+            if (line != null) return line;
+
+            line = UniqueLine(rng, generic, NoSubstitution, NoSubstitution, used, maxLength);
+            if (line != null) return line;
+
+            return TrimToWord(StaticPoolContent.Pick(generic, rng), maxLength);
+        }
+
+        /// <summary>
+        /// Draws a template, substitutes, and retries within the caller's stream until the result is
+        /// both unused and inside <paramref name="maxLength"/>. Bounded like <see cref="UniqueName"/>:
+        /// with more articles than templates a repeat is unavoidable, and hanging is not an acceptable
+        /// alternative. Returns null when nothing in this pool fits, which is the caller's cue to fall
+        /// back rather than to truncate.
+        /// </summary>
+        /// <param name="maxLength">Zero disables the length filter, for fields with no cap of their own.</param>
+        private static string UniqueLine(DeterministicRng rng, string[] templates, Substitution first,
+                                         Substitution second, HashSet<string> used, int maxLength)
+        {
+            string fitting = null;
             for (int attempt = 0; attempt < 12; attempt++)
             {
-                line = StaticPoolContent.Pick(templates, rng);
-                // string.Replace throws on an empty needle, so a null placeholder means "no
-                // substitution" - which is how this doubles as the outlet picker.
-                if (!string.IsNullOrEmpty(placeholder)) line = line.Replace(placeholder, value);
+                string line = Apply(StaticPoolContent.Pick(templates, rng), first, second);
+
+                // Over the cap: not published, and not counted as a draw either. It is not a
+                // duplicate of anything, it simply does not exist as an option.
+                if (maxLength > 0 && line.Length > maxLength) continue;
+
+                fitting = line;
                 if (used.Add(line)) return line;
             }
-            return line;
+            return fitting;
+        }
+
+        /// <summary>
+        /// Cuts at the last word boundary inside <paramref name="maxLength"/>, never mid-word.
+        /// </summary>
+        /// <remarks>
+        /// The house policy is <see cref="FlavorCacheMigration"/>'s - prune rather than truncate - and
+        /// <see cref="Fitting"/> follows it by dropping the placeholder instead of the name. This is
+        /// the floor under that, for a pool whose generic templates have somehow all outgrown the cap,
+        /// and it is the one place the alignment is imperfect: a body cut here still ends early, it
+        /// just does not end mid-word.
+        /// </remarks>
+        private static string TrimToWord(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || maxLength <= 0) return string.Empty;
+            if (text.Length <= maxLength) return text;
+
+            int cut = text.LastIndexOf(' ', maxLength - 1);
+
+            // No word boundary to cut at inside the cap - a single very long word. Returning nothing
+            // here would be the opposite of what this method is for: an empty headline fails the
+            // schema's minLength and takes the whole document down, where a cut word costs one
+            // article's last syllable. Same for a boundary at index zero, which is a leading space.
+            if (cut <= 0) return text.Substring(0, maxLength).TrimEnd();
+
+            return text.Substring(0, cut).TrimEnd(' ', ',', ';', '-');
+        }
+
+        /// <summary>
+        /// The parties this document writes about: those with an id, ordered by it. The same list
+        /// <see cref="BuildParties"/> names from, so an article's party is one the document also
+        /// carries a partyFlavor entry for.
+        /// </summary>
+        private static List<PartyBrief> SortedParties(FlavorRequest request)
+        {
+            var parties = new List<PartyBrief>();
+            if (request.Parties == null) return parties;
+
+            for (int i = 0; i < request.Parties.Count; i++)
+            {
+                PartyBrief party = request.Parties[i];
+                if (party != null && !string.IsNullOrEmpty(party.PartyId)) parties.Add(party);
+            }
+
+            parties.Sort((a, b) => string.CompareOrdinal(a.PartyId, b.PartyId));
+            return parties;
+        }
+
+        /// <summary>
+        /// Draws one party from <paramref name="parties"/>, skipping <paramref name="exclude"/> when
+        /// there is another to have instead.
+        /// </summary>
+        /// <remarks>
+        /// The exclusion is the coherence rule between the election round's two reaction pieces: the
+        /// side claiming the mandate and the side challenging the count should not be the same party.
+        /// It narrows the draw rather than re-rolling it, so the pick is still one <c>NextInt</c> on
+        /// the article's own stream and still a function of the roster's sorted order alone. A
+        /// one-party save falls through to the ordinary draw, because there is no other side to give
+        /// the challenge to and refusing to file it would cost the round an article.
+        /// </remarks>
+        private static PartyBrief PickParty(DeterministicRng rng, List<PartyBrief> parties, string exclude)
+        {
+            if (string.IsNullOrEmpty(exclude) || parties.Count < 2)
+            {
+                return parties[rng.NextInt(0, parties.Count)];
+            }
+
+            int index = rng.NextInt(0, parties.Count - 1);
+            for (int i = 0; i < parties.Count; i++)
+            {
+                if (string.CompareOrdinal(parties[i].PartyId, exclude) == 0) continue;
+                if (index == 0) return parties[i];
+                index--;
+            }
+
+            // Only reachable if the excluded id is in the list more than once, which SortedParties
+            // does not guarantee against. Taking the last entry keeps this total.
+            return parties[parties.Count - 1];
+        }
+
+        /// <summary>
+        /// The name this document gave the party, falling back to its id. The fallback is unreachable
+        /// while <see cref="BuildParties"/> runs first over the same list, and is here because an
+        /// article that says nothing where a name should be is worse than one that says the id.
+        /// </summary>
+        private static string PartyName(Dictionary<string, string> partyNames, PartyBrief party)
+        {
+            string name;
+            if (partyNames != null && partyNames.TryGetValue(party.PartyId, out name) &&
+                !string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+            return party.PartyId;
         }
 
         private static List<DistrictSnapshot> SortedDistricts(CitySnapshot snapshot)
@@ -411,11 +703,22 @@ namespace Agora.Mod.Llm
             return districts;
         }
 
+        /// <summary>
+        /// The district's name, or its id when it has none.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not length-capped any more. Capping here cut a player's district name mid-word
+        /// before it had even reached a template, and the composed headline was then cut a second time
+        /// at ninety, which took the template's own trailing words with it. Length is
+        /// <see cref="Fitting"/>'s problem now: an over-long name makes every <c>{district}</c> line
+        /// miss the cap, and the article takes a clean generic headline instead of a mangled specific
+        /// one.
+        /// </remarks>
         private static string SafeName(DistrictSnapshot district)
         {
             string name = district.Name;
             if (string.IsNullOrEmpty(name)) name = district.Id;
-            return Cap(name, 60);
+            return name ?? string.Empty;
         }
 
         /// <summary>Enum value to pool index, clamped. The pools are ordered by <c>Issues.All</c>.</summary>
@@ -426,6 +729,17 @@ namespace Agora.Mod.Llm
             return index;
         }
 
+        /// <summary>
+        /// Blunt cap, kept only for the fields where blunt is right.
+        /// </summary>
+        /// <remarks>
+        /// Outlets, slogans, short names, descriptions and leader names are all composed from
+        /// <see cref="StaticPoolContent"/>, which authors them inside their limits, so a cut here
+        /// would mean a pool entry had grown rather than that a player had typed something long. It is
+        /// an assertion in the shape of a truncation. Headlines and bodies do not come through here:
+        /// they carry the player's own district names, and cutting one of those mid-word is the defect
+        /// <see cref="Fitting"/> replaced.
+        /// </remarks>
         private static string Cap(string text, int maxLength)
         {
             if (string.IsNullOrEmpty(text)) return string.Empty;

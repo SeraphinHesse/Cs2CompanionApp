@@ -121,22 +121,36 @@ namespace Agora.Core.Tests
             // The contract, and only the contract: every article carries a catalog id in refs, and
             // nothing is sourced to a subject the article did not name. The exact wording around them
             // is prose and is free to move.
-            // "Always include" is the load-bearing word: a prompt that made refs optional would still
-            // satisfy every other assertion here, and the TODO(W5-3) seam pushes in exactly that
-            // direction. The second assertion pins the other half of the same rule - the id has to be
-            // in the prose as well as in refs, which is what makes the reference checkable at all.
-            Assert.Contains("Always include refs", prompt);
+            // "Every article must" is the load-bearing phrase, and it is the universal quantifier that
+            // a previous round lost: a prompt that made refs optional would still satisfy every other
+            // assertion here. The second assertion pins the other half of the same rule - the id has
+            // to be in the prose as well as in refs, which is what makes the reference checkable at
+            // all - and the third pins the consequence, which FlavorValidator.FilterAgainstCatalog now
+            // actually carries out.
+            Assert.Contains("Every article must include refs", prompt);
             Assert.Contains("name at least one party or district in the prose by the id given in the " +
                             "lists above, and put that same id in refs", prompt);
             Assert.Contains("at least one of eventId, districtId or partyId", prompt);
             Assert.Contains("Write nothing you cannot point at", prompt);
+            Assert.Contains("an article without refs is dropped", prompt);
             Assert.Contains("Never attribute to a subject you have not named", prompt);
             Assert.Contains("\"residents say\"", prompt);
             Assert.Contains("\"officials say\"", prompt);
 
-            // The permissive phrasing this replaced. Left as an assertion because deleting the new
-            // wording and restoring the old one would otherwise pass every check above but one.
+            // The two phrasings this replaced, in order of weakness: the original permissive one, and
+            // the deliberately softened "Always include refs" that stood while the check it described
+            // did not run. Left as assertions because restoring either would pass every check above
+            // but one, and would put the prompt back to understating a rule the validator enforces.
             Assert.DoesNotContain("Set refs only to IDs from the lists above", prompt);
+            Assert.DoesNotContain("Always include refs", prompt);
+
+            // The embedded schema, printed further down the same prompt, lists refs among the optional
+            // properties - it is a verbatim copy of the repo schema and changing it is a
+            // /schema-change. So the rule says which of the two surfaces governs, rather than leaving
+            // one prompt stating two things about one field.
+            Assert.Contains("\"refs\": {", prompt);
+            Assert.Contains("The schema below lists refs among the optional properties", prompt);
+            Assert.Contains("the drop runs after schema validation", prompt);
         }
 
         [Fact]
@@ -161,7 +175,8 @@ namespace Agora.Core.Tests
             string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
 
             Assert.DoesNotContain("The election just decided", prompt);
-            Assert.DoesNotContain("a result piece", prompt);
+            Assert.DoesNotContain("a) a result piece", prompt);
+            Assert.DoesNotContain("claim on the mandate", prompt);
             Assert.DoesNotContain("coalition outlook", prompt);
         }
 
@@ -201,8 +216,75 @@ namespace Agora.Core.Tests
             Assert.Equal(a, b.Remove(inserted, end + 1 - inserted));
         }
 
+        // The block below is pinned whole, per theme, rather than by a handful of Contains. Two
+        // rounds of substring assertions let the same class of defect through - a slot or an exemplar
+        // that requires the model to decide the outcome before it can write - because a substring test
+        // only fails on the phrasing whoever wrote it thought of. "the victor's reaction", "the party
+        // that won", "held the council" and "lost ground" all sailed past the previous helper, the
+        // last two while sitting in the file. This surface's exact text is the contract with the
+        // model, so the exact text is what the test holds: any edit to it has to be made deliberately
+        // here as well as in the builder, and a reviewer reading this file sees what the model is told.
+
+        /// <summary>
+        /// The whole election block for a first-past-the-post round, verbatim.
+        /// </summary>
+        /// <remarks>
+        /// No figure and no worked example appears in it, and both absences are load-bearing: the
+        /// model has not been given the shares, the seats, the turnout or the winner, so any exemplar
+        /// it could imitate would have to be sayable without knowing the outcome. The pair that used
+        /// to close it - "held the council" or "lost ground" - was not, and named a winner and a loser
+        /// one clause after forbidding both.
+        /// </remarks>
+        private const string ExpectedElectionBlockNa =
+            "  The election just decided is the round's lead. Among those articles, include:\n" +
+            "  a) a result piece: that the count has happened and what it changes procedurally, " +
+            "not what it decided,\n" +
+            "  b) a piece carrying one party's own claim on the mandate,\n" +
+            "  c) a piece carrying one party's own challenge to the reading of the count.\n" +
+            "  Name the parties involved by id only. You have not been given the vote shares, the " +
+            "seat counts or the turnout, and you must not invent them; the dashboard carries the " +
+            "figures. You have not been given the winner either. The standing word in the party " +
+            "list says who governs as things stand, which is the arrangement the count may have " +
+            "just unseated - it is not the result. Do not name a winner or a loser. Write the two " +
+            "reactions as what a party says of the count, not as what the count decided.\n";
+
+        /// <summary>
+        /// The same block under proportional representation: one extra slot, and the comma before it.
+        /// </summary>
+        private const string ExpectedElectionBlockEu =
+            "  The election just decided is the round's lead. Among those articles, include:\n" +
+            "  a) a result piece: that the count has happened and what it changes procedurally, " +
+            "not what it decided,\n" +
+            "  b) a piece carrying one party's own claim on the mandate,\n" +
+            "  c) a piece carrying one party's own challenge to the reading of the count,\n" +
+            "  d) a piece on the coalition outlook - who might govern with whom, and on what, " +
+            "with nothing settled yet.\n" +
+            "  Name the parties involved by id only. You have not been given the vote shares, the " +
+            "seat counts or the turnout, and you must not invent them; the dashboard carries the " +
+            "figures. You have not been given the winner either. The standing word in the party " +
+            "list says who governs as things stand, which is the arrangement the count may have " +
+            "just unseated - it is not the result. Do not name a winner or a loser. Write the two " +
+            "reactions as what a party says of the count, not as what the count decided.\n";
+
         [Fact]
-        public void ElectionUnderEu_AsksForResultBothReactionsAndTheCoalitionOutlook()
+        public void ElectionUnderNa_EmitsExactlyTheExpectedBlock()
+        {
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = FlavorWakeReason.Election;
+            request.Theme = RegionTheme.Na;
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.Equal(ExpectedElectionBlockNa, ElectionBlock(prompt));
+
+            // The one thing the slice cannot speak for: there are no coalitions to have an outlook on
+            // under first-past-the-post wards with a directly elected mayor, so the phrase must be
+            // absent from the whole prompt and not merely from the block.
+            Assert.DoesNotContain("coalition outlook", prompt);
+        }
+
+        [Fact]
+        public void ElectionUnderEu_EmitsExactlyTheExpectedBlock()
         {
             var request = Request(districts: 6, districtIdLength: 12);
             request.Reason = FlavorWakeReason.Election;
@@ -210,32 +292,30 @@ namespace Agora.Core.Tests
 
             string prompt = FlavorPromptBuilder.Build(request);
 
-            Assert.Contains("a) a result piece", prompt);
-            Assert.Contains("b) a piece carrying the winning side's reaction", prompt);
-            Assert.Contains("c) a piece carrying the losing side's reaction", prompt);
-            Assert.Contains("d) a piece on the coalition outlook", prompt);
-
-            // Non-negotiable #1 from the other end: the model is told it has no figures rather than
-            // left to notice. A prompt that asks for a result and supplies none invites an invented one.
-            Assert.Contains("Name the parties involved by id only", prompt);
-            Assert.Contains("You have not been given the vote shares, the seat counts or the turnout", prompt);
+            Assert.Equal(ExpectedElectionBlockEu, ElectionBlock(prompt));
         }
 
-        [Fact]
-        public void ElectionUnderNa_AsksForTheFirstThreeAndNoCoalitionOutlook()
+        /// <summary>
+        /// The election block, cut out of the finished prompt.
+        /// </summary>
+        /// <remarks>
+        /// The builder emits the block inside WRITE rather than as a section of its own, so there is
+        /// no accessor to call. The slice runs from the block's first line to the next top-level WRITE
+        /// bullet, which is <c>eventProse</c> when the round carries events and
+        /// <c>generatedAtSimDate</c> when it does not — the block's own lines are indented two spaces
+        /// and none of them starts <c>"- "</c>, so the first <c>"\n- "</c> at or after the start is
+        /// the block's own trailing newline. Both ends assert rather than returning a short string:
+        /// a slice that silently found nothing would make the equality below compare two wrong values.
+        /// </remarks>
+        private static string ElectionBlock(string prompt)
         {
-            // There are no coalitions to have an outlook on under first-past-the-post wards with a
-            // directly elected mayor, so asking for the piece would be asking for invented politics.
-            var request = Request(districts: 6, districtIdLength: 12);
-            request.Reason = FlavorWakeReason.Election;
-            request.Theme = RegionTheme.Na;
+            int start = prompt.IndexOf("  The election just decided", System.StringComparison.Ordinal);
+            Assert.True(start >= 0, "the election block must be emitted on an election round");
 
-            string prompt = FlavorPromptBuilder.Build(request);
+            int end = prompt.IndexOf("\n- ", start, System.StringComparison.Ordinal);
+            Assert.True(end > start, "the block is followed by a top-level WRITE bullet");
 
-            Assert.Contains("a) a result piece", prompt);
-            Assert.Contains("b) a piece carrying the winning side's reaction", prompt);
-            Assert.Contains("c) a piece carrying the losing side's reaction.", prompt);
-            Assert.DoesNotContain("coalition outlook", prompt);
+            return prompt.Substring(start, end + 1 - start);
         }
 
         // ---- the numeric sweep ------------------------------------------------------------------

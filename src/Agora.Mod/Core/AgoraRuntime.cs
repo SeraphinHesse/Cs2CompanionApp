@@ -1285,7 +1285,10 @@ namespace Agora.Mod.Core
                     PartyId = party.Id,
                     ArchetypeId = party.ArchetypeId,
                     CoreGrievance = party.CoreGrievance,
-                    StatusWord = party.Status.ToString(),
+                    // A governing phrase, not Status.ToString(). The lifecycle word carried no
+                    // outcome at all, and the prompt's election block is written against this field
+                    // — see PartyBrief.StandingWord.
+                    StatusWord = PartyBrief.StandingWord(party),
                     CurrentName = party.Name,
                     FoundedDate = party.FoundedDate
                 });
