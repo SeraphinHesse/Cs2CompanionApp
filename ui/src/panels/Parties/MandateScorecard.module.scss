@@ -1,0 +1,174 @@
+// Panel 26 — Parties, the mandate scorecard. Flex only - Gameface has no CSS grid and fails silently
+// on it. `gap` is avoided throughout; spacing is done with margins and padding.
+
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// -- section chrome, matching the pane's own so the heading reads as one of its sections ------------
+
+.sectionTitle {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin: 8rem 0 5rem 0;
+  padding-bottom: 3rem;
+  border-bottom: 1rem solid $line;
+}
+
+.sectionTitleText {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: 8rem;
+  font-size: 11rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  color: $text-dim;
+}
+
+.sectionNote {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10rem;
+  color: $text-faint;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// -- one chip per status -----------------------------------------------------------------------------
+
+.chipRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 4rem;
+}
+
+@mixin chip-base {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin: 0 4rem 3rem 0;
+  padding: 2rem 6rem;
+  border-radius: 3rem;
+  white-space: nowrap;
+}
+
+.chip {
+  @include chip-base;
+  background-color: $surface-raised;
+}
+
+/** A status with no mandates in it. Still shown - a zero beside "Defied" is worth reading. */
+.chipEmpty {
+  @include chip-base;
+  background-color: $surface-inset;
+  opacity: 0.7;
+}
+
+.chipCount {
+  display: flex;
+  margin-right: 4rem;
+  font-size: 13rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chipLabel {
+  display: flex;
+  font-size: 10rem;
+  color: $text-faint;
+}
+
+// -- the delivery rate ----------------------------------------------------------------------------
+
+.rateLabel {
+  display: flex;
+  margin-bottom: 2rem;
+  font-size: 10rem;
+  color: $text-faint;
+}
+
+.rateRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+}
+
+.rateTrack {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  // Takes the slack in the row; min-width: 0 keeps it shrinkable beside the fixed figure, and the
+  // fill's percentage width resolves against it because the row itself is a definite width.
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 5rem;
+  border-radius: 3rem;
+  background-color: $surface-track;
+  overflow: hidden;
+}
+
+.rateFill {
+  // The width is the delivery rate, set inline. `flex: 0 0 auto` keeps it exactly that: a
+  // shrinkable fill would quietly under-report the rate.
+  display: flex;
+  flex: 0 0 auto;
+  height: 100%;
+  border-radius: 3rem;
+  background-color: $good;
+}
+
+.rateValue {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  width: 34rem;
+  margin-left: 6rem;
+  font-size: 12rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.rateNote {
+  display: flex;
+  margin-top: 2rem;
+  font-size: 9rem;
+  color: $text-faint;
+  line-height: 1.4;
+}
+
+/** Nothing judged yet: the sentence replaces the bar rather than a bar being drawn at zero. */
+.rateEmpty {
+  display: flex;
+  margin-bottom: 2rem;
+  font-size: 11rem;
+  color: $text-faint;
+}
+
+// -- held, and the pointer at the tracker ----------------------------------------------------------
+
+.held {
+  display: flex;
+  margin-top: 3rem;
+  font-size: 10rem;
+  color: $warn;
+  line-height: 1.4;
+}
+
+.pointer {
+  display: flex;
+  margin-top: 3rem;
+  font-size: 9rem;
+  color: $text-faint;
+  line-height: 1.4;
+}

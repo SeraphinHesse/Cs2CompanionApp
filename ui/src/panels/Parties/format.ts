@@ -388,3 +388,33 @@ export const STATUS_CHIP: Record<Agora.PartyStatusName, string> = {
   Merged: "Merged",
   Revived: "Revived",
 };
+
+// -- mandate statuses -----------------------------------------------------------------------------
+
+/**
+ * The order `AgoraUiProjection.StatusRank` sorts the published mandate list by - Active 0,
+ * Pending 1, PartiallyFulfilled 2, Fulfilled 3, Defied 4, everything else 5 - so the scorecard's
+ * counts read in the same order as the rows the News tab's tracker shows. Live promises first.
+ */
+export const MANDATE_STATUS_ORDER: Agora.MandateStatusName[] = [
+  "Active",
+  "Pending",
+  "PartiallyFulfilled",
+  "Fulfilled",
+  "Defied",
+  "Abandoned",
+];
+
+/**
+ * `MandateStatusName` is a C# member name and must never reach the player. Copied from the News
+ * panel's own map rather than imported: there is no shared runtime module between panels, by design
+ * (contract section 6), and the two views have to agree on the words as well as on the order.
+ */
+export const MANDATE_STATUS_LABEL: Record<Agora.MandateStatusName, string> = {
+  Pending: "Pending",
+  Active: "Active",
+  Fulfilled: "Fulfilled",
+  PartiallyFulfilled: "Partly met",
+  Defied: "Defied",
+  Abandoned: "Abandoned",
+};
