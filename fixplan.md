@@ -70,20 +70,29 @@ either way.
 
 Do **not** patch each layer separately — that is how this got to three copies. Introduce one seam.
 
-- [ ] Add `AgoraRuntime.ResetForNewSave()`: clears every per-save field, calls
+- [x] Add `AgoraRuntime.ResetForNewSave()`: clears every per-save field, calls
       `AgoraEffects.Shutdown()` then re-`Initialize`s from the loaded tuning, resets the district
       resolver, and disposes the flavor provider. Distinct from `Detach()`, which additionally
       drops the world-level references.
-- [ ] Call it from the **first line** of `OnSidecarLoaded`, before any restore work.
-- [ ] Add an `OnGamePreload` override to `AgoraHeartbeatSystem` resetting its four cadence fields.
+- [x] Call it from the **first line** of `OnSidecarLoaded`, before any restore work.
+- [x] Add an `OnGamePreload` override to `AgoraHeartbeatSystem` resetting its four cadence fields.
       `GameSystemBase` already subscribes to `onGamePreload`; this needs no new hook.
-- [ ] Reset `AgoraSidecarSystem._saveGuid` to `Guid.Empty` on game preload so `EnsureIdentity`
+- [x] Reset `AgoraSidecarSystem._saveGuid` to `Guid.Empty` on game preload so `EnsureIdentity`
       re-mints per city.
-- [ ] **Verify during implementation** (flagged by review, not yet confirmed):
+- [x] **Verify during implementation** (flagged by review, not yet confirmed):
       `AgoraEffectApplicationSystem._slots` is a `Dictionary<SlotKey, SlotState>` holding `Entity`
       handles, and `_loggedMissingDistricts` is a never-cleared `HashSet`. Stale `Entity` handles
       pointing into a destroyed city would be the most dangerous form of this bug. Read the file,
       confirm, and hang both off `ResetForNewSave` if so.
+      *(**Confirmed and done, and it went further than this asked.** `ForgetTrackedSlots` clears all
+      five collections — `_slots`, `_writtenThisPass`, `_stale`, `_districtEntities`,
+      `_loggedMissingDistricts` — then rebuilds the fallback resolver, because that index also holds
+      the old city's district entities by id and "a stale handle table surviving a save boundary is
+      the shape of bug this method exists to remove". It also clears `_suspended`, which would
+      otherwise carry the previous save's master-toggle state and skip the revert-once pass. It is
+      called from `ResetForNewSave` on **every** cause; `TryRevertAll` runs only on `ModShutdown`,
+      and the comment there explains why a `SaveBoundary` revert would be invisible. Verified by
+      reading, 2026-08-09 — **still needs the walkthrough**, like the rest of W0's ECS half.)*
 
 ### Acceptance
 
@@ -111,14 +120,14 @@ Gameface has no `backdrop-filter`, so opacity is the only lever.
 
 ### The fix
 
-- [ ] Create `ui/src/shell/_tokens.scss` — the single source for surface, text, line, accent and
+- [x] Create `ui/src/shell/_tokens.scss` — the single source for surface, text, line, accent and
       status colours. Import it in all four panels and delete the local `$` declarations.
-- [ ] Panel body surface → `rgba(8,10,14,0.94)`. Shell bar → `0.94`. Raised/inset surfaces stay
+- [x] Panel body surface → `rgba(8,10,14,0.94)`. Shell bar → `0.94`. Raised/inset surfaces stay
       relative to the body, not absolute.
-- [ ] Raise `$text-dim` from `0.62` to `0.72` and `$text-faint` from `0.4` to `0.55`.
-- [ ] `Crosstab.module.scss:116-120` — axis labels are 8rem at 0.5 opacity, effectively illegible.
+- [x] Raise `$text-dim` from `0.62` to `0.72` and `$text-faint` from `0.4` to `0.55`.
+- [x] `Crosstab.module.scss:116-120` — axis labels are 8rem at 0.5 opacity, effectively illegible.
       → 10rem at 0.75.
-- [ ] Add a `css-presence` check (the harness in `ui/tools/css-presence.js` already exists) that
+- [x] Add a `css-presence` check (the harness in `ui/tools/css-presence.js` already exists) that
       fails the build if a panel declares a `$surface` of its own.
 
 ---
@@ -547,18 +556,18 @@ support/polling, and seats.
 
 ### The fix
 
-- [ ] New binding `agora.parties.detail` as a `GetterMapBinding<string, T>` keyed by party id —
+- [x] New binding `agora.parties.detail` as a `GetterMapBinding<string, T>` keyed by party id —
       same on-demand pattern as `agora.districts.detail`, so the whole roster's detail is not
       pushed across the bridge every month.
-- [ ] New `PartyDetailPayload`: description, slogan, platform vector, last manifesto vector,
+- [x] New `PartyDetailPayload`: description, slogan, platform vector, last manifesto vector,
       seats, seat share, last vote share, current poll share, poll delta since the election,
       status, founded date, above/below threshold, government role, faction list.
-- [ ] `ui/src/panels/Parties/` — list rail of parties (colour swatch, short name, seats, poll
+- [x] `ui/src/panels/Parties/` — list rail of parties (colour swatch, short name, seats, poll
       share) plus a detail pane. Register in `TAB_ORDER` in `ui/src/shell/state.ts`.
-- [ ] Issue priorities as a six-row horizontal bar set, labelled in plain English — not
+- [x] Issue priorities as a six-row horizontal bar set, labelled in plain English — not
       `HeritageOrder`.
-- [ ] Inline edit controls from W4 live in the detail pane header.
-- [ ] Update `docs/contracts/ui_bindings.md` §4 with the new sub-namespace.
+- [x] Inline edit controls from W4 live in the detail pane header.
+- [x] Update `docs/contracts/ui_bindings.md` §4 with the new sub-namespace.
 
 ### Additional content — proposed, decide before building
 
