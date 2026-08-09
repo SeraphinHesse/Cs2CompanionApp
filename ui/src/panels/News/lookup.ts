@@ -18,7 +18,7 @@ import { districts$, roster$ } from "./bindings";
  */
 
 /** Used when a party id is empty or has aged out of the roster. */
-const NEUTRAL_COLOR = "#8a8f98";
+export const NEUTRAL_COLOR = "#8a8f98";
 
 /**
  * Shown wherever a party exists but has no usable name yet — either it has aged out of the roster

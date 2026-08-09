@@ -10,6 +10,7 @@ import {
 import { useSimulationHeldPaused } from "./pause";
 import { article$, EMPTY_NEWS_ARTICLE } from "../panels/News/bindings";
 import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "../panels/News/format";
+import { NEUTRAL_COLOR } from "../panels/News/lookup";
 import styles from "./ArticleModal.module.scss";
 
 /**
@@ -34,7 +35,16 @@ import styles from "./ArticleModal.module.scss";
 
 /**
  * The masthead's section line, per kind. No `NewsAlertKindName` member reaches the player raw: these
- * are the same words a newsroom would put on the page, chosen here and nowhere else.
+ * are the same words a newsroom would put on the page. The desk line exists only here — the card is
+ * the only place that prints a masthead.
+ *
+ * `KIND_LABEL` below does overlap `NewsFeed`'s map of the same name, and that is deliberate, not an
+ * oversight to tidy up: this one is keyed by `NewsAlertKindName`, `NewsFeed`'s by `NewsKindName`,
+ * which additionally carries `Mandate`. One shared map would either loosen this map's exhaustiveness
+ * over its own narrower union or leave a dead `Mandate` entry sitting in it. Both maps fall back to
+ * `UNKNOWN_KIND`, so drift between them costs a word on a badge, never a raw enum member. Contrast
+ * `NEUTRAL_COLOR`, which is imported from `lookup.ts` precisely because a second copy would show up
+ * as two different greys for one story.
  */
 const DESK_LABEL: { [kind: string]: string } = {
   Article: "City Desk",
@@ -58,9 +68,6 @@ const UNKNOWN_KIND = "Bulletin";
 
 /** Shown while an ack is in flight. Both buttons go quiet, not just the one pressed. */
 const WORKING_LABEL = "Filing…";
-
-/** Stands in when a party id is empty or has aged out of the roster — the rule of `lookup.ts`. */
-const NEUTRAL_COLOR = "#8a8f98";
 
 interface ArticleBodyProps {
   id: string;
