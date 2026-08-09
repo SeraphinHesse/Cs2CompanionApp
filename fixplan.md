@@ -468,10 +468,27 @@ timeout is 120s with one retry.
 
 **Popup**
 
-**The popup is NOT BUILT.** Nothing below this line was implemented. Three of the five bullets were
-wrong as written and are corrected here so the next pass does not implement the wrong thing.
+**BUILT 2026-08-09**, to `docs/plans/0003-w5-popup-lane.md`, across six chunks each independently
+reviewed. The corrections below were written when it was unbuilt and all three proved right; they
+are kept as the record. **All three prerequisites they name were built first** — a severity gate, a
+coalition-formed feed row, and party founded/dissolved rows backed by a pure detection query
+extracted into `Agora.Core` (`PartyLifecycleChanges`, the only headlessly testable part of the lane).
 
-- [ ] `ui/src/shell/ArticleModal.tsx` — masthead layout: outlet nameplate in a serif face with rules
+Two further plan errors surfaced during the build and are worth recording, because each would have
+shipped a silent failure:
+- **The plan's alert-id vocabulary said article alerts carry `"article:<id>"`.** They must carry the
+  **bare** id, which is simultaneously the `agora.news.article` map key. A prefix makes
+  `BuildArticle` return an empty payload rather than throw — a blank masthead, no error, no log.
+- **`fixplan.md`'s own "a coalition formed produces no feed row" was right, and the fix mattered
+  more than it looks:** without it the alert would have named a government the player then could not
+  find in the feed.
+
+**`PauseOnMajorNews` and `ShowAllReports` now do something.** Both hint strings were also corrected
+against the built behaviour — the second was actively misleading, telling the player that the
+ordinary reports the toggle admits would stop the clock, which is the one thing the code guarantees
+cannot happen.
+
+- [x] `ui/src/shell/ArticleModal.tsx` — masthead layout: outlet nameplate in a serif face with rules
       above and below, dateline, headline at display size, body in two columns if it fits the
       hook-point width, party colour as a thin spot rule. Rendered through `Portal` so it overlays
       the whole HUD rather than sitting in the top-right corner.
@@ -479,14 +496,18 @@ wrong as written and are corrected here so the next pass does not implement the 
       centring are the caller's own first child; copy the two-div wrapper from `FirstRunDialog.tsx`.
       Give it its own `moduleRegistry.append` and its own boundary, and make the boundary unmount
       its children so the pause hook's cleanup releases the barrier.)*
-- [ ] ~~Pause via `SimulationSystem.selectedSpeed = 0`~~ — **obsolete, and implementing it would be a
+- [x] ~~Pause via `SimulationSystem.selectedSpeed = 0`~~ — **obsolete, and implementing it would be a
       regression.** `ui/src/shell/pause.ts` already exports `useSimulationHeldPaused(active)` over
       the game's refcounted `time.simulationPausedBarrier$`. Reuse it verbatim. That setter is a
       no-op while `m_IsLoading`, so the one write that matters is silently discarded, and manual
       capture/restore makes un-pausing a bug that must be handled on unmount, save load, quit to
       menu and boundary catch. Subscribing makes those cases unreachable.
-- [ ] "Important" = elections (always), coalition formed or collapsed, party founded or dissolved,
-      and timeline events at severity ≥ 3.
+- [x] "Important" = elections (always), coalition formed or collapsed, party founded or dissolved,
+      and timeline events at severity ≥ 3. **Shipped as ≥ `MajorSeverityThreshold`, which is 4, not 3.**
+      The engine already defined "major" and the popup now reads that one number rather than adding a
+      second definition that would drift from `EventScheduler.IsMajor` and `CoalitionStability` on the
+      next tuning pass. Whether that number should be 3 is a live tuning question for the owner; the
+      build is threshold-agnostic either way and no literal appears on either side.
       *(Only two of these are observable today. **There is no severity filter anywhere** — `BuildFeed`
       emits every fired event at any severity, so the ≥ 3 gate is new logic. **Coalition *formed*
       produces no feed row**: `CoalitionHistory` only ever receives *ended* coalitions and the
@@ -500,7 +521,7 @@ wrong as written and are corrected here so the next pass does not implement the 
       *(Settings exist end to end — contract, sidecar, migration, projection, binding, and toggles in
       `SettingsPanel.tsx`. **Nothing reads either value.** The work left is the consumer, not the
       setting, and the hint text already promises behaviour that does not exist.)*
-- [ ] Queue, never stack. If two qualifying items land in one tick, show them in sequence with a
+- [x] Queue, never stack. If two qualifying items land in one tick, show them in sequence with a
       "2 of 3" counter. A modal that can open on top of a modal is how a player gets stuck.
       *(One modal at a time **by construction**: the component renders `current` or `null`, with no
       code path that can mount two. Alerts are session-scoped and deliberately do not persist — emit
