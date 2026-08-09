@@ -273,7 +273,20 @@ governs alone and there is no coalition arithmetic to report — so the panel br
 open party is listed, best first; one that never appears was not refused by name, it simply was not
 viable, and there is no per-partner refusal field because the ranking cannot say which of the two
 rejection rules a set it never built would have failed. Chamber seats come from the latest election,
-so a city between a collapse and a new formation still has an answer. Enumeration is bounded by
+so a city between a collapse and a new formation still has an answer.
+
+**FPTP is not the only empty case, and the panel must not imply it is.** `BuildPartyRelations`
+returns `[]` on **four** paths: no election history, FPTP, no latest election, and *no ranked
+candidate contains this party*. The first covers the whole of every save before its first ballot —
+where a new player spends their opening term — and the last is ordinary in an established city. So
+"empty" must never be rendered as a claim about elections having happened: the panel cannot
+establish that, because `state.Government` is read independently of the election-history guard and a
+null government is equally "never voted" and "between a collapse and a new formation". The shipped
+copy is deliberately silent on the point for that reason (W6 chunk H9; a first draft asserted the
+city had never voted and was blocked in review). Branch on `summary.system` for the FPTP sentence,
+and say nothing about election history otherwise.
+
+Enumeration is bounded by
 `coalitions.formationMaxPartners`, which is why this is a map binding fetched for one open pane and
 must never become a `GetterValueBinding` re-running it every UI tick (rule 6).
 
@@ -452,7 +465,10 @@ the same rows twice.
 Sort keys:
 
 - `feed`: `date` **descending**, then `id` ordinal ascending. Capped at `AGORA_NEWS_FEED_MAX = 40`.
-- `events`: `firedDate` **descending**, then `id` ordinal ascending. Capped at `AGORA_EVENTS_MAX = 25`.
+- `events`: **fired before unfired** — every row carrying a `firedDate` sorts ahead of every row
+  whose `firedDate` is `""` — then `firedDate` **descending**, then `id` ordinal ascending. Capped at
+  `AGORA_EVENTS_MAX = 25`. The first key matters because `firedDate` is typed as possibly empty and
+  an empty string would otherwise sort as the *oldest* date and bury live rows.
 - `mandates`: **status rank** ascending — `Active` 0, `Pending` 1, `PartiallyFulfilled` 2,
   `Fulfilled` 3, `Defied` 4, `Abandoned` 5 — then `deadlineDate` ascending, then `id` ordinal
   ascending. So the tracker opens on what is live and closest to its deadline.
@@ -487,7 +503,9 @@ month's prose must not stop the clock even for a player who asked to see all of 
 `agora.news.ackAlert` takes the alert's id, or the sentinel `"*"` for dismiss-all, and answers a
 `CommandOutcomeName` like every other inbound call. Acking an id the engine no longer holds is
 accepted (`""`), **not** `NotFound`: a double-click, or a dismiss racing a republish, is not
-something the player did wrong. The panel must send it with a deadline — while a major alert is up
+something the player did wrong. **The one rejection is an empty or null id, which answers
+`BadValue`** (`AgoraRuntime.AckAlert`) — that is a caller bug, not a stale id, and the two are
+deliberately distinguished. The panel must send it with a deadline — while a major alert is up
 the game forces the speed to zero every frame, so a call that never answers leaves a card that
 cannot be closed and a clock that cannot be started.
 
@@ -554,8 +572,8 @@ PartyDetail         id, name, shortName, colorHex, archetypeId, description, slo
                     seatShare, lastVoteShare, hasContestedElection, passedThreshold,
                     consecutiveElectionsBelowThreshold, currentPollShare, hasPoll, pollDate,
                     pollDeltaSinceElection, currentStandingShare, status, foundedDate,
-                    dissolvedDate, governmentRole, factionIds, predecessorPartyId,
-                    successorPartyId, revivalCount, absorbedPartyIds
+                    dissolvedDate, predecessorPartyId, successorPartyId, revivalCount,
+                    absorbedPartyIds, governmentRole, factionIds
 PollTrendPoint      date, share, marginOfError, weeksToElection
 PartyElectionRow    electionId, date, termNumber, isSnapElection, seats, seatShare, voteShare,
                     passedThreshold, wasOnBallot, hasSeatRecord

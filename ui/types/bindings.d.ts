@@ -3649,7 +3649,7 @@ declare module "cs2/bindings" {
 // ---------------------------------------------------------------------------------------------
 // AGORA — dashboard binding payloads.
 //
-// Authority: docs/contracts/ui_bindings.md (schemaVersion 5). FROZEN for M4 — do not rename a
+// Authority: docs/contracts/ui_bindings.md (schemaVersion 8). FROZEN for M4 — do not rename a
 // field, add a field, or change a sort key here without changing that document first. Nothing
 // checks this contract at compile time: a mismatch renders an empty panel, not a build error.
 //
@@ -3724,12 +3724,24 @@ declare namespace Agora {
 
   type EventOriginName = "Catalog" | "Procedural" | "Political";
 
-  /** What produced a feed item. Drives the icon, not the layout. */
+  /**
+   * What produced a feed item. Drives the icon, not the layout.
+   *
+   * **`"Mandate"` is declared but no publisher emits it.** `AgoraUiProjection.BuildFeed` produces
+   * exactly `Article`, `Event`, `Election`, `Coalition` and `Party` — mandates are surfaced by the
+   * News tab's tracker off `agora.news.mandates`, never as a feed row. The member is retained
+   * because removing it is a shape change and would have to go through `/schema-change`; a union
+   * member no publisher emits is harmless (unlike a required field no publisher fills, which is the
+   * defect W4 shipped once and had to fix). **Do not write a `"Mandate"` branch and expect to reach
+   * it.** Recorded by the contract-drift audit, 2026-08-09.
+   */
   type NewsKindName = "Article" | "Event" | "Election" | "Coalition" | "Mandate" | "Party";
 
   /**
    * What produced an alert. A SUBSET of `NewsKindName` — `"Mandate"` is absent because a mandate
    * being issued or resolved is a state change the tracker already shows, not an interruption.
+   * (Note the feed does not emit `"Mandate"` either, so this is a narrowing of the declared union
+   * rather than of anything actually published — see above.)
    *
    * Kept as its own union rather than reusing `NewsKindName` so the narrower set is checked: a
    * modal switching on `NewsKindName` would need a `"Mandate"` branch that can never be reached.
