@@ -264,17 +264,26 @@ Nothing in `fixplan.md` is complete until that passes **without restarting the g
 
 ## Known gaps found this pass, not yet closed
 
--1. **`SimDate.ToString()` is culture-invariant by accident, not by declaration.**
+-1. **`SimDate.ToString()` is culture-invariant by accident, not by declaration.** A hygiene gap, not
+   a determinism hole — the distinction matters and an earlier draft of this entry got it wrong.
    `src/Agora.Core/Contracts/SimDate.cs:57` is `$"{Year:D4}-{Month:D2}-{Day:D2}"`, and an
-   interpolated string formats under `CurrentCulture`. This value feeds **sidecar filenames and
-   seed/stream keys** (`SimClockMath.cs:25` says so outright), JSON, and LLM prompts. In practice
-   `D`-format on a non-negative `int` does not vary by culture in .NET — no native-digit
-   substitution, no sign in play — so it is safe today. But **non-negotiable 2 says a seed must never
-   depend on the machine's culture**, and here that holds by a property of the format specifier
-   rather than by anything stated or tested. `CoalitionFormation` already formats its attempt number
-   with an explicit `InvariantCulture` and a comment saying exactly why, so the codebase knows the
-   rule; this one site just predates it. Cheap fix (`.ToString("D4", CultureInfo.InvariantCulture)`)
-   plus a test pinning it under a hostile culture. Found by the culture-formatting sweep, 2026-08-09.
+   interpolated string formats under `CurrentCulture`.
+   **`SeedStreams.Derive` is already immune** and says so: it folds `Year`/`Month`/`Day` in as `int`s
+   via `MixInt32` *"so the seed never depends on formatting behaviour"*. The primary seed path was
+   never at risk. The real exposure is one level out — `StaticPoolProvider.cs:377` builds an article
+   id as `"static-" + request.Date.ToString() + "-" + (i + 1)`, and that id becomes the sub-stream
+   key at `:401` which `RngFor` concatenates into the hashed stream name. It is also a **persisted
+   article id and part of sidecar filenames** (`AgoraJson.cs:226-228`), which is the bigger of the
+   two consequences.
+   Safe today: `D4`/`D2` on a non-negative `int` emits ASCII digits under every culture .NET
+   supports, and `NegativeSign` is the only culture-sensitive element. `Month` and `Day` are
+   constructor-validated; `Year` is not range-checked, but a negative year is a far larger failure
+   than a formatting one. `CoalitionFormation` already formats its attempt number with an explicit
+   `InvariantCulture` and a comment saying why, so the codebase knows the rule and this site simply
+   predates it. **When closing it:** describe the fix as protecting *sub-stream keys, ids and
+   filenames* — not "seed derivation", which is already safe by construction — and pin it with a test
+   that sets `CurrentCulture` to a hostile culture (`ar-SA`, `sv-SE`) around `SimDate.ToString()`
+   itself, not around `Derive`.
 
 0. **Text entry has never been rendered under Gameface.** W4 lane D's five fields
    (`PartyEditor.tsx:253, 266, 338, 436` and the `<textarea>` at `:325`) are the **first
