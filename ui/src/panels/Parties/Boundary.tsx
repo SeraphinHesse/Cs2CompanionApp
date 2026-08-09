@@ -12,7 +12,7 @@ interface BoundaryState {
 
 /**
  * A render failure inside a moduleRegistry-appended component can blank the game's whole UI, and
- * this panel reads six bindings across two publishers. `useMapValue` throws outright if the C#
+ * this panel reads twelve bindings across four publishers. `useMapValue` throws outright if the C#
  * side has not registered the map binding, which is a real state during a partial deploy - so the
  * panel contains its own failures instead of taking the game's interface down with it.
  */

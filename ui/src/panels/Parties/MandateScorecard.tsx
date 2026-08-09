@@ -48,11 +48,7 @@ function tally(mandates: Agora.MandateRow[], partyId: string): Tally {
       continue;
     }
     total++;
-    // A status the payload carries but this build has no word for is counted nowhere rather than
-    // shown as itself: an enum member name must never reach the player.
-    if (MANDATE_STATUS_LABEL[row.status]) {
-      byStatus[row.status]++;
-    }
+    byStatus[row.status]++;
     if (row.isMeasurementStalled) {
       held++;
     }
@@ -100,9 +96,24 @@ export const MandateScorecard = (props: {
   }
 
   // Fulfilled ALONE is the numerator. A partly met mandate was judged, so it stays in the
-  // denominator, but half a delivery is a weighting no engine published and the panel does not get
-  // to invent one - it would be a number on screen that nothing in the model backs. The label says
-  // "in full" so the figure describes exactly what was counted.
+  // denominator, but it does not count towards delivery here.
+  //
+  // The engine does have a weighting for this. `IndicesEngine.MandateDelivery` scores Fulfilled as
+  // 1 and lets PartiallyFulfilled and Defied count their own recorded progress, and `progress` is
+  // published on every row - so that formula could be reproduced here. It is declined, not missed:
+  //
+  //   1. Reproducing it would be the panel re-implementing an engine formula, which is a sharper
+  //      breach of contract rule 5 than counting statuses is. Counting published rows is
+  //      re-expression, the same class of thing as `pct()`; applying a weighted score is
+  //      derivation, and derivation is the engine's work.
+  //   2. MandateDelivery is city-wide and private. It is one leg of LegitimacyIndex and is never
+  //      surfaced, so there is no engine figure on screen for this one to contradict - and a
+  //      per-party variant of it would be a number the engine never computed for a party.
+  //   3. The label is scoped to "in full" so the two could not be confused even if the engine's
+  //      figure is published one day.
+  //
+  // The denominator does agree with the engine: the resolved set counted above is Fulfilled +
+  // PartiallyFulfilled + Defied, exactly the set MandateDelivery averages over.
   const rate = counts.resolved > 0 ? counts.fulfilled / counts.resolved : 0;
 
   return (
@@ -141,7 +152,8 @@ export const MandateScorecard = (props: {
           <div className={styles.rateNote}>
             {int(counts.fulfilled) + " of " + int(counts.resolved) + " judged mandates met in full. "}
             {"A partly met mandate counts as judged but not as delivered; one still active or " +
-              "pending is not judged yet and is left out of both figures."}
+              "pending is not judged yet and is left out of both figures. An abandoned mandate is " +
+              "left out too: a government that fell was never given the chance to deliver it."}
           </div>
         </>
       ) : (
