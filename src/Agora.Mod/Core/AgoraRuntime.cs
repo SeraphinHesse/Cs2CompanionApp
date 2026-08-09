@@ -1833,10 +1833,10 @@ namespace Agora.Mod.Core
                 SimDate suppressed = lifecycle.SuppressedDates[i];
                 if (!_raisedAlertIds.Add("suppressed-lifecycle:" + suppressed)) continue;
 
-                AgoraMod.Log.Warn("Agora: more than " + PartyLifecycleChanges.MaxPerDate +
-                                  " party lifecycle changes are dated " + suppressed +
-                                  "; none is reported, in the news feed or as an alert. That date " +
-                                  "reads as a registry regeneration rather than as politics.");
+                AgoraMod.Log.Warn("Agora: every party in existence on " + suppressed +
+                                  " was founded on that date, so it reads as a whole-roster " +
+                                  "regeneration rather than as politics; nothing dated then is " +
+                                  "reported, in the news feed or as an alert.");
             }
 
             for (int i = 0; i < lifecycle.Records.Count; i++)

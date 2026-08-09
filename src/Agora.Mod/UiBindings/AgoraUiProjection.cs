@@ -1338,7 +1338,11 @@ namespace Agora.Mod.UiBindings
                 AddCoalitionFormedRow(rows, state.Government);
 
                 // Party lifecycle. The query is in Agora.Core so that the opening-roster exclusion
-                // and the per-date cap are testable without the game; everything below is wording.
+                // and the whole-roster-regeneration suppression are testable without the game;
+                // everything below is wording. NOT a per-date cap: an earlier revision capped
+                // reported changes at two a date on the false premise that the engine cannot
+                // produce three in one month, and deaths, merges and splits each loop over their
+                // own candidates stamping the same date. Do not reintroduce a count.
                 //
                 // KNOWN AND ACCEPTED — a revival erases its own dissolution row. PartyLifecycle
                 // clears Party.DissolvedDate when a brand returns, so this feed loses the death of
@@ -1352,7 +1356,10 @@ namespace Agora.Mod.UiBindings
                 // Deliberately no log line for lifecycle.SuppressedDates. This builder is a view,
                 // rebuilt from scratch on every publish, so a warning here would repeat for the rest
                 // of the save rather than reporting an event once. The one-shot log belongs on the
-                // emission path, which runs once per sim month.
+                // emission path, which runs once per sim month — and now lives there:
+                // AgoraRuntime.RaisePartyAlerts logs it, keyed into _raisedAlertIds under a
+                // "suppressed-lifecycle:" prefix so it fires once per occurrence. This comment says
+                // "no log HERE", not "no log anywhere"; do not read the two as contradicting.
                 for (int i = 0; i < lifecycle.Records.Count; i++)
                 {
                     PartyLifecycleRecord change = lifecycle.Records[i];
