@@ -202,10 +202,24 @@ date**, not a diff against a cached previous set. That matters for three reasons
 
   (A retheme is safe: `PoliticalEngine.cs:175` passes `startDate`, not the retheme date.)
 
-  **Mitigation, both belt and braces:** skip any party whose `FoundedDate` equals the save's start
-  date, **and** cap party-lifecycle rows at two per tick (a split yields one; a merge yields one
-  dissolution). If the cap trips, log it and emit none — a mass regeneration is a warning in
-  `Agora.log`, not news.
+  **Mitigation, both belt and braces:** skip any party whose `FoundedDate` is on or before the save's
+  start date, **and** suppress any date on which the *entire* roster was minted — the number of
+  `Founded` records on that date equals the number of parties founded on or before it, with at least
+  one founding. When a date is suppressed, log it once and emit none: a mass regeneration is a
+  warning in `Agora.log`, not news.
+
+  > **ERRATUM — this paragraph originally specified "cap party-lifecycle rows at two per tick (a
+  > split yields one; a merge yields one dissolution)". That was WRONG and shipped as a defect.**
+  > `ApplyDeaths` (`PartyLifecycle.cs:287-331`), `ApplyMerges` (`:431-475`) and `ApplySplits`
+  > (`:503-545`) each loop over *all* their candidates and each stamps `input.Date`, so three
+  > ordinary lifecycle changes on one election date is an ordinary few-percent event — three parties
+  > under threshold for two consecutive elections is enough. Worse, `PartyLifecycleChanges.Collect`
+  > re-derives over the **whole persisted history** on every publish, so a single such election
+  > erased those rows from the news archive **permanently and silently**. **Do not reintroduce a
+  > count-based cap.** The rule must key on the shape a regeneration actually has — every party then
+  > in existence founded at once, which only the empty-registry recovery at
+  > `PoliticalEngine.cs:319-322` produces. Ordinary churn can never look like it, because nothing is
+  > ever removed from the party list, so a churn date's foundings are always short of its elders.
 
 **c′. And one hazard neither document mentions: revival erases the record.**
 `PartyLifecycle.cs:373` sets `party.DissolvedDate = null` when a brand returns. A dissolution feed
@@ -905,8 +919,10 @@ the optional Core extraction, §11) · C5 ≈ one · C6 ≈ one · C7 ≈ one ·
 - [x] **20.** `RaiseAlerts` from `OnMonth`; the article raise from `CollectProse` (§5.1). Read
       `ShowAllReports` at emit time (§5.4). Cap at 8, log on drop.
 - [x] **20a.** **Consume `PartyLifecycleChangeSet.SuppressedDates`** with a one-shot log on the
-      once-per-month emission path. C4 populates it and **nothing reads it** — §1c requires *"if the
-      cap trips, log it and emit none"* and only the second half shipped. It cannot be logged from
+      once-per-month emission path. C4 populates it and **nothing reads it** — §1c requires that a
+      suppressed date be logged and emitted as nothing, and only the second half shipped.
+      *(Wording updated: this item originally quoted §1c's retired "if the cap trips" phrasing. There
+      is no cap — see §1c's erratum. `SuppressedDates` is populated by the whole-roster rule.)* It cannot be logged from
       `BuildFeed`: that is a view rebuilt on every publish, so the warning would repeat for the rest
       of the save. **A computed field with no reader is a claim the code does not honour** — wire it
       here or delete it, and do not leave the obligation in a comment. *(Raised by C3/C4's review;
