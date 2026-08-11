@@ -68,7 +68,9 @@ authority; this is the tracker.
 ### The manual gate — what only the player can verify
 
 Everything below needs the game running. Nothing here has been seen on screen: the code is reviewed,
-built and typechecked, and that is a different claim.
+built and typechecked, and that is a different claim. **Item E is the one exception, and only in
+part** — its table was read off a real save's sidecar and log, which is evidence about engine state
+and says nothing about what rendered.
 
 **A. The C0 questions** (the de-risk spike that was deliberately not built — answer these first,
 because a "no" means C6's ack path needs revising, which is a one-line fix by construction):
@@ -100,6 +102,48 @@ new colour** — that is `OkColorInUse` being read as an acceptance).
 **D. Gameface rendering** that no static check can reach: that the masthead's serif stack resolves to
 an actual serif; that a long article body scrolls rather than pushing the buttons off-screen; that
 `Portal` overlays the HUD for the modal's subtree as it already does for `FirstRunDialog`.
+
+**E. The parties-tab report** — *"the parties tab isn't showing anything; the US/EU choice doesn't
+apply, it's locked to EU; there are no coalitions or factions."*
+
+Three of those four claims were **read off disk and disproved**, which is the first part of this gate
+that has evidence behind it rather than only a review. `Agora.log` for the reported session carries no
+error, no `could not register its bindings` and no publisher failure, and the save's own sidecar
+(`ModsData/Agora/725366ab-…/state_1990_08.json`) says:
+
+| Claim | What the sidecar says |
+|---|---|
+| "locked to EU" | `theme: "Na"`, `system: "FirstPastThePost"`. The choice **applied**; `themeLocked` is still false, so it was also still changeable. |
+| "no factions" | **12 factions** across 4 parties, generated at frame zero as `FactionModel.AppliesTo` requires. |
+| "no coalitions" | Correct, and **by design**: coalitions are a proportional feature and this save is FPTP. `electionHistory: 0` and `recentPolls: 0` besides. |
+| "shows nothing" | `parties: 4`, all named. The register was there to be shown. |
+
+So all four symptoms are downstream of one bug — a Parties tab that rendered nothing — and the tab was
+the only place any of those facts were visible. The prime suspect is a **stale deployed bundle** (the
+Parties tab is recent; `ui/npm run build` deploys to `…\Mods\Agora.Mod`). Both halves have now been
+rebuilt and redeployed, and the deployed `Agora.Mod.mjs` was grepped for the new strings. **Staleness
+cannot be proven retroactively — the rebuild overwrote the evidence — so this is the live hypothesis,
+not a confirmed root cause.** What is confirmed is that causes 2 and 3 of that report are ruled out.
+
+Still needing the screen, and nothing below is claimed as walked:
+1. New city → the region prompt appears and holds the clock. Choose **United States** → US party
+   names, FPTP, factions in party detail. Choose **Europe** → proportional, and coalition arithmetic
+   in party detail from the **first published poll** rather than the first election.
+2. The **region chip** in the dashboard bar (new): present while `themeLocked` is false, absent after
+   the first election, and pressing it opens Settings on the theme picker. This is the standing second
+   route to the choice, for the case where the first-run prompt never rendered.
+3. `Agora.log` should now carry a `save active at …; theme … (…), N parties, M factions, themeLocked=…`
+   line on every load, and a `setTheme("…") requested` line on every press — the two lines that would
+   have answered this report without a sidecar read.
+
+**Found while walking this, and *not* fixed — it is a contract change and out of the chosen scope:**
+faction **names are generated and then dropped**. `StaticPoolProvider.BuildFactions` names every
+faction, `FlavorDocument` parses them into `FactionFlavor` — and `ToPayload` has nowhere to put them,
+because `FlavorPayload` (the frozen boundary contract) has no `Factions` collection. Its own remark
+says so and says adding one "is a contract change and is reported rather than made here". The
+consequence on disk: all 12 factions carry `name: ""` after a completed prose wake
+(`lastFlavorDate: 1990-08-01`). The pane counts them and lists no names, which is the honest
+rendering of the state, but the state is wrong. **Fix belongs behind `/schema-change`.**
 
 ### W5 — what shipped, and what did not
 

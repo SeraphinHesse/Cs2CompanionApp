@@ -138,6 +138,18 @@ export const PartyDetailPane = (props: {
   brief: Agora.PartyBrief;
   system: Agora.ElectoralSystemName;
   government: Agora.GovernmentSummary | null;
+  /**
+   * True once `agora.seats.allocation` is non-empty: this city has voted and has a counted chamber.
+   * Passed straight through to `CoalitionRelations`, which needs it to tell "no viable arrangement"
+   * apart from "nothing has been measured yet".
+   */
+  hasChamber: boolean;
+  /**
+   * True once `agora.seats.latestPoll` is non-null. Save-wide, unlike `detail.hasPoll` below, which
+   * is this party's own figure - the coalition projection is seated from the city's poll, so the
+   * city's flag is the one that answers for it.
+   */
+  hasCityPoll: boolean;
   /** The whole published faction list, subscribed once by the panel - never once per rail row. */
   factions: Agora.FactionBrief[];
   /**
@@ -365,7 +377,9 @@ export const PartyDetailPane = (props: {
               ? " Governing alongside " + int(partnerCount) + " other parties."
               : ""}
           </div>
-          <div className={styles.lineDim}>{factionSentence(factions.count, factions.names)}</div>
+          <div className={styles.lineDim}>
+            {factionSentence(factions.count, factions.names, props.system)}
+          </div>
 
           {/* After the lifecycle, because a party's record is read once you know how long it has
               been around. It renders nothing at all - heading included - for a party that has never
@@ -379,7 +393,8 @@ export const PartyDetailPane = (props: {
           <CoalitionRelations
             partyId={props.partyId}
             system={props.system}
-            government={props.government}
+            hasChamber={props.hasChamber}
+            hasPoll={props.hasCityPoll}
             roster={props.roster}
           />
         </>

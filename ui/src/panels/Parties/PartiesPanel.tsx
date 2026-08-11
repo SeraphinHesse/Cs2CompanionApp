@@ -5,8 +5,10 @@ import { PanelBoundary } from "./Boundary";
 import { PartyDetailPane } from "./PartyDetail";
 import { PartyList } from "./PartyList";
 import {
+  EMPTY_PARTY_PALETTE,
   EMPTY_STATE_SUMMARY,
   allocation$,
+  colorPalette$,
   enabled$,
   factions$,
   government$,
@@ -73,6 +75,10 @@ const PartiesPanelInner = (): JSX.Element | null => {
   // the open party. This is the News tab's published mandate list read as a per-party scorecard;
   // there is no per-party binding and none should be added (see bindings.ts).
   const rawMandates = useValue(mandates$);
+  // Not for a picker here - the editors subscribe their own. This is the discriminator below, and it
+  // is subscribed for that alone: the palette is the one binding on this panel that comes from
+  // TUNING rather than from state, so it is non-empty on every save whose publisher completed a pass.
+  const rawPalette = useValue(colorPalette$);
   const storedId = useValue(selectedPartyId$);
 
   // A binding can hand over a null payload during a partial deploy; the fallback argument only
@@ -84,6 +90,7 @@ const PartiesPanelInner = (): JSX.Element | null => {
   const government: Agora.GovernmentSummary | null = rawGovernment || null;
   const factions: Agora.FactionBrief[] = rawFactions || [];
   const mandates: Agora.MandateRow[] = rawMandates || [];
+  const palette: Agora.PartyPalette = rawPalette || EMPTY_PARTY_PALETTE;
 
   // The rail's two number columns. Lookups only - neither map is ever iterated for ordering, so
   // they introduce no iteration-order dependence, and neither costs a per-row map subscription.
@@ -118,6 +125,21 @@ const PartiesPanelInner = (): JSX.Element | null => {
   const selectedId = resolveSelection(roster, storedId);
   const selected = selectedId ? findParty(roster, selectedId) : null;
 
+  /**
+   * The panel is dark for a reason it cannot otherwise name.
+   *
+   * `ready` and `enabled` are GETTERS on the publisher (AgoraUISystemBase) and answer true whether or
+   * not `Publish()` ever completed a pass, so a publisher that threw gates straight through to the
+   * empty-roster branch and reports "this save has no parties" - a political claim, and a false one.
+   *
+   * The palette separates the two. It is built from `EngineTuning.Parties.ColorPalette`, not from
+   * state, and the summary date is the engine's own clock: on any save whose publisher finished, both
+   * are non-empty even before a single party exists. All three empty at once is not a save with no
+   * politics, it is a panel that was never written to, and the only honest thing to print is where to
+   * look. A roster genuinely empty beside a populated palette keeps the sentence it always had.
+   */
+  const publishFailed = ready && roster.length === 0 && palette.colors.length === 0 && !summary.date;
+
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
@@ -143,6 +165,16 @@ const PartiesPanelInner = (): JSX.Element | null => {
             first monthly tick after the save loads.
           </div>
         </div>
+      ) : publishFailed ? (
+        <div className={styles.skeleton}>
+          <div className={styles.skeletonTitle}>This panel was never written to</div>
+          <div className={styles.skeletonBody}>
+            The engine reports it is running, but nothing reached this tab - not the party register,
+            not the colour palette, not even today&apos;s date. That is the dashboard publisher
+            failing rather than a city with no politics. Agora.log records the reason; look for
+            &quot;could not register its bindings&quot; or a publisher failure near the save load.
+          </div>
+        </div>
       ) : (
         <div className={styles.body}>
           <PartyList
@@ -165,6 +197,11 @@ const PartiesPanelInner = (): JSX.Element | null => {
                   brief={selected}
                   system={summary.system}
                   government={government}
+                  // A counted chamber and a published poll, both save-wide. The coalition section
+                  // needs them to say which of its two empty states it is in; nothing else reads
+                  // them, and neither is re-derived down there from a list's length.
+                  hasChamber={allocation.length > 0}
+                  hasCityPoll={!!poll}
                   factions={factions}
                   roster={roster}
                   mandates={mandates}
