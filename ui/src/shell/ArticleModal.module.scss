@@ -22,6 +22,9 @@ $masthead-face: "Times New Roman", Georgia, "DejaVu Serif", serif;
 // This renders through `Portal`, so it sits over the whole HUD rather than inside a hook point. The
 // scrim is fixed to the viewport and centres one child.
 
+// `pointer-events` and `z-index` are set explicitly rather than relied on as defaults, for the
+// same reason FirstRunDialog's scrim does — see that file's `.scrim` comment. This card is the
+// same Portal-relocated pattern and would fail the same way.
 .scrim {
   position: fixed;
   display: flex;
@@ -32,6 +35,8 @@ $masthead-face: "Times New Roman", Georgia, "DejaVu Serif", serif;
   top: 0;
   width: 100%;
   height: 100%;
+  z-index: 1000;
+  pointer-events: auto;
   background-color: rgba(0, 0, 0, 0.65);
 }
 
@@ -46,6 +51,7 @@ $masthead-face: "Times New Roman", Georgia, "DejaVu Serif", serif;
   border: 1rem solid $line;
   border-radius: 6rem;
   color: $text;
+  pointer-events: auto;
 }
 
 // ---- the masthead --------------------------------------------------------------------------------

@@ -7,7 +7,8 @@ import { PartiesPanel } from "../panels/Parties";
 import { SeatsPanel } from "../panels/Seats";
 import { ShellBoundary } from "./Boundary";
 import { SettingsPanel } from "./SettingsPanel";
-import { enabled$ } from "./bindings";
+import { enabled$, settings$ } from "./bindings";
+import { regionLabel } from "./regions";
 import {
   AgoraTab,
   TAB_LABEL,
@@ -15,6 +16,7 @@ import {
   activeTab$,
   closeDashboard,
   dashboardOpen$,
+  openSettings,
   settingsOpen$,
   showTab,
   toggleSettings,
@@ -57,6 +59,7 @@ const DashboardInner = (): JSX.Element | null => {
   const open = useValue(dashboardOpen$);
   const tab = useValue(activeTab$);
   const settingsOpen = useValue(settingsOpen$);
+  const settings = useValue(settings$);
 
   // Every hook is above this line — neither the master toggle nor the open flag may change the
   // hook order.
@@ -86,6 +89,31 @@ const DashboardInner = (): JSX.Element | null => {
             );
           })}
         </div>
+
+        {/*
+          The region, while it is still a choice, as a control rather than as a label.
+
+          The first-run prompt is the intended route and is not always taken: it renders through
+          `Portal` out of a hook point's DOM position, its own boundary's fallback dismisses it and
+          defaults the save to Europe, and `isFirstRun` is one-shot and unpersisted, so a save that
+          reaches a second load without having answered never sees the prompt again. Any of those
+          leaves a player on the initialiser theme with no idea the choice existed - which is
+          precisely the "locked to EU" report. This chip is the standing second route: it names the
+          region the save is actually on, says it is still changeable, and opens the picker.
+
+          Gated on `themeLocked` alone, from the published value, so it disappears exactly when the
+          choice does - at the first election, which is ratified and is not being touched here.
+        */}
+        {settings.themeLocked ? null : (
+          <Button
+            variant="flat"
+            className={styles.regionChip}
+            onSelect={openSettings}
+            tooltipLabel="This city's region decides its electoral system, party names and term length. It can still be changed - until the first election."
+          >
+            {regionLabel(settings.theme) + " - change"}
+          </Button>
+        )}
 
         {/* Not a fifth tab. The tab strip is political data - Council, Parties, Districts, News -
             and the per-save settings are chrome, so they sit beside the close control instead. */}

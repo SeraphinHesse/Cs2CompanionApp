@@ -769,13 +769,16 @@ namespace Agora.Mod.Core
                     _state.Settings = _saveSettings;
                 }
 
-                RebuildFlavor();
-
-                // The pool cannot see the registry through IFlavorProvider — it is handed a snapshot
-                // and a date only — so the roster has to be pushed at it. Doing it here rather than
-                // waiting for the first wake is what lets the very first poll name anybody.
-                SeedFlavorRoster(_state.Date);
-
+                // Raised HERE, the moment there is a state to serve, and deliberately before the
+                // flavor and replay work below.
+                //
+                // Everything from this line down is prose, catch-up and cosmetics; none of it decides
+                // whether this save has politics. When it all sat inside the one try, a throw in any
+                // of it fell to the catch below, which clears _saveActive — and _saveActive false is
+                // what `enabled` publishes to the dashboard, so a failed flavor rebuild took the
+                // whole layer down for the session: no panels, and no first-run prompt either, which
+                // left the save silently on the initialiser theme with no surface left to change it
+                // from. That is defect A of the parties-tab report. The state was fine the whole time.
                 _saveActive = true;
                 _stateVersion++;
 
@@ -784,15 +787,40 @@ namespace Agora.Mod.Core
                     AgoraMod.Log.Info("Agora sidecar: " + result.Explanation);
                 }
 
-                if (result != null && result.MonthsToReplay > 0) Replay(result.MonthsToReplay);
+                // One catch for the three cosmetic steps, and a second for the replay, because they
+                // fail differently: prose that does not arrive is a blemish, a catch-up that does not
+                // run leaves the state behind the clock and the next monthly tick has to be told.
+                try
+                {
+                    RebuildFlavor();
+
+                    // The pool cannot see the registry through IFlavorProvider — it is handed a
+                    // snapshot and a date only — so the roster has to be pushed at it. Doing it here
+                    // rather than waiting for the first wake is what lets the very first poll name
+                    // anybody.
+                    SeedFlavorRoster(_state.Date);
+                }
+                catch (Exception flavorEx)
+                {
+                    AgoraMod.Log.Warn("Agora flavor: the provider could not be built for this save (" +
+                                      flavorEx.Message + "); the political layer runs without prose " +
+                                      "until the next wake.");
+                }
+
+                try
+                {
+                    if (result != null && result.MonthsToReplay > 0) Replay(result.MonthsToReplay);
+                }
+                catch (Exception replayEx)
+                {
+                    AgoraMod.Log.Error(replayEx, "Agora could not replay the months this save missed; " +
+                                                 "the state stands at " + _state.Date + " and the next " +
+                                                 "monthly tick continues from there.");
+                }
 
                 // Last, and after the replay: a catch-up can found parties, and a party reaching the
                 // dashboard without a name is the one thing this whole path exists to prevent. The
                 // canned pool answers synchronously, so there is no frame in which the UI sees a blank.
-                //
-                // Its own catch, not the outer one: that one clears _saveActive, and a cosmetic naming
-                // step must not be able to switch the political layer off for the session. A party
-                // with no name is a blemish; a save with no politics is the mod not running.
                 try
                 {
                     EnsureEveryPartyNamed(_state.Date);
@@ -802,6 +830,21 @@ namespace Agora.Mod.Core
                     AgoraMod.Log.Warn("Agora flavor: naming the unnamed parties failed (" + nameEx.Message +
                                       "); they stay unnamed until the next prose collection.");
                 }
+
+                // Reconcile the flag against the history on every load, not only when a tick or a
+                // replay moves it. LockThemeIfElectionHeld's own contract is that ElectionHistory is
+                // the authority — "a flag can be lost, a held election cannot" — and settings.json is
+                // exactly where it can be lost: PersistSettings swallows a failed write, so a save
+                // whose lock never reached disk would come back offering a choice it has spent. Idem-
+                // potent and an early return once locked, so a save that resumed correctly pays a
+                // comparison.
+                LockThemeIfElectionHeld();
+
+                AgoraMod.Log.Info("Agora: save active at " + _state.Date + "; theme " +
+                                  _saveSettings.Theme + " (" + _saveSettings.System + "), " +
+                                  _state.Parties.Count + " parties, " + _state.Factions.Count +
+                                  " factions, themeLocked=" + _saveSettings.ThemeLocked +
+                                  ", firstRunPrompt=" + _isFirstRun + ".");
             }
             catch (Exception ex)
             {
@@ -1150,10 +1193,21 @@ namespace Agora.Mod.Core
         /// </remarks>
         private static CommandOutcome SetTheme(string value)
         {
+            // Logged on entry, and on every exit below, because the first question any report of
+            // "the region choice does nothing" asks is whether this method ran at all — and a
+            // refusal, a no-op and a prompt that never rendered are three different bugs that look
+            // identical from the player's chair. One line each, on a path a player takes twice a save.
+            AgoraMod.Log.Info("Agora: setTheme(\"" + value + "\") requested; current theme " +
+                              _saveSettings.Theme + ", themeLocked=" + _saveSettings.ThemeLocked + ".");
+
             RegionTheme theme;
             if (string.Equals(value, "Eu", StringComparison.OrdinalIgnoreCase)) theme = RegionTheme.Eu;
             else if (string.Equals(value, "Na", StringComparison.OrdinalIgnoreCase)) theme = RegionTheme.Na;
-            else return CommandOutcome.BadValue;
+            else
+            {
+                AgoraMod.Log.Warn("Agora: setTheme refused — \"" + value + "\" is not a region.");
+                return CommandOutcome.BadValue;
+            }
 
             // Refused rather than queued. A retheme disposes the flavor provider and deletes its cache
             // file, and doing either with a claude subprocess in flight races the runner's own
@@ -1161,12 +1215,22 @@ namespace Agora.Mod.Core
             // still alive, so the ordering below is a guard and not a proof. PendingWake stays true
             // until the worker has finished with the disk, which is later than the state says. The
             // player can press the button again in a few seconds.
-            if (theme != _saveSettings.Theme && PendingWake) return CommandOutcome.Busy;
+            if (theme != _saveSettings.Theme && PendingWake)
+            {
+                AgoraMod.Log.Info("Agora: setTheme deferred — a flavor generation is in flight. The " +
+                                  "player may press again once it finishes.");
+                return CommandOutcome.Busy;
+            }
 
             RegionTheme previous = _saveSettings.Theme;
             RethemeResult retheme = PoliticalEngine.Retheme(_state, theme, _startDate, Tuning);
 
-            if (!retheme.Accepted) return retheme.Outcome;
+            if (!retheme.Accepted)
+            {
+                AgoraMod.Log.Info("Agora: setTheme refused by the engine (" + retheme.Outcome +
+                                  "); the save stays on " + previous + ".");
+                return retheme.Outcome;
+            }
 
             if (retheme.Changed)
             {
@@ -1200,9 +1264,19 @@ namespace Agora.Mod.Core
 
                 PersistSettings();
 
+                // The electoral system and the faction count are on this line for a reason: they are
+                // the two things the player reports as "not applying", and they are derived rather
+                // than chosen — System from the theme, the factions from FactionModel.AppliesTo — so
+                // the log has to show the derivation landed, not merely that the theme field moved.
                 AgoraMod.Log.Info("Agora: region theme changed from " + previous + " to " + theme +
-                                  "; regenerated " + _state.Parties.Count + " parties at " +
-                                  _startDate + ".");
+                                  "; system now " + _saveSettings.System + ", regenerated " +
+                                  _state.Parties.Count + " parties and " + _state.Factions.Count +
+                                  " factions at " + _startDate + ".");
+            }
+            else
+            {
+                AgoraMod.Log.Info("Agora: setTheme accepted as a no-op; the save was already " +
+                                  theme + ".");
             }
 
             // Cleared on a no-op too: the player answered the prompt either way.
