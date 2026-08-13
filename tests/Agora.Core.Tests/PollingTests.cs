@@ -256,11 +256,13 @@ namespace Agora.Core.Tests
         [Fact]
         public void HouseEffect_IsAnchoredToTheElection_NotThePollDate()
         {
-            // Two election dates one day apart. Both are 145-146 days out, so WeeksToElection is 20
-            // either way and every other input to the poll is identical — only the campaign anchor,
-            // and therefore the house effect, differs.
-            SimDate electionEarly = new SimDate(1994, 6, 4);
-            SimDate electionLate = new SimDate(1994, 6, 5);
+            // Two election dates one day apart, 56 and 57 days out. Both floor to the same whole
+            // number of weeks, so WeeksToElection is identical and every other input to the poll is
+            // identical — only the campaign anchor, and therefore the house effect, differs. Derived
+            // from PollDay rather than written as literals so the pair stays inside the polling
+            // season if polling.weeksBeforeElection is retuned again.
+            SimDate electionEarly = PollCalendar.AddDays(PollDay, 56);
+            SimDate electionLate = PollCalendar.AddDays(PollDay, 57);
 
             EngineTuning houseOnly = HouseEffectOnly();
             EngineTuning noNoise = NoNoise();
@@ -273,8 +275,8 @@ namespace Agora.Core.Tests
                 PollResult b = PollingEngine.Run(
                     Request(save, PollDay, electionLate, HomogeneousCity()), houseOnly);
 
-                Assert.Equal(20, a.WeeksToElection);
-                Assert.Equal(20, b.WeeksToElection);
+                Assert.Equal(8, a.WeeksToElection);
+                Assert.Equal(8, b.WeeksToElection);
 
                 totalDifference += Math.Abs(ShareOf(a.Shares, "party-a") - ShareOf(b.Shares, "party-a"));
 
@@ -481,7 +483,8 @@ namespace Agora.Core.Tests
             // rather than a statistical one, which matters: a test that passes on eight hardcoded
             // Guids by luck is worse than no test.
             EngineTuning tuning = SamplingErrorOnly();
-            SimDate campaignOpen = PollCalendar.AddDays(PollDay, 26 * 7);
+            int seasonWeeks = tuning.Polling.WeeksBeforeElection;
+            SimDate campaignOpen = PollCalendar.AddDays(PollDay, seasonWeeks * 7);
 
             double farError = 0.0;
             double nearError = 0.0;
@@ -493,7 +496,7 @@ namespace Agora.Core.Tests
                 PollResult nearPoll = PollingEngine.Run(
                     Request(save, PollDay, PollDay, HomogeneousCity()), tuning);
 
-                Assert.Equal(26, farPoll.WeeksToElection);
+                Assert.Equal(seasonWeeks, farPoll.WeeksToElection);
                 Assert.Equal(0, nearPoll.WeeksToElection);
 
                 farError += PollingEngine.MeanAbsoluteDeviation(farPoll.Shares, farPoll.TrueShares);
@@ -524,7 +527,8 @@ namespace Agora.Core.Tests
         public void UndecidedShare_DecaysTowardElectionDay()
         {
             PollResult far = PollingEngine.Run(
-                Request(SaveA, PollDay, PollCalendar.AddDays(PollDay, 26 * 7), HomogeneousCity()), Shipped);
+                Request(SaveA, PollDay, PollCalendar.AddDays(PollDay, Shipped.Polling.WeeksBeforeElection * 7),
+                        HomogeneousCity()), Shipped);
             PollResult near = PollingEngine.Run(
                 Request(SaveA, PollDay, PollDay, HomogeneousCity()), Shipped);
 
@@ -539,7 +543,7 @@ namespace Agora.Core.Tests
             PollResult poll = PollingEngine.Run(
                 Request(SaveA, PollDay, null, HomogeneousCity()), Shipped);
 
-            Assert.Equal(26, poll.WeeksToElection);   // polling.weeksBeforeElection
+            Assert.Equal(Shipped.Polling.WeeksBeforeElection, poll.WeeksToElection);
             Assert.Null(poll.ElectionDate);
             Assert.Equal(0.15, poll.UndecidedShare, 9);
         }
@@ -726,7 +730,7 @@ namespace Agora.Core.Tests
         {
             List<SimDate> dates = PollSchedule.PublishDates(ElectionDay, Shipped);
 
-            Assert.Equal(27, dates.Count);                                  // 26 weeks inclusive of both ends
+            Assert.Equal(Shipped.Polling.CampaignWeeks + 1, dates.Count);   // inclusive of both ends
             Assert.Equal(PollSchedule.CampaignStart(ElectionDay, Shipped), dates[0]);
             Assert.Equal(ElectionDay, dates[dates.Count - 1]);
 

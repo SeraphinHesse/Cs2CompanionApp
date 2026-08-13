@@ -6,10 +6,10 @@ namespace Agora.Core.Contracts
     /// <summary>Which political system the save runs (<c>politicsmodplan.md</c> §3).</summary>
     public enum ElectoralSystem
     {
-        /// <summary>EU theme: proportional list seats, 4–7 parties, coalitions, 3-year terms.</summary>
+        /// <summary>EU theme: proportional list seats, 4–7 parties, coalitions, 1-year terms.</summary>
         Proportional = 0,
 
-        /// <summary>NA theme: FPTP district races plus a directly elected mayor, 4-year terms.</summary>
+        /// <summary>NA theme: FPTP district races plus a directly elected mayor, 1-year terms.</summary>
         FirstPastThePost = 1
     }
 

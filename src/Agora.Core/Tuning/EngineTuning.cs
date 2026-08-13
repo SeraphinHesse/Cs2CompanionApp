@@ -233,10 +233,19 @@ namespace Agora.Core.Tuning
         public double PlatformGrievanceResponsiveness { get; internal set; } = 0.30;
 
         public double IncumbencyBonus { get; internal set; } = 0.05;
-        public double IncumbencyDecayPerTerm { get; internal set; } = 0.30;
 
-        /// <summary>Below this share the party is endangered, then dies (§3).</summary>
-        public double DeathVoteShareThreshold { get; internal set; } = 0.03;
+        /// <summary>
+        /// Decay per TERM, not per year — rescaled with the move to 1-year terms so the curve keeps
+        /// its old per-year shape rather than decaying several times faster in wall-clock time.
+        /// </summary>
+        public double IncumbencyDecayPerTerm { get; internal set; } = 0.08;
+
+        /// <summary>
+        /// Below this share the party is endangered, then dies (§3). Deliberately below
+        /// <c>fringe.baseCeiling</c>: a party the fringe ceiling is holding down has not been
+        /// rejected by voters, and must not be killed by its own suppression.
+        /// </summary>
+        public double DeathVoteShareThreshold { get; internal set; } = 0.01;
 
         public int DeathConsecutiveElections { get; internal set; } = 2;
         public double EndangeredVoteShareThreshold { get; internal set; } = 0.05;
@@ -390,8 +399,12 @@ namespace Agora.Core.Tuning
         public double LocalGrievanceWeight { get; internal set; } = 0.20;
         public double NationalMoodWeight { get; internal set; } = 0.10;
 
-        /// <summary>Stickiness to the bloc's previous vote.</summary>
-        public double HabitualLoyalty { get; internal set; } = 0.35;
+        /// <summary>
+        /// Stickiness to the bloc's previous vote. Cut with the move to 1-year terms: loyalty decays
+        /// from the last election at <see cref="LoyaltyDecayPerMonth"/>, so over 12 months it only
+        /// falls to ~0.79 of its value instead of ~0.38 over four years.
+        /// </summary>
+        public double HabitualLoyalty { get; internal set; } = 0.20;
 
         public double LoyaltyDecayPerMonth { get; internal set; } = 0.02;
 
@@ -521,10 +534,14 @@ namespace Agora.Core.Tuning
 
         public int PublishIntervalDays { get; internal set; } = 7;
 
-        /// <summary>Length of the polling season. 26 weeks matches the 6-month campaign (§3).</summary>
-        public int CampaignWeeks { get; internal set; } = 26;
+        /// <summary>
+        /// Length of the polling season. 9 weeks is a shade over the 2-month campaign, so the poll
+        /// season opens a few days before the campaign flag does — the same slack the old
+        /// 26-weeks-against-6-months pairing had (§3).
+        /// </summary>
+        public int CampaignWeeks { get; internal set; } = 9;
 
-        public int WeeksBeforeElection { get; internal set; } = 26;
+        public int WeeksBeforeElection { get; internal set; } = 9;
 
         /// <summary>How strongly pollsters converge on each other near election day.</summary>
         public double HerdingFactor { get; internal set; } = 0.20;
@@ -571,7 +588,7 @@ namespace Agora.Core.Tuning
     /// <summary>Packet 7 — proportional elections (EU theme). JSON section <c>electionsPr</c>.</summary>
     public sealed class ElectionsPrTuning
     {
-        public int TermYears { get; internal set; } = 3;
+        public int TermYears { get; internal set; } = 1;
 
         /// <summary>Chamber size when <see cref="SeatsPerPopulation"/> is 0.</summary>
         public int TotalSeats { get; internal set; } = 60;
@@ -594,12 +611,16 @@ namespace Agora.Core.Tuning
         /// <summary>Fraction of seats awarded in district contests. 0 is a pure list system.</summary>
         public double DistrictSeatShare { get; internal set; } = 0.0;
 
-        public int CampaignMonths { get; internal set; } = 6;
+        public int CampaignMonths { get; internal set; } = 2;
 
-        /// <summary>A snap election cannot be called until this long after the last one.</summary>
-        public int SnapElectionMinMonthsSinceLast { get; internal set; } = 12;
+        /// <summary>
+        /// A snap election cannot be called until this long after the last one. Must stay well under
+        /// <see cref="TermYears"/> × 12 — at 12 months against a 1-year term it equalled a whole
+        /// term and made snap elections structurally impossible.
+        /// </summary>
+        public int SnapElectionMinMonthsSinceLast { get; internal set; } = 4;
 
-        public int SnapElectionDelayMonths { get; internal set; } = 3;
+        public int SnapElectionDelayMonths { get; internal set; } = 1;
 
         /// <summary>Seats a party gets once it clears the threshold, before proportional allocation.</summary>
         public int MinSeatsForRepresentation { get; internal set; } = 1;
@@ -625,8 +646,8 @@ namespace Agora.Core.Tuning
     /// <summary>Packet 8 — FPTP district races and the mayoralty (NA theme). JSON section <c>electionsFptp</c>.</summary>
     public sealed class ElectionsFptpTuning
     {
-        public int TermYears { get; internal set; } = 4;
-        public int MayorTermYears { get; internal set; } = 4;
+        public int TermYears { get; internal set; } = 1;
+        public int MayorTermYears { get; internal set; } = 1;
 
         public int CouncilSeatsPerDistrict { get; internal set; } = 1;
 
@@ -635,7 +656,7 @@ namespace Agora.Core.Tuning
 
         public int MaxCouncilSeats { get; internal set; } = 45;
 
-        public int CampaignMonths { get; internal set; } = 6;
+        public int CampaignMonths { get; internal set; } = 2;
 
         /// <summary>Wasted-vote squeeze applied to parties running third in a district.</summary>
         public double ThirdPartyPenalty { get; internal set; } = 0.35;
@@ -718,7 +739,7 @@ namespace Agora.Core.Tuning
 
         public double CollapseThreshold { get; internal set; } = 0.30;
         public int CollapseCheckIntervalMonths { get; internal set; } = 1;
-        public int SnapElectionDelayMonths { get; internal set; } = 3;
+        public int SnapElectionDelayMonths { get; internal set; } = 1;
 
         internal static CoalitionsTuning Read(TuningReader r, CoalitionsTuning d) => new CoalitionsTuning
         {
@@ -749,7 +770,7 @@ namespace Agora.Core.Tuning
     /// <summary>Packet 10 — mandate generation, monitoring and resolution. JSON section <c>mandates</c>.</summary>
     public sealed class MandatesTuning
     {
-        public int CountPerTerm { get; internal set; } = 3;
+        public int CountPerTerm { get; internal set; } = 2;
         public int MaxActive { get; internal set; } = 6;
 
         /// <summary>A metric must be at least this far from its city-wide best to justify a promise.</summary>
@@ -758,10 +779,15 @@ namespace Agora.Core.Tuning
         /// <summary>Fraction of the deficit the promise commits to closing.</summary>
         public double TargetImprovementFraction { get; internal set; } = 0.20;
 
-        public int HorizonMonths { get; internal set; } = 24;
+        /// <summary>
+        /// Must not exceed the term length. A mandate that outlives the government that issued it is
+        /// abandoned unscored at the next election, and defiance is the largest single input to the
+        /// <c>fringe</c> failure score.
+        /// </summary>
+        public int HorizonMonths { get; internal set; } = 12;
 
         /// <summary>Months after issue before monitoring starts scoring.</summary>
-        public int GraceMonths { get; internal set; } = 3;
+        public int GraceMonths { get; internal set; } = 1;
 
         public int MonitoringIntervalMonths { get; internal set; } = 1;
 
@@ -914,7 +940,7 @@ namespace Agora.Core.Tuning
         public int MandateMonitorIntervalMonths { get; internal set; } = 1;
 
         public int PollTickIntervalDays { get; internal set; } = 7;
-        public int CampaignStartMonthsBeforeElection { get; internal set; } = 6;
+        public int CampaignStartMonthsBeforeElection { get; internal set; } = 2;
 
         public bool LlmWakeYearly { get; internal set; } = true;
         public bool LlmWakeOnElection { get; internal set; } = true;

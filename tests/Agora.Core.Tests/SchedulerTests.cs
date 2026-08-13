@@ -620,13 +620,13 @@ namespace Agora.Core.Tests
         }
 
         [Fact]
-        public void TickPlan_CampaignSeasonOpensSixMonthsBeforeTheElection()
+        public void TickPlan_CampaignSeasonOpensTwoMonthsBeforeTheElection()
         {
             var settings = new AgoraSettings();
             var election = new SimDate(1994, 6, 1);
 
-            Assert.False(TickPlanner.Plan(Start, new SimDate(1993, 11, 1), settings, election, false, false, Tuning).IsCampaignSeason);
-            Assert.True(TickPlanner.Plan(Start, new SimDate(1993, 12, 1), settings, election, false, false, Tuning).IsCampaignSeason);
+            Assert.False(TickPlanner.Plan(Start, new SimDate(1994, 3, 1), settings, election, false, false, Tuning).IsCampaignSeason);
+            Assert.True(TickPlanner.Plan(Start, new SimDate(1994, 4, 1), settings, election, false, false, Tuning).IsCampaignSeason);
             Assert.True(TickPlanner.Plan(Start, new SimDate(1994, 6, 1), settings, election, false, false, Tuning).IsCampaignSeason);
             Assert.False(TickPlanner.Plan(Start, new SimDate(1994, 7, 1), settings, election, false, false, Tuning).IsCampaignSeason);
         }

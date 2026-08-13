@@ -57,7 +57,7 @@
   },
 
   "parties": {
-    "_comment": "Packet 2. EU parties split, merge, die below 3% across two consecutive elections, and revive if their core grievance resurges (plan section 3). NA party-level lifecycle is handled in `factions`.",
+    "_comment": "Packet 2. EU parties split, merge, die below deathVoteShareThreshold across two consecutive elections, and revive if their core grievance resurges (plan section 3). NA party-level lifecycle is handled in `factions`. deathVoteShareThreshold sits below `fringe.baseCeiling` on purpose: a party the fringe ceiling is holding down has not been rejected by voters, and must not be killed by the suppression itself. incumbencyDecayPerTerm is per TERM, so it was rescaled with the 1-year term to preserve its per-year shape.",
     "targetCountEu": 6,
     "minCountEu": 4,
     "maxCountEu": 7,
@@ -72,9 +72,9 @@
     "platformGrievanceResponsiveness": 0.30,
 
     "incumbencyBonus": 0.05,
-    "incumbencyDecayPerTerm": 0.30,
+    "incumbencyDecayPerTerm": 0.08,
 
-    "deathVoteShareThreshold": 0.03,
+    "deathVoteShareThreshold": 0.01,
     "deathConsecutiveElections": 2,
     "endangeredVoteShareThreshold": 0.05,
     "revivalGrievanceThreshold": 0.35,
@@ -126,7 +126,7 @@
   },
 
   "affinity": {
-    "_comment": "Packet 4. Affinity = issue proximity + incumbency + mandate performance + event modifiers + habitual loyalty + seeded noise. Noise is clamped so one tail draw cannot decide an election.",
+    "_comment": "Packet 4. Affinity = issue proximity + incumbency + mandate performance + event modifiers + habitual loyalty + seeded noise. Noise is clamped so one tail draw cannot decide an election. habitualLoyalty was cut with the move to 1-year terms: loyalty decays from the last election at loyaltyDecayPerMonth, so over 12 months it now only falls to ~0.79 of its value instead of ~0.38 over four years, and the old 0.35 made the electorate far too sticky.",
     "distanceKernel": "linear",
     "distanceKernelSigma": 0.60,
     "issueWeight": 1.00,
@@ -140,7 +140,7 @@
     "eventModifierDecayHalfLifeMonths": 9,
     "localGrievanceWeight": 0.20,
     "nationalMoodWeight": 0.10,
-    "habitualLoyalty": 0.35,
+    "habitualLoyalty": 0.20,
     "loyaltyDecayPerMonth": 0.02,
 
     "noiseSigma": 0.03,
@@ -172,7 +172,7 @@
   },
 
   "polling": {
-    "_comment": "Packet 6. Published polls under-sample low-education, low-turnout districts. The harness asserts the DIRECTION of that error, never the magnitude, so these two bias values must stay positive.",
+    "_comment": "Packet 6. Published polls under-sample low-education, low-turnout districts. The harness asserts the DIRECTION of that error, never the magnitude, so these two bias values must stay positive. 9 weeks is a shade over the 2-month campaign flag, so the poll season opens a few days before the flag does — the same slack the old 26-weeks-vs-6-months pairing had.",
     "errorSigma": 0.030,
     "educationUnderSampleBias": 0.040,
     "turnoutUnderSampleBias": 0.025,
@@ -183,8 +183,8 @@
     "marginOfErrorMultiplier": 1.96,
 
     "publishIntervalDays": 7,
-    "campaignWeeks": 26,
-    "weeksBeforeElection": 26,
+    "campaignWeeks": 9,
+    "weeksBeforeElection": 9,
 
     "herdingFactor": 0.20,
     "errorDecayTowardElection": 0.60,
@@ -198,8 +198,8 @@
   },
 
   "electionsPr": {
-    "_comment": "Packet 7. EU theme: proportional list seats, 3-year terms, 5% threshold, modified Sainte-Lague with a 1.4 first divisor.",
-    "termYears": 3,
+    "_comment": "Packet 7. EU theme: proportional list seats, 1-year terms, 5% threshold, modified Sainte-Lague with a 1.4 first divisor. snapElectionMinMonthsSinceLast is deliberately well under termYears*12 — at 12 it equalled a whole term and made snap elections structurally impossible.",
+    "termYears": 1,
     "totalSeats": 60,
     "seatsPerPopulation": 0.0,
     "minSeats": 21,
@@ -208,20 +208,20 @@
     "method": "sainte-lague",
     "firstDivisor": 1.40,
     "districtSeatShare": 0.0,
-    "campaignMonths": 6,
-    "snapElectionMinMonthsSinceLast": 12,
-    "snapElectionDelayMonths": 3,
+    "campaignMonths": 2,
+    "snapElectionMinMonthsSinceLast": 4,
+    "snapElectionDelayMonths": 1,
     "minSeatsForRepresentation": 1
   },
 
   "electionsFptp": {
-    "_comment": "Packet 8. NA theme: one seat per district plus a directly elected mayor, 4-year terms. primariesEnabled is an open decision (plan section 14) — leave it false.",
-    "termYears": 4,
-    "mayorTermYears": 4,
+    "_comment": "Packet 8. NA theme: one seat per district plus a directly elected mayor, 1-year terms. primariesEnabled is an open decision (plan section 14) — leave it false.",
+    "termYears": 1,
+    "mayorTermYears": 1,
     "councilSeatsPerDistrict": 1,
     "minCouncilSeats": 9,
     "maxCouncilSeats": 45,
-    "campaignMonths": 6,
+    "campaignMonths": 2,
     "thirdPartyPenalty": 0.35,
     "incumbentMayorBonus": 0.04,
     "districtSwingSigma": 0.02,
@@ -232,7 +232,7 @@
   },
 
   "coalitions": {
-    "_comment": "Packet 9. Formation ranks candidate coalitions by ideological closeness and size; stability decays monthly and takes shocks from failed mandates and severe events. Falling below collapseThreshold triggers a snap election.",
+    "_comment": "Packet 9. Formation ranks candidate coalitions by ideological closeness and size; stability decays monthly and takes shocks from failed mandates and severe events. Falling below collapseThreshold triggers a snap election. Note that stabilityDecayPerMonth carries stabilityInitial down to collapseThreshold only after 50 months — several terms under the 1-year term — so governments now fall from shocks, essentially never from decay alone.",
     "minSeatShareToGovern": 0.50,
     "formationMaxPartners": 4,
     "formationAttemptsMax": 3,
@@ -258,17 +258,17 @@
 
     "collapseThreshold": 0.30,
     "collapseCheckIntervalMonths": 1,
-    "snapElectionDelayMonths": 3
+    "snapElectionDelayMonths": 1
   },
 
   "mandates": {
-    "_comment": "Packet 10. Mandates come from real measured deficits and are scored monthly against the live snapshot. Fulfilled raises happiness and legitimacy; defied lowers both and can trigger unrest. The player is never punished beyond a sanctioned effect.",
-    "countPerTerm": 3,
+    "_comment": "Packet 10. Mandates come from real measured deficits and are scored monthly against the live snapshot. Fulfilled raises happiness and legitimacy; defied lowers both and can trigger unrest. The player is never punished beyond a sanctioned effect. horizonMonths must not exceed the term length: a mandate that outlives the government that issued it is abandoned unscored at the next election, and `fringe` reads defiance as its largest failure signal.",
+    "countPerTerm": 2,
     "maxActive": 6,
     "minDeficitToGenerate": 0.15,
     "targetImprovementFraction": 0.20,
-    "horizonMonths": 24,
-    "graceMonths": 3,
+    "horizonMonths": 12,
+    "graceMonths": 1,
     "monitoringIntervalMonths": 1,
     "partialCreditThreshold": 0.60,
     "districtMandateShare": 0.50,
@@ -315,7 +315,7 @@
   },
 
   "scheduler": {
-    "_comment": "Packet 12. The monthly tick and everything hung off it. snapshotRetention is an open decision (proposed 25) — keep the newest N and nothing cleverer.",
+    "_comment": "Packet 12. The monthly tick and everything hung off it. snapshotRetention is an open decision (proposed 25) — keep the newest N and nothing cleverer. The three lifecycleTickMonths/lifecycleCheckIntervalMonths keys stay at 12 under the 1-year term: they now fire once per term rather than a quarter as often, and a shorter interval would thrash the ballot. If churn is too high, lower the per-cycle probabilities, not this interval.",
     "tickIntervalMonths": 1,
     "snapshotIntervalMonths": 1,
     "snapshotRetention": 25,
@@ -327,7 +327,7 @@
     "mandateMonitorIntervalMonths": 1,
 
     "pollTickIntervalDays": 7,
-    "campaignStartMonthsBeforeElection": 6,
+    "campaignStartMonthsBeforeElection": 2,
 
     "llmWakeYearly": true,
     "llmWakeOnElection": true,

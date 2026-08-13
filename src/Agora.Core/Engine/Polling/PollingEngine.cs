@@ -468,7 +468,7 @@ namespace Agora.Core.Engine.Polling
             if (weeksElapsed < 0) weeksElapsed = 0;
 
             // Geometric decay, not linear: at the shipped values a linear decay would reach zero
-            // undecideds two weeks into a twenty-six week campaign.
+            // undecideds two weeks into a nine week campaign.
             double retained = 1.0 - Clamp(p.UndecidedDecayPerWeek, 0.0, 1.0);
             return Clamp(p.UndecidedShareBase * Math.Pow(retained, weeksElapsed), 0.0, 1.0);
         }

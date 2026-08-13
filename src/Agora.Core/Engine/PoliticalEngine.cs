@@ -68,8 +68,8 @@ namespace Agora.Core.Engine
 
             // The system is a function of the theme and nothing else, so it is derived here rather
             // than trusted from the settings object. Without this line an NA save kept the
-            // initialiser's Proportional and ran North American parties through a list election on
-            // three-year terms with no mayor — silently, since neither half complains.
+            // initialiser's Proportional and ran North American parties through a list election with
+            // no mayor — silently, since neither half complains.
             s.System = RegionThemeRules.SystemFor(s.Theme);
 
             var state = new PoliticalState
