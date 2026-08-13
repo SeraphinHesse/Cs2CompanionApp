@@ -29,14 +29,15 @@ elections, government, flavor and effects layers are all implemented in `Agora.C
 | **M1 · Time & Truth** | ✅ `AgoraTimeService`, `AgoraStartYearSystem`, `StartYearDelivery`, `SimClockMath`, sensors, sidecar IO | ⚠️ save→quit→load ×10 desync check not re-walked since W0's per-save bug was found |
 | **M2 · The Engine** | ✅ blocs, affinity, turnout, parties, factions, polling, indices, dashboard | ⚠️ not re-walked |
 | **M3 · The Voice** | ✅ `IFlavorProvider`, `ClaudeCliProvider`, `LayeredFlavorProvider`, static pool fallback, prompt builder, schema validation, flavor cache | ⚠️ fail-closed path implemented; **prose quality is a known defect** — see W2/W5 |
-| **M4a · Elections** | ✅ `Engine/Elections/Proportional` + `Fptp`, polling, manifestos | ⚠️ not re-walked |
+| **M4a · Elections** | ✅ `Engine/Elections/Proportional` + `Fptp`, polling, manifestos, fringe ceiling (packet 15) | ⚠️ not re-walked |
 | **M4b · Government** | ✅ `Engine/Government/Coalitions` + `Mandates`, party lifecycle | ⚠️ not re-walked |
 | **M5 · The World** | ✅ effect palette + dispatcher + resolver + schedule + validation; `Agora.Mod/Effects` ledger and application system; `data/timeline_eu.json`, `timeline_na.json`, `timeline_global.json` | ⚠️ 1990→2008 run not re-walked |
 | **M6 · The Spectacle** | 🟡 partial — crosstab explorer, mandate tracker, news archive present; **political map overlay and election-night broadcast mode not built** | ⬜ |
 
-**Test suite.** `tests/Agora.Core.Tests` is at **1236 tests**, up from 1033 at the
+**Test suite.** `tests/Agora.Core.Tests` is at **1319 tests**, up from 1033 at the
 start of this pass, spanning determinism, blocs, affinity, turnout,
-polling, indices, both electoral systems, coalitions, mandates, factions, party lifecycle, the
+polling, indices, both electoral systems, coalitions, mandates, factions, party lifecycle,
+the fringe ceiling, the
 effect palette and application, the per-save reset seam, the scheduler, sim-clock math, start-year
 planning, the shipped timeline/tuning catalogs, party identity locks, and the LLM response path —
 the CLI reader, the prompt builder, and the schema/numeric validation that enforces
@@ -305,6 +306,45 @@ exists to fix — a consequence `fixplan.md` did not mention.
 Nothing in `fixplan.md` is complete until that passes **without restarting the game**.
 
 ---
+
+## Fringe ceiling and 1-year terms (packet 15)
+
+Terms are now **1 year in both themes**, and the NA theme enforces the ratified "two dominant
+parties + weak third parties" rule through a new `fringe` tuning packet.
+
+**What was wrong.** Nothing in the voter model converted major-party failure into minor-party gain:
+the incumbency and mandate terms are party-scoped and can only *subtract* from the government. A
+fringe party's support was platform proximity plus habitual loyalty and nothing else, so minor
+parties took 20%+ of an NA ballot for no reason, and no amount of good government pushed them back.
+
+**What it does.** A minor party is pinned at `fringe.baseCeiling` (3%) until the majors have failed
+`unlockConsecutiveTerms` (3) terms running; the ceiling then opens toward `maxCeiling` (40%) scaled
+by how badly they failed, how long the failure has run, and how aggrieved the city is on that
+party's own `CoreGrievance`. One good term resets the streak outright.
+
+- Enforced in **affinity space**, in `AffinityEngine.Compute`'s bloc loop, as an additive shift on
+  `BlocAffinity.Affinity`. That one hook covers city standings, published polls **and** election day,
+  because `FptpElection` re-softmaxes the same affinities rather than reading the standings — so the
+  election packet needs no knowledge of ceilings. `FringeCeiling.cs` / `FringeFailure.cs`.
+- **FPTP only.** A proportional save is bit-identical with the packet on and off; the failure ledger
+  is gated on the system, not just the master switch, so that claim is testable.
+- `parties.deathVoteShareThreshold` dropped 0.03 → **0.01** so the ceiling cannot dissolve the
+  parties it suppresses before the unlock can fire. This key is shared with EU, so EU parties now die
+  only below 1%.
+- `PartyPlatform.RefreshManifesto`, which had been called from nothing but its own tests, is now
+  wired at campaign open (edge-triggered). Without it the ceiling is a ratchet — grievance opens it
+  and nothing an establishment party can do closes it again.
+- `MandateResolution.OppositionSurge` finally has a reader: it is the defiance signal, and it arrives
+  salience-weighted at source.
+
+**Known cosmetic consequence.** A capped party settles at `PartyStatus.Endangered` rather than
+`Active`, because 3% sits under `parties.endangeredVoteShareThreshold` (5%). Harmless mechanically —
+the death counter only starts below 1% — but the Parties tab will show a permanently "endangered"
+party that is in fact being held there on purpose. Worth a UI distinction later.
+
+Schema: `engine_tuning` and `political_state` both went **2 → 3**; the v2→v3 sidecar migration
+reconstructs `parties[].isMajor` from id order rather than defaulting it, since defaulting to false
+would tell the ceiling an existing NA save has no majors and pin its whole ballot.
 
 ## Known gaps found this pass, not yet closed
 
