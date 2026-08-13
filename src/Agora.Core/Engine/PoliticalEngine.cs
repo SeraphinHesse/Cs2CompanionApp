@@ -174,6 +174,10 @@ namespace Agora.Core.Engine
             // there too are different brands that happen to share a slot.
             state.Parties = PartyRegistry.GenerateInitial(prior.SaveGuid, startDate, theme, t);
 
+            // The failure streak is a claim about how the old theme's majors governed. Those brands
+            // are gone, so carrying it would hand the new ballot's fringe an unlock nobody earned.
+            state.Fringe = new FringeWatch();
+
             // Blocs survive — they are demography and know nothing about parties — but each one's
             // memory of how it voted is a party-id vector, and CloneState shares the Bloc objects with
             // the caller. So the blocs are copied here, shallowly, with that one field emptied.
@@ -970,6 +974,9 @@ namespace Agora.Core.Engine
                 ActiveEvents = new List<TimelineEvent>(source.ActiveEvents ?? new List<TimelineEvent>()),
                 FiredEventIds = new List<string>(source.FiredEventIds ?? new List<string>()),
                 Indices = source.Indices,
+                // Deep-copied, not shared: the watch is mutated on every tick, so an alias would let
+                // a speculative advance write back into the state the caller still holds.
+                Fringe = (source.Fringe ?? new FringeWatch()).Clone(),
                 TermNumber = source.TermNumber,
                 NextElectionDate = source.NextElectionDate,
                 IsCampaignSeason = source.IsCampaignSeason,

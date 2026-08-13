@@ -103,10 +103,31 @@
         "factionIds": { "$ref": "#/$defs/idList" },
         "coreGrievance": { "$ref": "#/$defs/issue" },
         "revivalCount": { "type": "integer", "minimum": 0 },
+        "isMajor": {
+          "type": "boolean",
+          "$comment": "True for one of the two dominant NA parties, false everywhere else including all of EU. Engine-owned, set once at generation from the majors-first ordering of PartyArchetypes.NaArray. Read by the fringe packet to decide who the ceiling applies to."
+        },
         "playerOverrides": {
           "type": "string",
           "$comment": "Flags enum, comma-separated member list. 'None' | any combination of 'NameLocked', 'DescriptionLocked', 'ColorLocked'. Player-owned: neither the engine nor the LLM writes it."
         }
+      }
+    },
+
+    "fringeWatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "Packet 15. How badly the majors are governing, used by the fringe ceiling. The first three fields are the closed record the ceiling reads and only move when a term ends; the rest accumulate the term in progress and are zeroed at every close. Carried in EU saves too so the document shape does not depend on theme, but never read there.",
+      "properties": {
+        "consecutiveFailureTerms": { "type": "integer", "minimum": 0 },
+        "lastClosedTermNumber": { "type": "integer", "minimum": 0 },
+        "lastTermFailureScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "termNumber": { "type": "integer", "minimum": 0 },
+        "monthsObserved": { "type": "integer", "minimum": 0 },
+        "discontentSum": { "type": "number", "minimum": 0 },
+        "defianceSurgeSum": { "type": "number", "minimum": 0 },
+        "governmentChanges": { "type": "integer", "minimum": 0 },
+        "mayorChanges": { "type": "integer", "minimum": 0 }
       }
     },
 
@@ -394,7 +415,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 2 },
+    "schemaVersion": { "type": "integer", "const": 3 },
     "saveGuid": {
       "type": "string",
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
@@ -415,6 +436,7 @@
     "activeEvents": { "type": "array", "items": { "$ref": "#/$defs/timelineEvent" }, "$comment": "Sorted by id." },
     "firedEventIds": { "$ref": "#/$defs/idList" },
     "indices": { "$ref": "#/$defs/derivedIndices" },
+    "fringe": { "$ref": "#/$defs/fringeWatch" },
     "termNumber": { "type": "integer", "minimum": 1 },
     "nextElectionDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
     "isCampaignSeason": { "type": "boolean" },

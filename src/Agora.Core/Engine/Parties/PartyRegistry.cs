@@ -249,6 +249,11 @@ namespace Agora.Core.Engine.Parties
                 CoreGrievance = source.CoreGrievance,
                 RevivalCount = source.RevivalCount,
 
+                // Set once at generation and never recomputed, so dropping it here would quietly
+                // demote both NA majors to fringe at the first lifecycle pass — and the fringe
+                // ceiling would then pin the entire ballot at 3%.
+                IsMajor = source.IsMajor,
+
                 // Player-owned, so easy to forget in a field-by-field copy — and dropping it here
                 // silently un-locks a party the player renamed, which reads as the rename simply
                 // coming back a few months later.
@@ -353,7 +358,10 @@ namespace Agora.Core.Engine.Parties
                     LastManifesto = platform,
                     Status = PartyStatus.Active,
                     FoundedDate = date,
-                    CoreGrievance = archetype.CoreGrievance
+                    CoreGrievance = archetype.CoreGrievance,
+                    // The NA catalog lists its two dominant parties first precisely so this prefix
+                    // test works; see PartyArchetypes.NaArray. EU has no majors.
+                    IsMajor = theme == RegionTheme.Na && i < t.TargetCountNa
                 });
             }
 

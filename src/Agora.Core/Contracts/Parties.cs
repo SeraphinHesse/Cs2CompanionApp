@@ -192,6 +192,22 @@ namespace Agora.Core.Contracts
         public int RevivalCount { get; set; }
 
         /// <summary>
+        /// True for one of the two dominant parties in the NA theme; false for everything else,
+        /// including every party in the EU theme.
+        ///
+        /// <para>Engine-owned, set once at generation. Until this field existed, major-versus-minor
+        /// was encoded only as position in <c>PartyArchetypes.NaArray</c> — the majors come first so
+        /// <c>PartyRegistry.GenerateInitial</c> can take a prefix — which meant nothing downstream
+        /// could ask the question. The <c>fringe</c> packet needs to, so the ordering convention is
+        /// promoted to a field here.</para>
+        ///
+        /// <para>A brand that splits off a major is <b>not</b> a major: new parties keep the default
+        /// false. In the EU theme nothing reads it — the fringe ceiling is FPTP-only — and it stays
+        /// false rather than true so that a stray reader cannot change proportional behaviour.</para>
+        /// </summary>
+        public bool IsMajor { get; set; }
+
+        /// <summary>
         /// Which of this party's flavor-owned fields the player has taken over. Player-owned, not
         /// engine-owned and not flavor-owned: nothing in Agora.Core writes it, and flavor must not
         /// overwrite a field whose flag is set.
