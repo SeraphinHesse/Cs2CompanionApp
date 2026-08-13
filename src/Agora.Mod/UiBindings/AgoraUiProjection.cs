@@ -542,20 +542,28 @@ namespace Agora.Mod.UiBindings
         /// one. Cost is bounded by <c>coalitions.formationMaxPartners</c>, and this sits behind a map
         /// binding fetched for one open pane rather than a value binding re-read every tick.
         /// </para>
+        /// <para>
+        /// Before the first election there is no chamber to read, so the seats come from
+        /// <c>ProvisionalChamber.Project</c> instead — the chamber the latest published poll would
+        /// seat. That is the same live question one term earlier, and without it a fresh EU save spends
+        /// its whole first term showing an empty box. The projection is computed in the engine, like
+        /// the ranking, so this method still only copies an answer (contract rule 5); it records
+        /// nothing and writes nothing. It yields an empty list until the first poll publishes, which is
+        /// a genuine "not yet" and the panel says so in those words.
+        /// </para>
         /// </remarks>
         internal static List<CoalitionOptionPayload> BuildPartyRelations(
             PoliticalState state, EngineTuning tuning, string partyId)
         {
             var rows = new List<CoalitionOptionPayload>();
             if (state == null || tuning == null || string.IsNullOrEmpty(partyId)) return rows;
-            if (state.ElectionHistory == null || state.ElectionHistory.Count == 0) return rows;
             if (state.Settings.System == ElectoralSystem.FirstPastThePost) return rows;
 
-            ElectionResult latest = state.ElectionHistory[state.ElectionHistory.Count - 1];
-            if (latest == null) return rows;
+            IReadOnlyList<SeatAllocation> chamber = LatestChamber(state, tuning);
+            if (chamber == null) return rows;
 
             IReadOnlyList<CoalitionCandidate> ranked = CoalitionFormation.RankCandidates(
-                state.Settings.System, latest.Seats, state.Parties, tuning);
+                state.Settings.System, chamber, state.Parties, tuning);
 
             List<string> governing = state.Government != null ? state.Government.MemberPartyIds : null;
 
@@ -586,6 +594,28 @@ namespace Agora.Mod.UiBindings
             }
 
             return rows;
+        }
+
+        /// <summary>
+        /// The chamber the arithmetic is about: the last election's, or — before there has been one —
+        /// the one the latest published poll projects. Null when there is neither.
+        /// </summary>
+        /// <remarks>
+        /// The projection is deliberately NOT used to fill in for an election whose seat list came back
+        /// empty. That would be a real chamber being overwritten by a hypothetical one, and a city
+        /// whose ballot genuinely seated nobody has a political fact to report rather than a gap to
+        /// paper over.
+        /// </remarks>
+        private static IReadOnlyList<SeatAllocation> LatestChamber(PoliticalState state, EngineTuning tuning)
+        {
+            if (state.ElectionHistory != null && state.ElectionHistory.Count > 0)
+            {
+                ElectionResult latest = state.ElectionHistory[state.ElectionHistory.Count - 1];
+                return latest != null ? latest.Seats : null;
+            }
+
+            IReadOnlyList<SeatAllocation> projected = ProvisionalChamber.Project(state, tuning);
+            return projected.Count > 0 ? projected : null;
         }
 
         private static bool Contains(IReadOnlyList<string> ids, string id)

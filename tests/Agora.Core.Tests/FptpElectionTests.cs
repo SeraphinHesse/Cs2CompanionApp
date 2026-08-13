@@ -116,7 +116,7 @@ namespace Agora.Core.Tests
             Assert.Equal(1, r.SchemaVersion);
             Assert.Equal(ElectoralSystem.FirstPastThePost, r.System);
             Assert.Equal("election-1994-11", r.Id);
-            Assert.Equal(new SimDate(1998, 11, 8), r.NextElectionDate);
+            Assert.Equal(new SimDate(1995, 11, 8), r.NextElectionDate);
             Assert.Equal(new[] { Alpha, Beta, Gamma }, r.PartyIdsOnBallot);
             Assert.Equal(new[] { "d-01", "d-02", "d-03" }, DistrictIdsOf(r));
         }
@@ -483,7 +483,7 @@ namespace Agora.Core.Tests
             Assert.Empty(r.Seats);
             Assert.Equal(0, r.TotalSeats);
             Assert.Null(r.MayorPartyId);
-            Assert.Equal(new SimDate(1998, 11, 8), r.NextElectionDate);
+            Assert.Equal(new SimDate(1995, 11, 8), r.NextElectionDate);
         }
 
         // ------------------------------------------------------------------------------------------
@@ -491,17 +491,20 @@ namespace Agora.Core.Tests
         // ------------------------------------------------------------------------------------------
 
         [Fact]
-        public void Calendar_UsesTheFourYearNaTerm()
+        public void Calendar_UsesTheOneYearNaTerm()
         {
             EngineTuning t = EngineTuning.Default;
 
-            Assert.Equal(new SimDate(1998, 11, 8), FptpCalendar.NextElection(Nov1994, t));
-            Assert.Equal(new SimDate(1998, 11, 8), FptpCalendar.MayorTermEnd(Nov1994, t));
-            Assert.Equal(new SimDate(1994, 5, 8), FptpCalendar.CampaignStart(Nov1994, t));
+            // Council and mayor ship on the same 1-year term, so the ticket is elected together.
+            Assert.Equal(new SimDate(1995, 11, 8), FptpCalendar.NextElection(Nov1994, t));
+            Assert.Equal(new SimDate(1995, 11, 8), FptpCalendar.MayorTermEnd(Nov1994, t));
 
-            Assert.True(FptpCalendar.IsCampaignSeason(new SimDate(1994, 6, 1), Nov1994, t));
-            Assert.False(FptpCalendar.IsCampaignSeason(new SimDate(1994, 4, 30), Nov1994, t));
-            Assert.False(FptpCalendar.IsCampaignSeason(new SimDate(1994, 6, 1), null, t));
+            // Two-month campaign, so the season opens in September and not in August.
+            Assert.Equal(new SimDate(1994, 9, 8), FptpCalendar.CampaignStart(Nov1994, t));
+
+            Assert.True(FptpCalendar.IsCampaignSeason(new SimDate(1994, 10, 1), Nov1994, t));
+            Assert.False(FptpCalendar.IsCampaignSeason(new SimDate(1994, 8, 30), Nov1994, t));
+            Assert.False(FptpCalendar.IsCampaignSeason(new SimDate(1994, 10, 1), null, t));
         }
 
         // ------------------------------------------------------------------------------------------
@@ -628,7 +631,9 @@ namespace Agora.Core.Tests
         private static EngineTuning TuningWith(string json)
         {
             EngineTuning t = EngineTuning.FromJson(json);
-            Assert.Equal(2, t.SchemaVersion);   // unspecified sections fall back to the shipped defaults
+            // Unspecified sections fall back to the shipped defaults, which is what makes these
+            // fixtures one-line overrides rather than whole tuning documents.
+            Assert.Equal(EngineTuning.Default.SchemaVersion, t.SchemaVersion);
             return t;
         }
 

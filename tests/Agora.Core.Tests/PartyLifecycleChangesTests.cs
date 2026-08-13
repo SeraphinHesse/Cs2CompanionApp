@@ -147,9 +147,9 @@ namespace Agora.Core.Tests
             // Two consecutive results under 3% is what kills a party. The second election is the one
             // the death is dated to, not the first.
             PartyLifecycleOutcome first = Advance(tuning, parties,
-                Election(Y1993, parties, "party-01", 0.01), Y1993);
+                Election(Y1993, parties, "party-01", 0.005), Y1993);
             PartyLifecycleOutcome second = Advance(tuning, new List<Party>(first.Parties),
-                Election(Y1996, first.Parties, "party-01", 0.01), Y1996);
+                Election(Y1996, first.Parties, "party-01", 0.005), Y1996);
             Assert.Equal(PartyStatus.Dissolved, Get(second, "party-01").Status);
 
             PartyLifecycleChangeSet changes = PartyLifecycleChanges.Collect(second.Parties, Y1990);
@@ -171,9 +171,9 @@ namespace Agora.Core.Tests
             var doomed = new[] { "party-01", "party-02", "party-03" };
 
             PartyLifecycleOutcome first = Advance(tuning, parties,
-                Election(Y1993, parties, doomed, 0.01), Y1993);
+                Election(Y1993, parties, doomed, 0.005), Y1993);
             PartyLifecycleOutcome second = Advance(tuning, new List<Party>(first.Parties),
-                Election(Y1996, first.Parties, doomed, 0.01), Y1996);
+                Election(Y1996, first.Parties, doomed, 0.005), Y1996);
 
             // Pre-condition: the engine, not the fixture, put three dissolutions on the one date.
             for (int i = 0; i < doomed.Length; i++)

@@ -139,7 +139,7 @@ namespace Agora.Core.Tests
 
             Assert.Equal(0.0, PartyRegistry.IncumbencyBonus(0, tuning));
             Assert.Equal(tuning.Parties.IncumbencyBonus, PartyRegistry.IncumbencyBonus(1, tuning), 12);
-            Assert.Equal(tuning.Parties.IncumbencyBonus * 0.70,
+            Assert.Equal(tuning.Parties.IncumbencyBonus * (1.0 - tuning.Parties.IncumbencyDecayPerTerm),
                          PartyRegistry.IncumbencyBonus(2, tuning), 12);
             Assert.True(PartyRegistry.IncumbencyBonus(3, tuning) < PartyRegistry.IncumbencyBonus(2, tuning));
         }
@@ -153,7 +153,7 @@ namespace Agora.Core.Tests
             List<Party> parties = Field(6);
 
             PartyLifecycleOutcome outcome = Advance(tuning, parties,
-                Election(Y1993, parties, "party-01", 0.01));
+                Election(Y1993, parties, "party-01", 0.005));
 
             Party punished = Get(outcome, "party-01");
             Assert.Equal(PartyStatus.Endangered, punished.Status);
@@ -169,9 +169,9 @@ namespace Agora.Core.Tests
             List<Party> parties = Field(6);
 
             PartyLifecycleOutcome first = Advance(tuning, parties,
-                Election(Y1993, parties, "party-01", 0.01));
+                Election(Y1993, parties, "party-01", 0.005));
             PartyLifecycleOutcome second = Advance(tuning, new List<Party>(first.Parties),
-                Election(Y1996, new List<Party>(first.Parties), "party-01", 0.02), Y1996);
+                Election(Y1996, new List<Party>(first.Parties), "party-01", 0.008), Y1996);
 
             Party dead = Get(second, "party-01");
             Assert.Equal(PartyStatus.Dissolved, dead.Status);
@@ -188,7 +188,7 @@ namespace Agora.Core.Tests
             List<Party> parties = Field(6);
 
             PartyLifecycleOutcome first = Advance(tuning, parties,
-                Election(Y1993, parties, "party-01", 0.01));
+                Election(Y1993, parties, "party-01", 0.005));
             // No punished party this time: everyone lands on an even share, well above 5%.
             PartyLifecycleOutcome second = Advance(tuning, new List<Party>(first.Parties),
                 Election(Y1996, new List<Party>(first.Parties), null, 0.0), Y1996);
@@ -205,7 +205,7 @@ namespace Agora.Core.Tests
             EngineTuning tuning = Quiet();
             List<Party> parties = Field(6);
 
-            // 4% — under the 5% warning band, over the 3% death threshold.
+            // 4% — under the 5% warning band, over the 1% death threshold.
             PartyLifecycleOutcome outcome = Advance(tuning, parties,
                 Election(Y1993, parties, "party-01", 0.04));
 
@@ -223,7 +223,7 @@ namespace Agora.Core.Tests
             parties[0].Status = PartyStatus.Endangered;
 
             PartyLifecycleOutcome outcome = Advance(tuning, parties,
-                Election(Y1993, parties, "party-01", 0.01));
+                Election(Y1993, parties, "party-01", 0.005));
 
             Party held = Get(outcome, "party-01");
             Assert.Equal(PartyStatus.Endangered, held.Status);
@@ -634,7 +634,7 @@ namespace Agora.Core.Tests
             List<Party> parties = Field(6);
             string before = HashParties(parties);
 
-            Advance(tuning, parties, Election(Y1993, parties, "party-01", 0.01));
+            Advance(tuning, parties, Election(Y1993, parties, "party-01", 0.005));
 
             Assert.Equal(before, HashParties(parties));
         }
@@ -698,7 +698,8 @@ namespace Agora.Core.Tests
                 }
             }
 
-            // The synthetic history punishes a rotating party below 3% every cycle and cycles the
+            // The synthetic history punishes a rotating party below the death threshold every cycle
+            // (0.5%, comfortably under parties.deathVoteShareThreshold) and cycles the
             // grievance vector, so both branches must fire. A zero here means a stage never ran.
             Assert.True(deaths > 0, "no party ever died across 30 cycles");
             Assert.True(revivals > 0, "no brand ever revived across 30 cycles");
@@ -978,7 +979,7 @@ namespace Agora.Core.Tests
                 Date = date,
                 Theme = RegionTheme.Eu,
                 Parties = parties,
-                LastElection = Election(date, parties, punished, 0.01),
+                LastElection = Election(date, parties, punished, 0.005),
                 CityGrievance = grievance
             };
             outcome = PartyLifecycle.Advance(input, tuning);

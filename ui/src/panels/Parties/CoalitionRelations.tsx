@@ -90,15 +90,20 @@ export const CoalitionRelations = (props: {
    */
   system: Agora.ElectoralSystemName;
   /**
-   * The sitting government, or null. The prop proves ONE thing, in one direction: non-null means a
-   * government is sitting, so the chamber is real and an empty list can only mean no viable
-   * arrangement contains this party. Null proves nothing - it is a city that has never voted OR one
-   * between a collapse and a new formation, and this component cannot tell those apart, because the
-   * projection returns an empty list on four separate paths and carries no city-wide "has voted"
-   * signal. So the null sentence below says nothing about elections at all; the non-null one, which
-   * is on solid ground, says everything it is entitled to.
+   * True once this city has held an election - `agora.seats.allocation` is non-empty, which is a
+   * seated chamber and nothing else. Threaded because it is the ONE thing that separates the two
+   * reasons an empty list can arrive on a proportional save: a chamber that produced no arrangement
+   * containing this party, or a save with no chamber to read yet. Without it this component would
+   * have to guess, and the guess is what read as broken.
    */
-  government: Agora.GovernmentSummary | null;
+  hasChamber: boolean;
+  /**
+   * True once a poll has been published. Before the first election the engine seats a PROVISIONAL
+   * chamber from the latest published poll (`ProvisionalChamber`), so a save with a poll has
+   * arithmetic to show and a save without one genuinely has nothing yet - which is a sentence worth
+   * printing rather than a bare "nothing".
+   */
+  hasPoll: boolean;
   /** The whole published register, for resolving member ids to names and colours. */
   roster: Agora.PartyBrief[];
 }): JSX.Element => {
@@ -142,11 +147,15 @@ export const CoalitionRelations = (props: {
     [options, roster, props.partyId]
   );
 
+  // The note is not decoration: before the first election the seats behind these arrangements are
+  // projected from a poll, not counted, and a player reading seat totals is owed that distinction.
   const title = (
     <div className={styles.sectionTitle}>
       <span className={styles.sectionTitleText}>Coalition arithmetic</span>
       <span className={styles.sectionNote}>
-        Recomputed from where the parties stand today
+        {props.hasChamber
+          ? "Recomputed from where the parties stand today"
+          : "Projected from the latest poll - this city has not voted yet"}
       </span>
     </div>
   );
@@ -164,13 +173,18 @@ export const CoalitionRelations = (props: {
     );
   }
 
+  // Two genuinely different states, and saying so is the whole of it. With neither a chamber nor a
+  // poll there is nothing to seat and no judgement has been made about this party; with either one
+  // there is, and the arithmetic came up short - which rule 1 forbids describing as a refusal.
   if (options.length === 0) {
     return (
       <div className={styles.card}>
         {title}
         <div className={styles.note}>
-          {props.government === null
-            ? "No coalition arithmetic to show yet."
+          {!props.hasChamber && !props.hasPoll
+            ? "Coalition options appear once the first poll is published. Until then there is no " +
+              "measure of where the parties stand, so there is no chamber to add up - not even a " +
+              "projected one."
             : "No arrangement of the current chamber that includes this party is viable as things " +
               "stand. That is the arithmetic coming up short, not a partner turning it down."}
         </div>

@@ -168,10 +168,23 @@ export const SettingsPanel = (): JSX.Element => {
 
       <div className={styles.row}>
         <div className={styles.rowLabel}>Region theme</div>
+        {/*
+          The unlocked hint names the region the save is ON, not just what the setting does.
+
+          Both halves are load-bearing. A player who never saw the first-run prompt - it renders
+          through `Portal`, its boundary's fallback silently defaults to Europe, and `isFirstRun` is
+          one-shot and unpersisted - arrives here with no idea a choice was made on their behalf, and
+          a hint that only explains the setting leaves them to infer their region from which button
+          looks pressed. Saying it, and saying the deadline, is the difference between a setting that
+          is reachable and one that is found.
+        */}
         <div className={styles.rowHint}>
           {settings.themeLocked
             ? "This city has held an election, so the choice became history at that election."
-            : "How the city elects its council, names its parties, and counts a term."}
+            : "This city is set to " +
+              regionLabel(settings.theme) +
+              ". It decides how the city elects its council, names its parties, and counts a term, " +
+              "and it can be changed until the first election."}
         </div>
         <div className={styles.options}>
           {REGION_CHOICES.map(function (choice) {

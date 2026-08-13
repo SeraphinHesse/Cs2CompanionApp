@@ -11,8 +11,8 @@ using Xunit;
 namespace Agora.Core.Tests
 {
     /// <summary>
-    /// The sidecar v1 → v2 migration: <c>parties[].playerOverrides</c> and the three per-save UI
-    /// settings.
+    /// The sidecar state migrations: v1 → v2 adds <c>parties[].playerOverrides</c> and the three
+    /// per-save UI settings; v2 → v3 adds <c>parties[].isMajor</c> and the <c>fringe</c> watch.
     ///
     /// <para>
     /// <c>/schema-change</c> step 5 — <i>an untested migration is a guess</i> — is the reason this
@@ -267,6 +267,7 @@ namespace Agora.Core.Tests
         private static void Strip(JObject root)
         {
             root.Remove(SidecarSchema.VersionProperty);
+            root.Remove("fringe");
 
             JObject settings = Obj(root, "settings");
             settings.Remove(SidecarSchema.VersionProperty);
@@ -277,7 +278,156 @@ namespace Agora.Core.Tests
             foreach (JToken party in Arr(root, "parties"))
             {
                 ((JObject)party).Remove("playerOverrides");
+                ((JObject)party).Remove("isMajor");
             }
+        }
+
+        // --- 5b. v2 → v3: isMajor and the fringe watch -------------------------------------------
+
+        /// <summary>
+        /// A v2 state file at the version the previous step produced. Parties are given in a
+        /// deliberately scrambled array order, because the migration must reconstruct majors from id
+        /// order and not from however the writer happened to emit the list.
+        /// </summary>
+        private static string StateV2(string theme, string parties)
+        {
+            return "{" +
+                "\"schemaVersion\": 2," +
+                "\"saveGuid\": \"11112222-3333-4444-5555-666677778888\"," +
+                "\"date\": \"1994-03-01\"," +
+                "\"settings\": {" +
+                    "\"schemaVersion\": 2," +
+                    "\"startYear\": 1990," +
+                    "\"theme\": \"" + theme + "\"," +
+                    "\"system\": \"" + (theme == "Na" ? "FirstPastThePost" : "Proportional") + "\"," +
+                    "\"wakeCadence\": \"Yearly, Election, Manual\"," +
+                    "\"snapshotRetention\": 25," +
+                    "\"enabled\": true," +
+                    "\"effectsEnabled\": true," +
+                    "\"themeLocked\": true," +
+                    "\"pauseOnMajorNews\": false," +
+                    "\"showAllReports\": false" +
+                "}," +
+                "\"parties\": " + parties + "," +
+                "\"factions\": []," +
+                "\"electionHistory\": []," +
+                "\"firedEventIds\": []," +
+                "\"termNumber\": 2," +
+                "\"isCampaignSeason\": false" +
+            "}";
+        }
+
+        private static string PartyV2(string id, string status = "Active")
+        {
+            return "{" +
+                "\"id\": \"" + id + "\"," +
+                "\"name\": \"\"," +
+                "\"shortName\": \"" + id + "\"," +
+                "\"colorHex\": \"#3366aa\"," +
+                "\"status\": \"" + status + "\"," +
+                "\"foundedDate\": \"1990-01-01\"," +
+                "\"revivalCount\": 0," +
+                "\"playerOverrides\": \"None\"" +
+            "}";
+        }
+
+        private static bool IsMajor(JObject root, string partyId)
+        {
+            foreach (JToken token in Arr(root, "parties"))
+            {
+                var party = (JObject)token;
+                if ((string?)party["id"] == partyId) return Bool(party, "isMajor");
+            }
+
+            throw new Xunit.Sdk.XunitException("no party " + partyId + " in the migrated document");
+        }
+
+        /// <summary>
+        /// The reconstruction that matters. Defaulting <c>isMajor</c> to false would tell the fringe
+        /// ceiling that an existing NA save has no majors at all, and the ceiling would then pin every
+        /// party on the ballot to 3% — so the migration has to work out which two they were.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_MarksTheTwoLowestNaPartyIdsAsMajors()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-04") + "," + PartyV2("party-01") + "," +
+                PartyV2("party-03") + "," + PartyV2("party-02") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.True(IsMajor(root, "party-01"));
+            Assert.True(IsMajor(root, "party-02"));
+
+            // Anything past the prefix is a splinter or an entrant, and neither is a major.
+            Assert.False(IsMajor(root, "party-03"));
+            Assert.False(IsMajor(root, "party-04"));
+        }
+
+        /// <summary>
+        /// A dead brand must not consume a major slot that belongs to a live party — the same reason
+        /// <c>NextPartyId</c> counts past dissolved ids.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_SkipsDeadBrandsWhenPickingTheMajors()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", "Dissolved") + "," + PartyV2("party-02") + "," +
+                PartyV2("party-03") + "," + PartyV2("party-04", "Merged") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.False(IsMajor(root, "party-01"));
+            Assert.True(IsMajor(root, "party-02"));
+            Assert.True(IsMajor(root, "party-03"));
+            Assert.False(IsMajor(root, "party-04"));
+        }
+
+        /// <summary>EU has no majors at all, and the flag stays false rather than true (§3).</summary>
+        [Fact]
+        public void Migrate_StateV2_LeavesEveryEuPartyMinor()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Eu", "[" +
+                PartyV2("party-01") + "," + PartyV2("party-02") + "," + PartyV2("party-03") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.False(IsMajor(root, "party-01"));
+            Assert.False(IsMajor(root, "party-02"));
+            Assert.False(IsMajor(root, "party-03"));
+        }
+
+        /// <summary>
+        /// The watch arrives zeroed. Inventing a streak here would hand an existing save an unearned
+        /// fringe surge on its very next tick.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_AddsAZeroedFringeWatch()
+        {
+            MigrationResult ignored;
+            JObject root = Migrate(StateV2("Na", "[" + PartyV2("party-01") + "]"), out ignored);
+
+            JObject fringe = Obj(root, "fringe");
+            Assert.Equal(0, (int)fringe["consecutiveFailureTerms"]!);
+            Assert.Equal(0, (int)fringe["lastClosedTermNumber"]!);
+            Assert.Equal(0.0, (double)fringe["lastTermFailureScore"]!);
+            Assert.Equal(0, (int)fringe["monthsObserved"]!);
+            Assert.Equal(0.0, (double)fringe["discontentSum"]!);
+            Assert.Equal(0.0, (double)fringe["defianceSurgeSum"]!);
+            Assert.Equal(0, (int)fringe["governmentChanges"]!);
+            Assert.Equal(0, (int)fringe["mayorChanges"]!);
+        }
+
+        /// <summary>A v1 file walks the whole chain, not just the step it was written for.</summary>
+        [Fact]
+        public void Migrate_StateV1_ReachesVersionThree()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV1(elections: OneElection()), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(SidecarSchema.CurrentStateVersion, (int)root[SidecarSchema.VersionProperty]!);
+            Assert.NotNull(root["fringe"]);
         }
 
         // --- 6. Idempotency ---------------------------------------------------------------------------
@@ -310,7 +460,7 @@ namespace Agora.Core.Tests
         [Fact]
         public void Migrate_RefusesAStateFileFromTheFuture()
         {
-            string json = StateV1(versionLine: "\"schemaVersion\": 3,");
+            string json = StateV1(versionLine: "\"schemaVersion\": 4,");
 
             MigrationResult result;
             JObject root = Migrate(json, out result);

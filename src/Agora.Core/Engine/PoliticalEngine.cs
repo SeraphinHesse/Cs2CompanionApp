@@ -68,8 +68,8 @@ namespace Agora.Core.Engine
 
             // The system is a function of the theme and nothing else, so it is derived here rather
             // than trusted from the settings object. Without this line an NA save kept the
-            // initialiser's Proportional and ran North American parties through a list election on
-            // three-year terms with no mayor — silently, since neither half complains.
+            // initialiser's Proportional and ran North American parties through a list election with
+            // no mayor — silently, since neither half complains.
             s.System = RegionThemeRules.SystemFor(s.Theme);
 
             var state = new PoliticalState
@@ -173,6 +173,10 @@ namespace Agora.Core.Engine
             // Replaced, never merged: a party the old theme placed at party-03 and the new one places
             // there too are different brands that happen to share a slot.
             state.Parties = PartyRegistry.GenerateInitial(prior.SaveGuid, startDate, theme, t);
+
+            // The failure streak is a claim about how the old theme's majors governed. Those brands
+            // are gone, so carrying it would hand the new ballot's fringe an unlock nobody earned.
+            state.Fringe = new FringeWatch();
 
             // Blocs survive — they are demography and know nothing about parties — but each one's
             // memory of how it voted is a party-id vector, and CloneState shares the Bloc objects with
@@ -375,11 +379,48 @@ namespace Agora.Core.Engine
                 snapshot.Indices = state.Indices;
             }
 
+            // Per-issue city grievance. Hoisted out of RunLifecycle, which used to be its only caller:
+            // the fringe ceiling needs it every tick, not only on a lifecycle month, and computing it
+            // twice would be both wasteful and a chance for the two readings to disagree. Blocs are
+            // settled in stage 1 and nothing between here and stage 12 touches them, so one reading
+            // serves both.
+            IssueClimate climate = IssueClimate.FromBlocs(state.Blocs);
+
+            // --- 4b. Manifestos. Parties on the ballot move toward whatever the city is currently
+            // aggrieved about, once per campaign.
+            //
+            // Edge-triggered on campaign season opening, not run every campaign month: the drift is
+            // capped per cycle, and applying it monthly would compound that cap into a platform that
+            // sprints across the issue space. `state` is still a clone of the prior tick here, so its
+            // IsCampaignSeason is last month's — the comparison against the plan is the edge.
+            //
+            // This is what lets a major party win a protest vote back. Without it the fringe ceiling
+            // is a ratchet: grievance opens it, and nothing an establishment party does can answer the
+            // grievance and close it again. Placed before affinity so voters are scored against the
+            // platform the party is actually campaigning on, and before the election so the winner's
+            // mandates are generated from the manifesto it ran on.
+            if (plan.IsCampaignSeason && !state.IsCampaignSeason)
+            {
+                state.Parties = RefreshManifestos(state.Parties, saveGuid, date, climate.Grievance, tuning);
+            }
+
             // --- 5. Affinity. The voter model proper: how much each bloc likes each party today.
             IReadOnlyList<Party> ballot = OnBallot(state.Parties);
 
+            // --- 5a. Fringe ceilings. Built from the CLOSED failure record, so the ballot that ends a
+            // term is fought under the ceiling that term inherited — an unlock earned this month first
+            // shows up in next month's standings. That is the literal reading of "three consecutive
+            // failure terms before fringe support may exceed 3% at all".
+            FringeCeilings fringeCeilings = FringeFailureModel.Ceilings(
+                state.Parties, state.Fringe, climate.Grievance, settings.System, tuning.Fringe);
+
+            // Whether this save keeps a failure ledger at all. Proportional saves do not: the ceiling
+            // is FPTP-only, so recording the inputs to it there would be churn nothing ever reads.
+            bool fringeActive = FringeActive(state, tuning);
+
             var affinityRequest = new AffinityRequest
             {
+                FringeCeilings = fringeCeilings,
                 SaveGuid = saveGuid,
                 Date = date,
                 Blocs = state.Blocs,
@@ -439,6 +480,7 @@ namespace Agora.Core.Engine
             // already counted in the vote that judges it.
             int fulfilled = 0;
             int defied = 0;
+            double majorDefianceSurge = 0.0;
 
             if (plan.IsMandateMonitor && snapshot != null && state.Mandates.Count > 0)
             {
@@ -458,10 +500,35 @@ namespace Agora.Core.Engine
 
                 for (int i = 0; i < mandateTick.Resolutions.Count; i++)
                 {
-                    MandateStatus status = mandateTick.Resolutions[i].Status;
+                    MandateResolution resolution = mandateTick.Resolutions[i];
+                    MandateStatus status = resolution.Status;
                     if (status == MandateStatus.Fulfilled) fulfilled++;
                     else if (status == MandateStatus.Defied) defied++;
+
+                    // OppositionSurge has been computed here since the mandate packet was written and
+                    // read by nobody. This is its first reader: a promise broken by a major party is
+                    // the clearest evidence the establishment is failing, and it arrives already
+                    // weighted by how much the city cared.
+                    if (status == MandateStatus.Defied && IsMajorParty(state.Parties, resolution.PartyId))
+                        majorDefianceSurge += resolution.OppositionSurge;
                 }
+            }
+
+            // --- 9b. Fold this tick into the fringe watch. After mandate monitoring so a promise
+            // broken this month counts against the term it was broken in, and before the election so
+            // the term that closes below has already seen its final month.
+            //
+            // Gated on the system as well as the master switch, so that a proportional save is
+            // bit-identical with the packet on and off. The watch would be harmless there — nothing
+            // reads it under PR — but "harmless" and "absent" are different claims, and only the
+            // second one is testable.
+            if (fringeActive)
+            {
+                FringeFailureModel.Observe(state.Fringe, new FringeMonth
+                {
+                    CityDiscontent = state.Indices.DiscontentIndex,
+                    MajorDefianceSurge = majorDefianceSurge
+                }, tuning.Fringe);
             }
 
             // --- 10. The election, or the government's monthly confidence check. Never both: an
@@ -501,7 +568,7 @@ namespace Agora.Core.Engine
             // voters actually saw.
             if (plan.IsLifecycle)
             {
-                RunLifecycle(state, result, saveGuid, date, settings, tuning);
+                RunLifecycle(state, result, saveGuid, date, settings, tuning, climate);
             }
 
             // --- 13. Assemble. Every list leaves in its contractual order, every time: an unsorted
@@ -531,10 +598,23 @@ namespace Agora.Core.Engine
             int termMonths = TermMonths(state.Settings.System, tuning);
             election.NextElectionDate = date.AddMonths(termMonths);
 
+            // Turnover, counted before MayorPartyId is overwritten. A city that throws its mayor out
+            // every cycle is one whose establishment is visibly not holding together, which is the
+            // third of the fringe packet's city-wide failure signals.
+            if (FringeActive(state, tuning) &&
+                !string.Equals(election.MayorPartyId, state.MayorPartyId, StringComparison.Ordinal))
+                state.Fringe.MayorChanges++;
+
             state.ElectionHistory.Add(election);
             state.TermNumber = election.TermNumber;
             state.NextElectionDate = election.NextElectionDate;
             state.MayorPartyId = election.MayorPartyId;
+
+            // Close the term the ballot just ended. Scores it, extends or breaks the failure streak,
+            // and zeroes the accumulator. Runs after TermNumber has advanced so the close is stamped
+            // with the term that finished, which is what makes it idempotent across a reload.
+            if (FringeActive(state, tuning))
+                FringeFailureModel.CloseTerm(state.Fringe, election.TermNumber, tuning.Fringe);
 
             // How each bloc actually voted, for next cycle's habitual loyalty. Taken from the affinity
             // pass rather than from the district totals: loyalty is a bloc-level habit, and district
@@ -681,6 +761,9 @@ namespace Agora.Core.Engine
 
             if (tick.SnapElectionDate.HasValue) state.NextElectionDate = tick.SnapElectionDate.Value;
 
+            // A government falling over mid-term is establishment failure by any reading.
+            if (FringeActive(state, tuning)) state.Fringe.GovernmentChanges++;
+
             result.GovernmentChanged = true;
             result.Warnings.Add("Government " + government.Id + " ended at " + date + " (" +
                                 tick.CollapseReason + "); next ballot " + state.NextElectionDate + ".");
@@ -689,10 +772,9 @@ namespace Agora.Core.Engine
         // ------------------------------------------------------------------ lifecycle
 
         private static void RunLifecycle(PoliticalState state, EngineTickResult result, Guid saveGuid,
-                                         SimDate date, AgoraSettings settings, EngineTuning tuning)
+                                         SimDate date, AgoraSettings settings, EngineTuning tuning,
+                                         IssueClimate climate)
         {
-            IssueClimate climate = IssueClimate.FromBlocs(state.Blocs);
-
             var lifecycleInput = new PartyLifecycleInput
             {
                 SaveGuid = saveGuid,
@@ -970,6 +1052,9 @@ namespace Agora.Core.Engine
                 ActiveEvents = new List<TimelineEvent>(source.ActiveEvents ?? new List<TimelineEvent>()),
                 FiredEventIds = new List<string>(source.FiredEventIds ?? new List<string>()),
                 Indices = source.Indices,
+                // Deep-copied, not shared: the watch is mutated on every tick, so an alias would let
+                // a speculative advance write back into the state the caller still holds.
+                Fringe = (source.Fringe ?? new FringeWatch()).Clone(),
                 TermNumber = source.TermNumber,
                 NextElectionDate = source.NextElectionDate,
                 IsCampaignSeason = source.IsCampaignSeason,
@@ -1160,6 +1245,59 @@ namespace Agora.Core.Engine
                                           state.Government.LeadPartyId) == 0) terms++;
             }
             return terms;
+        }
+
+        /// <summary>
+        /// Rewrites every on-ballot party's manifesto against the current grievance vector, leaving
+        /// parties that are off the ballot exactly as they were.
+        /// </summary>
+        /// <remarks>
+        /// The returned list is sorted by id, like every other party list the engine hands on. Each
+        /// party is refreshed through <see cref="PartyPlatform.RefreshManifesto"/>, which clones
+        /// rather than mutating and draws its jitter from a per-party sub-stream — so adding a party
+        /// cannot shift another party's drift, and the pass is order-free.
+        /// </remarks>
+        private static List<Party> RefreshManifestos(IReadOnlyList<Party> parties, Guid saveGuid,
+                                                     SimDate date, IssueWeights grievance,
+                                                     EngineTuning tuning)
+        {
+            var refreshed = new List<Party>(parties.Count);
+
+            for (int i = 0; i < parties.Count; i++)
+            {
+                Party p = parties[i];
+                if (p == null) continue;
+
+                refreshed.Add(PartyRegistry.IsOnBallot(p)
+                    ? PartyPlatform.RefreshManifesto(saveGuid, date, p, grievance, tuning)
+                    : p);
+            }
+
+            refreshed.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            return refreshed;
+        }
+
+        /// <summary>
+        /// Whether this save keeps a fringe failure ledger. Proportional saves do not: the ceiling is
+        /// FPTP-only, so recording its inputs there would be churn nothing ever reads — and it would
+        /// make "the packet is inert under PR" an untestable claim, since the watch is persisted.
+        /// </summary>
+        private static bool FringeActive(PoliticalState state, EngineTuning tuning) =>
+            tuning.Fringe.Enabled && state.Settings.System == ElectoralSystem.FirstPastThePost;
+
+        /// <summary>
+        /// Whether a resolution's owning party is one of the NA majors. Linear scan of a list that is
+        /// never more than <c>parties.maxPartiesTotal</c> long, and correct regardless of its order.
+        /// </summary>
+        private static bool IsMajorParty(IReadOnlyList<Party> parties, string partyId)
+        {
+            if (parties == null || string.IsNullOrEmpty(partyId)) return false;
+
+            for (int i = 0; i < parties.Count; i++)
+                if (parties[i] != null && string.Equals(parties[i].Id, partyId, StringComparison.Ordinal))
+                    return parties[i].IsMajor;
+
+            return false;
         }
 
         /// <summary>

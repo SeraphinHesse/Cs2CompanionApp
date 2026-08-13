@@ -72,6 +72,17 @@ export function closeSettings(): void {
   settingsOpen$.update(false);
 }
 
+/**
+ * Open the settings drawer, whatever it was doing. Not `toggleSettings` — this backs the region
+ * chip, whose entire job is that pressing it always lands the player on the theme picker, and a
+ * toggle would close the drawer for a player who already had it open and pressed the chip to find
+ * out where the picker was.
+ */
+export function openSettings(): void {
+  dashboardOpen$.update(true);
+  settingsOpen$.update(true);
+}
+
 /** Selecting a tab also opens the dashboard, so the tab strip works as a shortcut from closed. */
 export function showTab(tab: AgoraTab): void {
   activeTab$.update(tab);

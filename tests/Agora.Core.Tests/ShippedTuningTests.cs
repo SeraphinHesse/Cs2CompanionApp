@@ -77,6 +77,32 @@ namespace Agora.Core.Tests
                         "shipped engine:" + Environment.NewLine + string.Join(Environment.NewLine, mismatches));
         }
 
+        /// <summary>
+        /// Two invariants the JSON Schema cannot state, so they are stated here instead. Both are the
+        /// kind of thing a well-meaning retune breaks silently.
+        /// </summary>
+        [Fact]
+        public void ShippedFringeTuning_HoldsTheTwoInvariantsTheSchemaCannotExpress()
+        {
+            FringeTuning shipped = LoadShipped().Fringe;
+            PartiesTuning parties = LoadShipped().Parties;
+
+            // The three signals are a weighted mean, so weights that do not sum to 1 silently rescale
+            // every failure score and move failureTermScoreThreshold's meaning with them.
+            Assert.Equal(1.0, shipped.DefianceWeight + shipped.DiscontentWeight + shipped.ChurnWeight, 12);
+
+            // The ceiling must leave its parties alive. A minor party pinned at baseCeiling posts that
+            // share at every election; if the death threshold reaches it, the ceiling dissolves the
+            // ballot it exists to shape, and does it before the unlock can ever fire.
+            Assert.True(shipped.BaseCeiling > parties.DeathVoteShareThreshold,
+                "fringe.baseCeiling (" + shipped.BaseCeiling + ") must stay above " +
+                "parties.deathVoteShareThreshold (" + parties.DeathVoteShareThreshold + ")");
+
+            // An unlock that cannot complete is an unlock that never opens past its first notch.
+            Assert.True(shipped.FullUnlockTerms >= shipped.UnlockConsecutiveTerms);
+            Assert.True(shipped.MaxCeiling > shipped.BaseCeiling);
+        }
+
         [Fact]
         public void ShippedTuningFile_ShipsTheSameEffectPaletteAsTheBuiltInRegistry()
         {

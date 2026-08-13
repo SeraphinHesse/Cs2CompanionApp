@@ -9,7 +9,7 @@
   "required": [
     "schemaVersion", "blocs", "parties", "factions", "affinity", "turnout", "polling",
     "electionsPr", "electionsFptp", "coalitions", "mandates", "catalog", "scheduler",
-    "indices", "effects"
+    "indices", "effects", "fringe"
   ],
   "patternProperties": { "^_": true },
   "additionalProperties": false,
@@ -67,7 +67,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 2 },
+    "schemaVersion": { "type": "integer", "const": 3 },
 
     "blocs": {
       "type": "object",
@@ -604,6 +604,33 @@
             }
           }
         }
+      }
+    },
+
+    "fringe": {
+      "type": "object",
+      "patternProperties": { "^_": true },
+      "additionalProperties": false,
+      "$comment": "Packet 15. NA/FPTP only; the enforcement point checks the electoral system before reading any of this. Two constraints the schema cannot express and a reviewer must: defianceWeight + discontentWeight + churnWeight must sum to 1, and baseCeiling must stay strictly above parties.deathVoteShareThreshold or the ceiling kills the parties it is suppressing.",
+      "required": [
+        "enabled", "baseCeiling", "maxCeiling", "unlockConsecutiveTerms", "fullUnlockTerms",
+        "failureTermScoreThreshold", "defianceWeight", "discontentWeight", "churnWeight",
+        "defianceSurgeForFullSignal", "discontentFloor", "churnEventsForFullSignal", "grievanceFloor"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "baseCeiling": { "$ref": "#/$defs/unitInterval" },
+        "maxCeiling": { "$ref": "#/$defs/unitInterval" },
+        "unlockConsecutiveTerms": { "$ref": "#/$defs/positiveInt" },
+        "fullUnlockTerms": { "$ref": "#/$defs/positiveInt" },
+        "failureTermScoreThreshold": { "$ref": "#/$defs/unitInterval" },
+        "defianceWeight": { "$ref": "#/$defs/unitInterval" },
+        "discontentWeight": { "$ref": "#/$defs/unitInterval" },
+        "churnWeight": { "$ref": "#/$defs/unitInterval" },
+        "defianceSurgeForFullSignal": { "type": "number", "exclusiveMinimum": 0 },
+        "discontentFloor": { "$ref": "#/$defs/unitInterval" },
+        "churnEventsForFullSignal": { "$ref": "#/$defs/positiveInt" },
+        "grievanceFloor": { "$ref": "#/$defs/unitInterval" }
       }
     }
   }

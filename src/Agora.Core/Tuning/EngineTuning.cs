@@ -22,7 +22,7 @@ namespace Agora.Core.Tuning
     public sealed class EngineTuning
     {
         /// <summary>Bumped whenever a key is added, removed or renamed. Runs through <c>/schema-change</c>.</summary>
-        public int SchemaVersion { get; internal set; } = 2;
+        public int SchemaVersion { get; internal set; } = 3;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -38,6 +38,7 @@ namespace Agora.Core.Tuning
         public SchedulerTuning Scheduler { get; internal set; } = new SchedulerTuning();
         public IndicesTuning Indices { get; internal set; } = new IndicesTuning();
         public EffectsTuning Effects { get; internal set; } = new EffectsTuning();
+        public FringeTuning Fringe { get; internal set; } = new FringeTuning();
 
         /// <summary>
         /// Keys that were missing or the wrong shape, in the order they were read. Empty for a file
@@ -79,6 +80,7 @@ namespace Agora.Core.Tuning
             t.Scheduler = SchedulerTuning.Read(reader.Section("scheduler"), d.Scheduler);
             t.Indices = IndicesTuning.Read(reader.Section("indices"), d.Indices);
             t.Effects = EffectsTuning.Read(reader.Section("effects"), d.Effects);
+            t.Fringe = FringeTuning.Read(reader.Section("fringe"), d.Fringe);
             t.Warnings = warnings;
             return t;
         }
@@ -233,10 +235,19 @@ namespace Agora.Core.Tuning
         public double PlatformGrievanceResponsiveness { get; internal set; } = 0.30;
 
         public double IncumbencyBonus { get; internal set; } = 0.05;
-        public double IncumbencyDecayPerTerm { get; internal set; } = 0.30;
 
-        /// <summary>Below this share the party is endangered, then dies (§3).</summary>
-        public double DeathVoteShareThreshold { get; internal set; } = 0.03;
+        /// <summary>
+        /// Decay per TERM, not per year — rescaled with the move to 1-year terms so the curve keeps
+        /// its old per-year shape rather than decaying several times faster in wall-clock time.
+        /// </summary>
+        public double IncumbencyDecayPerTerm { get; internal set; } = 0.08;
+
+        /// <summary>
+        /// Below this share the party is endangered, then dies (§3). Deliberately below
+        /// <c>fringe.baseCeiling</c>: a party the fringe ceiling is holding down has not been
+        /// rejected by voters, and must not be killed by its own suppression.
+        /// </summary>
+        public double DeathVoteShareThreshold { get; internal set; } = 0.01;
 
         public int DeathConsecutiveElections { get; internal set; } = 2;
         public double EndangeredVoteShareThreshold { get; internal set; } = 0.05;
@@ -390,8 +401,12 @@ namespace Agora.Core.Tuning
         public double LocalGrievanceWeight { get; internal set; } = 0.20;
         public double NationalMoodWeight { get; internal set; } = 0.10;
 
-        /// <summary>Stickiness to the bloc's previous vote.</summary>
-        public double HabitualLoyalty { get; internal set; } = 0.35;
+        /// <summary>
+        /// Stickiness to the bloc's previous vote. Cut with the move to 1-year terms: loyalty decays
+        /// from the last election at <see cref="LoyaltyDecayPerMonth"/>, so over 12 months it only
+        /// falls to ~0.79 of its value instead of ~0.38 over four years.
+        /// </summary>
+        public double HabitualLoyalty { get; internal set; } = 0.20;
 
         public double LoyaltyDecayPerMonth { get; internal set; } = 0.02;
 
@@ -521,10 +536,14 @@ namespace Agora.Core.Tuning
 
         public int PublishIntervalDays { get; internal set; } = 7;
 
-        /// <summary>Length of the polling season. 26 weeks matches the 6-month campaign (§3).</summary>
-        public int CampaignWeeks { get; internal set; } = 26;
+        /// <summary>
+        /// Length of the polling season. 9 weeks is a shade over the 2-month campaign, so the poll
+        /// season opens a few days before the campaign flag does — the same slack the old
+        /// 26-weeks-against-6-months pairing had (§3).
+        /// </summary>
+        public int CampaignWeeks { get; internal set; } = 9;
 
-        public int WeeksBeforeElection { get; internal set; } = 26;
+        public int WeeksBeforeElection { get; internal set; } = 9;
 
         /// <summary>How strongly pollsters converge on each other near election day.</summary>
         public double HerdingFactor { get; internal set; } = 0.20;
@@ -571,7 +590,7 @@ namespace Agora.Core.Tuning
     /// <summary>Packet 7 — proportional elections (EU theme). JSON section <c>electionsPr</c>.</summary>
     public sealed class ElectionsPrTuning
     {
-        public int TermYears { get; internal set; } = 3;
+        public int TermYears { get; internal set; } = 1;
 
         /// <summary>Chamber size when <see cref="SeatsPerPopulation"/> is 0.</summary>
         public int TotalSeats { get; internal set; } = 60;
@@ -594,12 +613,16 @@ namespace Agora.Core.Tuning
         /// <summary>Fraction of seats awarded in district contests. 0 is a pure list system.</summary>
         public double DistrictSeatShare { get; internal set; } = 0.0;
 
-        public int CampaignMonths { get; internal set; } = 6;
+        public int CampaignMonths { get; internal set; } = 2;
 
-        /// <summary>A snap election cannot be called until this long after the last one.</summary>
-        public int SnapElectionMinMonthsSinceLast { get; internal set; } = 12;
+        /// <summary>
+        /// A snap election cannot be called until this long after the last one. Must stay well under
+        /// <see cref="TermYears"/> × 12 — at 12 months against a 1-year term it equalled a whole
+        /// term and made snap elections structurally impossible.
+        /// </summary>
+        public int SnapElectionMinMonthsSinceLast { get; internal set; } = 4;
 
-        public int SnapElectionDelayMonths { get; internal set; } = 3;
+        public int SnapElectionDelayMonths { get; internal set; } = 1;
 
         /// <summary>Seats a party gets once it clears the threshold, before proportional allocation.</summary>
         public int MinSeatsForRepresentation { get; internal set; } = 1;
@@ -625,8 +648,8 @@ namespace Agora.Core.Tuning
     /// <summary>Packet 8 — FPTP district races and the mayoralty (NA theme). JSON section <c>electionsFptp</c>.</summary>
     public sealed class ElectionsFptpTuning
     {
-        public int TermYears { get; internal set; } = 4;
-        public int MayorTermYears { get; internal set; } = 4;
+        public int TermYears { get; internal set; } = 1;
+        public int MayorTermYears { get; internal set; } = 1;
 
         public int CouncilSeatsPerDistrict { get; internal set; } = 1;
 
@@ -635,7 +658,7 @@ namespace Agora.Core.Tuning
 
         public int MaxCouncilSeats { get; internal set; } = 45;
 
-        public int CampaignMonths { get; internal set; } = 6;
+        public int CampaignMonths { get; internal set; } = 2;
 
         /// <summary>Wasted-vote squeeze applied to parties running third in a district.</summary>
         public double ThirdPartyPenalty { get; internal set; } = 0.35;
@@ -718,7 +741,7 @@ namespace Agora.Core.Tuning
 
         public double CollapseThreshold { get; internal set; } = 0.30;
         public int CollapseCheckIntervalMonths { get; internal set; } = 1;
-        public int SnapElectionDelayMonths { get; internal set; } = 3;
+        public int SnapElectionDelayMonths { get; internal set; } = 1;
 
         internal static CoalitionsTuning Read(TuningReader r, CoalitionsTuning d) => new CoalitionsTuning
         {
@@ -749,7 +772,7 @@ namespace Agora.Core.Tuning
     /// <summary>Packet 10 — mandate generation, monitoring and resolution. JSON section <c>mandates</c>.</summary>
     public sealed class MandatesTuning
     {
-        public int CountPerTerm { get; internal set; } = 3;
+        public int CountPerTerm { get; internal set; } = 2;
         public int MaxActive { get; internal set; } = 6;
 
         /// <summary>A metric must be at least this far from its city-wide best to justify a promise.</summary>
@@ -758,10 +781,15 @@ namespace Agora.Core.Tuning
         /// <summary>Fraction of the deficit the promise commits to closing.</summary>
         public double TargetImprovementFraction { get; internal set; } = 0.20;
 
-        public int HorizonMonths { get; internal set; } = 24;
+        /// <summary>
+        /// Must not exceed the term length. A mandate that outlives the government that issued it is
+        /// abandoned unscored at the next election, and defiance is the largest single input to the
+        /// <c>fringe</c> failure score.
+        /// </summary>
+        public int HorizonMonths { get; internal set; } = 12;
 
         /// <summary>Months after issue before monitoring starts scoring.</summary>
-        public int GraceMonths { get; internal set; } = 3;
+        public int GraceMonths { get; internal set; } = 1;
 
         public int MonitoringIntervalMonths { get; internal set; } = 1;
 
@@ -914,7 +942,7 @@ namespace Agora.Core.Tuning
         public int MandateMonitorIntervalMonths { get; internal set; } = 1;
 
         public int PollTickIntervalDays { get; internal set; } = 7;
-        public int CampaignStartMonthsBeforeElection { get; internal set; } = 6;
+        public int CampaignStartMonthsBeforeElection { get; internal set; } = 2;
 
         public bool LlmWakeYearly { get; internal set; } = true;
         public bool LlmWakeOnElection { get; internal set; } = true;
@@ -1271,5 +1299,93 @@ namespace Agora.Core.Tuning
 
             return m;
         }
+    }
+
+    /// <summary>
+    /// Packet 15 — the fringe-party ceiling. JSON section <c>fringe</c>.
+    ///
+    /// <para>
+    /// NA/FPTP only, and the enforcement point checks the system before any of this is read. It exists
+    /// because the two-party system was not actually behaving like one: a bloc's support is a softmax
+    /// over affinity, affinity differences between parties are small next to
+    /// <c>affinity.softmaxTemperature</c>, and neither the incumbency nor the mandate term can hand a
+    /// fringe party anything — both are party-scoped and can only subtract from the incumbent. So a
+    /// minor party collected a large share simply for existing, and no amount of good government
+    /// pushed it back down.
+    /// </para>
+    ///
+    /// <para>
+    /// The fix is a ceiling that starts shut and opens only on a record of failure, so a third party
+    /// becomes viable the way it does in reality — because the establishment earned it.
+    /// </para>
+    /// </summary>
+    public sealed class FringeTuning
+    {
+        /// <summary>Master switch. False makes the whole packet inert and is the control in tests.</summary>
+        public bool Enabled { get; internal set; } = true;
+
+        /// <summary>
+        /// Share a minor party is pinned at while the ceiling is shut. Must stay above
+        /// <c>parties.deathVoteShareThreshold</c>, or the suppression kills the parties it suppresses.
+        /// </summary>
+        public double BaseCeiling { get; internal set; } = 0.03;
+
+        /// <summary>Ceiling at full unlock. Far enough to displace a major, which is the point.</summary>
+        public double MaxCeiling { get; internal set; } = 0.40;
+
+        /// <summary>Consecutive failure terms before the ceiling moves off <see cref="BaseCeiling"/> at all.</summary>
+        public int UnlockConsecutiveTerms { get; internal set; } = 3;
+
+        /// <summary>Consecutive failure terms at which the streak factor reaches 1.</summary>
+        public int FullUnlockTerms { get; internal set; } = 6;
+
+        /// <summary>Failure score at or above which a closed term counts as a failure term.</summary>
+        public double FailureTermScoreThreshold { get; internal set; } = 0.50;
+
+        /// <summary>Weight of defied major-party mandates in the failure score.</summary>
+        public double DefianceWeight { get; internal set; } = 0.40;
+
+        /// <summary>Weight of sustained city discontent in the failure score.</summary>
+        public double DiscontentWeight { get; internal set; } = 0.35;
+
+        /// <summary>Weight of government and mayoral turnover in the failure score.</summary>
+        public double ChurnWeight { get; internal set; } = 0.25;
+
+        /// <summary>
+        /// Summed opposition surge that saturates the defiance signal. 0.08 is two full-salience
+        /// defiances at <c>mandates.oppositionSurgeOnDefiance</c>.
+        /// </summary>
+        public double DefianceSurgeForFullSignal { get; internal set; } = 0.08;
+
+        /// <summary>Mean discontent below which the discontent signal reads zero.</summary>
+        public double DiscontentFloor { get; internal set; } = 0.50;
+
+        /// <summary>Collapses plus mayoral changes in one term that saturate the churn signal.</summary>
+        public int ChurnEventsForFullSignal { get; internal set; } = 2;
+
+        /// <summary>
+        /// City grievance on a fringe party's own core issue below which its ceiling stays shut however
+        /// badly the majors governed. Deliberately equal to <c>parties.revivalGrievanceThreshold</c>:
+        /// "aggrieved enough to revive a dead brand" and "aggrieved enough to lift a ceiling" should be
+        /// the same bar.
+        /// </summary>
+        public double GrievanceFloor { get; internal set; } = 0.35;
+
+        internal static FringeTuning Read(TuningReader r, FringeTuning d) => new FringeTuning
+        {
+            Enabled = r.Flag("enabled", d.Enabled),
+            BaseCeiling = r.Num("baseCeiling", d.BaseCeiling),
+            MaxCeiling = r.Num("maxCeiling", d.MaxCeiling),
+            UnlockConsecutiveTerms = r.Int("unlockConsecutiveTerms", d.UnlockConsecutiveTerms),
+            FullUnlockTerms = r.Int("fullUnlockTerms", d.FullUnlockTerms),
+            FailureTermScoreThreshold = r.Num("failureTermScoreThreshold", d.FailureTermScoreThreshold),
+            DefianceWeight = r.Num("defianceWeight", d.DefianceWeight),
+            DiscontentWeight = r.Num("discontentWeight", d.DiscontentWeight),
+            ChurnWeight = r.Num("churnWeight", d.ChurnWeight),
+            DefianceSurgeForFullSignal = r.Num("defianceSurgeForFullSignal", d.DefianceSurgeForFullSignal),
+            DiscontentFloor = r.Num("discontentFloor", d.DiscontentFloor),
+            ChurnEventsForFullSignal = r.Int("churnEventsForFullSignal", d.ChurnEventsForFullSignal),
+            GrievanceFloor = r.Num("grievanceFloor", d.GrievanceFloor)
+        };
     }
 }

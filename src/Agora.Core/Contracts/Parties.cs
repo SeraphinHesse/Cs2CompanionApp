@@ -6,10 +6,10 @@ namespace Agora.Core.Contracts
     /// <summary>Which political system the save runs (<c>politicsmodplan.md</c> §3).</summary>
     public enum ElectoralSystem
     {
-        /// <summary>EU theme: proportional list seats, 4–7 parties, coalitions, 3-year terms.</summary>
+        /// <summary>EU theme: proportional list seats, 4–7 parties, coalitions, 1-year terms.</summary>
         Proportional = 0,
 
-        /// <summary>NA theme: FPTP district races plus a directly elected mayor, 4-year terms.</summary>
+        /// <summary>NA theme: FPTP district races plus a directly elected mayor, 1-year terms.</summary>
         FirstPastThePost = 1
     }
 
@@ -190,6 +190,22 @@ namespace Agora.Core.Contracts
 
         /// <summary>Number of times this brand has revived. Used for revival cooldown and prose.</summary>
         public int RevivalCount { get; set; }
+
+        /// <summary>
+        /// True for one of the two dominant parties in the NA theme; false for everything else,
+        /// including every party in the EU theme.
+        ///
+        /// <para>Engine-owned, set once at generation. Until this field existed, major-versus-minor
+        /// was encoded only as position in <c>PartyArchetypes.NaArray</c> — the majors come first so
+        /// <c>PartyRegistry.GenerateInitial</c> can take a prefix — which meant nothing downstream
+        /// could ask the question. The <c>fringe</c> packet needs to, so the ordering convention is
+        /// promoted to a field here.</para>
+        ///
+        /// <para>A brand that splits off a major is <b>not</b> a major: new parties keep the default
+        /// false. In the EU theme nothing reads it — the fringe ceiling is FPTP-only — and it stays
+        /// false rather than true so that a stray reader cannot change proportional behaviour.</para>
+        /// </summary>
+        public bool IsMajor { get; set; }
 
         /// <summary>
         /// Which of this party's flavor-owned fields the player has taken over. Player-owned, not

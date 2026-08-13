@@ -13,6 +13,12 @@
 // This renders through `Portal`, so it sits over the whole HUD rather than inside a hook point. The
 // scrim is fixed to the viewport and centres one child.
 
+// `pointer-events` and `z-index` are set explicitly rather than relied on as defaults. `Portal`
+// relocates this subtree out of `GameTopLeft`'s DOM position — see FirstRunDialog.tsx — into
+// wherever the game's own overlay root is, and unlike a hook point's own content, nothing here
+// guarantees that root (or an ancestor of it) isn't sitting under `pointer-events: none` or a
+// lower stacking context set by the game itself. A hook-point-mounted control never has to say
+// this because the hook point already establishes it; a portaled one does.
 .scrim {
   position: fixed;
   display: flex;
@@ -23,6 +29,8 @@
   top: 0;
   width: 100%;
   height: 100%;
+  z-index: 1000;
+  pointer-events: auto;
   background-color: rgba(0, 0, 0, 0.65);
 }
 
@@ -36,6 +44,7 @@
   border: 1rem solid $line;
   border-radius: 6rem;
   color: $text;
+  pointer-events: auto;
 }
 
 .title {

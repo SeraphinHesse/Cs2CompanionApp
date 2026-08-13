@@ -269,6 +269,18 @@ namespace Agora.Core.Contracts
 
         /// <summary>The seeded noise draw, from <c>StreamNames.AffinityNoise</c>.</summary>
         public double NoiseComponent { get; set; }
+
+        /// <summary>
+        /// Suppression applied by the fringe ceiling (<c>fringe</c> packet), always zero or negative.
+        /// Zero for majors, for every party in the EU theme, and whenever the ceiling is not binding.
+        ///
+        /// <para>Unlike the other components this is not a term the scorer added up — it is a
+        /// correction applied to the finished row, because a ceiling is a statement about a party's
+        /// <i>share</i> and share only exists once the whole row is known. It is recorded so that
+        /// <see cref="Affinity"/> still equals the sum of its parts, and so the dashboard can say a
+        /// party is being held down rather than merely unpopular.</para>
+        /// </summary>
+        public double CeilingComponent { get; set; }
     }
 
     /// <summary>One bloc's projected turnout in one district. Output of the turnout packet.</summary>

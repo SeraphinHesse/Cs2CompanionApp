@@ -145,6 +145,17 @@
   color: $text;
 }
 
+// The region chip. It shares the settings toggle's geometry so the bar's right-hand cluster reads as
+// one group, and carries the accent outline the toggle does not: it is only on screen while the
+// choice is open, and a player who never saw the first-run prompt has to notice it without being
+// told it is there.
+.regionChip {
+  @include settings-toggle-base;
+  color: $text;
+  border: 1rem solid $accent;
+  background-color: rgba(78, 163, 255, 0.14);
+}
+
 .close {
   flex: 0 0 auto;
   margin-left: 10rem;

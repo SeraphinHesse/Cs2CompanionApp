@@ -563,9 +563,9 @@ namespace Agora.Core.Tests
             double tenMonthsLater = Cell(AffinityEngine.Compute(stale, EngineTuning.Default),
                                          "district-a", MiddleEducatedAdult, "party-01").LoyaltyComponent;
 
-            // habitualLoyalty 0.35 × share 0.5; decay 1 - 0.02 × 10 months = 0.8.
-            Assert.Equal(0.175, atElection, 12);
-            Assert.Equal(0.14, tenMonthsLater, 12);
+            // habitualLoyalty 0.20 × share 0.5; decay 1 - 0.02 × 10 months = 0.8.
+            Assert.Equal(0.10, atElection, 12);
+            Assert.Equal(0.08, tenMonthsLater, 12);
         }
 
         [Fact]

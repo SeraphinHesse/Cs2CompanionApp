@@ -26,7 +26,7 @@ namespace Agora.Core.Engine.Elections.Fptp
         /// </summary>
         /// <remarks>
         /// Separate from <see cref="NextElection"/> because <c>mayorTermYears</c> is a separate key:
-        /// they ship equal (4 and 4, so the ticket is elected together) but a future theme could
+        /// they ship equal (1 and 1, so the ticket is elected together) but a future theme could
         /// stagger them, and reading one key for both would silently ignore the change.
         /// </remarks>
         public static SimDate MayorTermEnd(SimDate inauguration, EngineTuning tuning)

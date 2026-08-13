@@ -509,7 +509,7 @@ namespace Agora.Core.Tests
                 Assert.Equal(GovId, m.CoalitionId);
                 Assert.Equal(MandateStatus.Pending, m.Status);
                 Assert.Equal(Jun1994, m.IssuedDate);
-                Assert.Equal(Jun1994.AddMonths(24), m.DeadlineDate);
+                Assert.Equal(Jun1994.AddMonths(EngineTuning.Default.Mandates.HorizonMonths), m.DeadlineDate);
                 Assert.Equal("", m.Text);            // prose is the flavor provider's job, never the engine's
                 Assert.Null(m.ResolvedDate);
                 Assert.Equal(0.0, m.Progress);
@@ -561,12 +561,14 @@ namespace Agora.Core.Tests
         {
             CitySnapshot city = SpreadCity();
 
-            // Already at target, but only one month in against a three-month grace period.
+            // Already at target, but still inside the grace period: the monitor activates a Pending
+            // mandate once monthsSinceIssue reaches mandates.graceMonths, so scoring is held only
+            // strictly before that. Ticking on the issue month is the one tick inside a 1-month grace.
             Mandate mandate = LiveMandate(MandateMetric.GroundPollution, "district-a", 0.60, 0.50,
                                           status: MandateStatus.Pending);
 
             MandateTickResult result = MandateMonitor.Tick(
-                SaveA, Jun1994.AddMonths(1), city, new[] { mandate }, EngineTuning.Default);
+                SaveA, Jun1994, city, new[] { mandate }, EngineTuning.Default);
 
             Assert.Empty(result.Resolutions);
             Assert.Equal(MandateStatus.Pending, result.Mandates[0].Status);

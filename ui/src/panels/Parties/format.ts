@@ -206,12 +206,25 @@ export function revivalPhrase(count: number): string {
 /**
  * The pane's one-line faction summary. Names are FLAVOR and come from `agora.parties.factions`; a
  * faction id is never rendered, so a faction the flavor layer has not named yet is counted but not
- * listed. The EU theme models no factions at all, which the sentence states in words rather than
- * leaving an empty box behind a heading.
+ * listed.
+ *
+ * The zero case branches on the electoral system, because the two zeroes mean different things and a
+ * player who reads the wrong one concludes the tab is broken. Factions are a United States feature -
+ * `FactionModel.AppliesTo` is `Theme == Na || System == FirstPastThePost`, and the theme decides the
+ * system unconditionally, so a proportional save is a European one and models no factions BY DESIGN.
+ * That is why `system` is enough here and no second theme prop is threaded: proportional implies
+ * Europe, and the implication is enforced in the engine, not assumed here.
  */
-export function factionSentence(count: number, names: string[]): string {
+export function factionSentence(
+  count: number,
+  names: string[],
+  system: Agora.ElectoralSystemName
+): string {
   if (count <= 0) {
-    return "No internal factions are modelled inside this party.";
+    return system === "Proportional"
+      ? "Internal factions are a United States feature; European parties are not modelled as " +
+          "having them."
+      : "No internal factions are modelled inside this party.";
   }
   const head =
     count === 1

@@ -189,9 +189,73 @@ namespace Agora.Core.Contracts
     /// across a reload — and an unsorted list changes that hash without anything actually being wrong.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Running record of how badly the major parties are governing, used by the <c>fringe</c> packet
+    /// to decide whether minor parties may poll above their ceiling.
+    ///
+    /// <para>Split into a closed part and an open accumulator. The closed part —
+    /// <see cref="ConsecutiveFailureTerms"/>, <see cref="LastClosedTermNumber"/> and
+    /// <see cref="LastTermFailureScore"/> — is what the ceiling actually reads, and only moves when a
+    /// term ends at an election. The accumulator underneath it collects the current term's monthly
+    /// observations and is zeroed at every close.</para>
+    ///
+    /// <para>Mutable and written every tick, so it must be deep-copied wherever
+    /// <see cref="PoliticalState"/> is cloned — sharing the instance would let a speculative advance
+    /// write into the prior state.</para>
+    /// </summary>
+    public sealed class FringeWatch
+    {
+        /// <summary>
+        /// Terms in a row scored as failures. The ceiling stays shut until this reaches
+        /// <c>fringe.unlockConsecutiveTerms</c>; one good term resets it to zero.
+        /// </summary>
+        public int ConsecutiveFailureTerms { get; set; }
+
+        /// <summary>Term number of the most recent close, so a term cannot be scored twice.</summary>
+        public int LastClosedTermNumber { get; set; }
+
+        /// <summary>Score of the last closed term, 0–1. Scales how far the ceiling opens.</summary>
+        public double LastTermFailureScore { get; set; }
+
+        /// <summary>Term the accumulator below is collecting for.</summary>
+        public int TermNumber { get; set; }
+
+        /// <summary>Ticks observed this term. Divides <see cref="DiscontentSum"/> into a mean.</summary>
+        public int MonthsObserved { get; set; }
+
+        /// <summary>Running sum of the city discontent index over this term.</summary>
+        public double DiscontentSum { get; set; }
+
+        /// <summary>
+        /// Running sum of <c>MandateResolution.OppositionSurge</c> for mandates defied by a major
+        /// party this term. Salience-weighted at source, so a broken promise nobody cared about
+        /// counts for less than one that mattered.
+        /// </summary>
+        public double DefianceSurgeSum { get; set; }
+
+        /// <summary>Governments that collapsed this term.</summary>
+        public int GovernmentChanges { get; set; }
+
+        /// <summary>Elections this term that changed which party holds the mayoralty.</summary>
+        public int MayorChanges { get; set; }
+
+        public FringeWatch Clone() => new FringeWatch
+        {
+            ConsecutiveFailureTerms = ConsecutiveFailureTerms,
+            LastClosedTermNumber = LastClosedTermNumber,
+            LastTermFailureScore = LastTermFailureScore,
+            TermNumber = TermNumber,
+            MonthsObserved = MonthsObserved,
+            DiscontentSum = DiscontentSum,
+            DefianceSurgeSum = DefianceSurgeSum,
+            GovernmentChanges = GovernmentChanges,
+            MayorChanges = MayorChanges
+        };
+    }
+
     public sealed class PoliticalState
     {
-        public int SchemaVersion { get; set; } = 2;
+        public int SchemaVersion { get; set; } = 3;
 
         /// <summary>
         /// Agora's own save identity (§5). Written into the save via the serialization hooks, never
@@ -254,6 +318,13 @@ namespace Agora.Core.Contracts
 
         /// <summary>Derived indices as of <see cref="Date"/>.</summary>
         public DerivedIndices Indices { get; set; } = new DerivedIndices();
+
+        /// <summary>
+        /// Establishment-failure record driving the fringe ceiling. Meaningful only under
+        /// <see cref="ElectoralSystem.FirstPastThePost"/>; still carried in EU saves so the shape of
+        /// the document does not depend on the theme, and reset on a retheme.
+        /// </summary>
+        public FringeWatch Fringe { get; set; } = new FringeWatch();
 
         /// <summary>Sequential term number, starting at 1 before the first election.</summary>
         public int TermNumber { get; set; } = 1;

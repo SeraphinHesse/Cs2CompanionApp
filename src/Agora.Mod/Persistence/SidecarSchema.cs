@@ -94,8 +94,8 @@ namespace Agora.Mod.Persistence
     /// </para>
     ///
     /// <para>
-    /// State, settings and the flavor cache are at version 2; timeline progress is still at 1, so its
-    /// table is empty. So is the flavor cache's, which is not an omission: nothing routes
+    /// State is at version 3; settings and the flavor cache are at 2; timeline progress is still at 1,
+    /// so its table is empty. So is the flavor cache's, which is not an omission: nothing routes
     /// <c>flavor_cache.json</c> through <see cref="Migrate"/> at all — <c>Agora.Mod/Llm</c> upgrades
     /// it in <c>FlavorCacheMigration</c> and validates it against
     /// <c>FlavorSchema.SupportedSchemaVersion</c>, and <see cref="CurrentFlavorCacheVersion"/> says
@@ -117,7 +117,7 @@ namespace Agora.Mod.Persistence
     {
         public const string VersionProperty = "schemaVersion";
 
-        public const int CurrentStateVersion = 2;
+        public const int CurrentStateVersion = 3;
         public const int CurrentSettingsVersion = 2;
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
@@ -234,6 +234,81 @@ namespace Agora.Mod.Persistence
             if (history != null && history.Count > 0) settings["themeLocked"] = true;
         }
 
+        /// <summary>
+        /// v2 → v3: <c>parties[].isMajor</c> and the root <c>fringe</c> watch.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>isMajor</c> is reconstructed rather than defaulted, because defaulting it to false would
+        /// tell the fringe ceiling that an existing NA save has no major parties at all and pin the
+        /// whole ballot at 3%. The reconstruction is exact: NA generation walks
+        /// <c>PartyArchetypes.NaArray</c> majors-first and hands out <c>party-01</c>, <c>party-02</c>,
+        /// … in that order, so the two lowest ids are the two majors. Later ids can only be splinters
+        /// or entrants, which are fringe by definition, and EU saves have no majors at all.
+        /// </para>
+        /// <para>
+        /// Dissolved and merged brands are skipped when picking the two lowest, for the same reason
+        /// <c>NextPartyId</c> counts past them: a dead <c>party-01</c> must not consume a major slot
+        /// that belongs to a live party. The <c>fringe</c> block is written zeroed — a save that has
+        /// never observed a failure term has not had one, and inventing a streak here would hand an
+        /// existing save an unearned fringe surge on its next tick.
+        /// </para>
+        /// </remarks>
+        private static void MigrateStateV2ToV3(JObject root)
+        {
+            bool isNa = string.Equals((string)root["settings"]?["theme"], "Na", StringComparison.OrdinalIgnoreCase);
+
+            var parties = root["parties"] as JArray;
+            if (parties != null)
+            {
+                // Ordinal sort over ids reproduces generation order: FormatId zero-pads, so string
+                // order and numeric order agree. Explicit, because JArray order is whatever the
+                // writer happened to emit.
+                var live = new List<JObject>();
+                foreach (JToken token in parties)
+                {
+                    var party = token as JObject;
+                    if (party == null) continue;
+
+                    party["isMajor"] = false;
+
+                    string status = (string)party["status"] ?? "Active";
+                    if (string.Equals(status, "Dissolved", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(status, "Merged", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    live.Add(party);
+                }
+
+                if (isNa)
+                {
+                    live.Sort((a, b) => string.CompareOrdinal((string)a["id"] ?? "", (string)b["id"] ?? ""));
+                    for (int i = 0; i < live.Count && i < NaMajorCount; i++) live[i]["isMajor"] = true;
+                }
+            }
+
+            if (root["fringe"] == null)
+            {
+                root["fringe"] = new JObject
+                {
+                    ["consecutiveFailureTerms"] = 0,
+                    ["lastClosedTermNumber"] = 0,
+                    ["lastTermFailureScore"] = 0.0,
+                    ["termNumber"] = 0,
+                    ["monthsObserved"] = 0,
+                    ["discontentSum"] = 0.0,
+                    ["defianceSurgeSum"] = 0.0,
+                    ["governmentChanges"] = 0,
+                    ["mayorChanges"] = 0
+                };
+            }
+        }
+
+        /// <summary>
+        /// Mirrors <c>parties.targetCountNa</c>. Deliberately a local constant and not a tuning read:
+        /// a migration must reproduce what the file was written with, and tuning is free to change.
+        /// </summary>
+        private const int NaMajorCount = 2;
+
         // One table per document, so that adding a step is a visible edit in a reviewed place rather
         // than a conditional buried in a loader. Each list must be ordered by FromVersion ascending;
         // the step loop asserts that by walking versions one at a time rather than trusting the
@@ -243,7 +318,9 @@ namespace Agora.Mod.Persistence
         private static readonly List<MigrationStep> StateSteps = new List<MigrationStep>
         {
             new MigrationStep(1, "added party playerOverrides and the three per-save UI settings",
-                MigrateStateV1ToV2)
+                MigrateStateV1ToV2),
+            new MigrationStep(2, "added party isMajor and the fringe watch",
+                MigrateStateV2ToV3)
         };
 
         private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>

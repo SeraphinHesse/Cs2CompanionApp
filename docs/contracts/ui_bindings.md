@@ -275,16 +275,33 @@ viable, and there is no per-partner refusal field because the ranking cannot say
 rejection rules a set it never built would have failed. Chamber seats come from the latest election,
 so a city between a collapse and a new formation still has an answer.
 
+**Before the first election the chamber is projected, not counted.** With `ElectionHistory` empty,
+`BuildPartyRelations` ranks off `ProvisionalChamber.Project` — the chamber the save's latest
+**published** poll would seat, allocated by the same `ProportionalAllocator` a real ballot uses. It
+is pure (no state written, no election recorded, no naked randomness: the only draw reachable is the
+allocator's named `election.tiebreak` stream), it lives in `Agora.Core` like the ranking, and it
+adds **no persisted field and no schema change** — which is what the live-view design was chosen
+for. The projection is never used to fill in for an election whose seat list came back empty: a real
+chamber is never overwritten by a hypothetical one. It reads the published poll and never
+`state.CurrentVoteShares` or `PollResult.TrueShares`, for the same reason `BuildLatestPoll` refuses
+them — the dashboard shows what is publicly known. **A panel rendering projected seats must say they
+are projected.**
+
 **FPTP is not the only empty case, and the panel must not imply it is.** `BuildPartyRelations`
-returns `[]` on **four** paths: no election history, FPTP, no latest election, and *no ranked
-candidate contains this party*. The first covers the whole of every save before its first ballot —
-where a new player spends their opening term — and the last is ordinary in an established city. So
-"empty" must never be rendered as a claim about elections having happened: the panel cannot
-establish that, because `state.Government` is read independently of the election-history guard and a
-null government is equally "never voted" and "between a collapse and a new formation". The shipped
-copy is deliberately silent on the point for that reason (W6 chunk H9; a first draft asserted the
-city had never voted and was blocked in review). Branch on `summary.system` for the FPTP sentence,
-and say nothing about election history otherwise.
+returns `[]` on **four** paths: FPTP, no chamber to read (neither an election nor a published poll),
+a latest election that is null, and *no ranked candidate contains this party*. The second covers a
+save's opening months, before the first poll publishes; the last is ordinary in an established city.
+
+"Empty" must still never be rendered as an **inference** about elections having happened —
+`state.Government` is read independently and a null government is equally "never voted" and "between
+a collapse and a new formation" (W6 chunk H9; a first draft asserted the city had never voted and
+was blocked in review). What the panel *may* now say is what a published binding states outright:
+`agora.seats.allocation` is non-empty **iff** this city has a counted chamber, and
+`agora.seats.latestPoll` is non-null **iff** a poll has published. Those two are facts on the wire,
+not deductions from a list's length, and they are what separates "coalition options appear once the
+first poll is published" from "no arrangement is viable as things stand" — two different states that
+one sentence used to cover. Branch on `summary.system` for the FPTP sentence, on those two bindings
+for the rest, and never on `relations.length`.
 
 Enumeration is bounded by
 `coalitions.formationMaxPartners`, which is why this is a map binding fetched for one open pane and

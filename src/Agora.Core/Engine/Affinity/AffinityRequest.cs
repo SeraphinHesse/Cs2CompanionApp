@@ -69,5 +69,17 @@ namespace Agora.Core.Engine.Affinity
         /// date) applies loyalty undecayed — blocs with no previous vote score zero loyalty anyway.
         /// </summary>
         public SimDate? LastElectionDate { get; set; }
+
+        /// <summary>
+        /// Per-party share ceilings from the <c>fringe</c> packet, applied to each bloc's finished row
+        /// (<see cref="Engine.Parties.FringeCeiling.ApplyToRow"/>). Default
+        /// <see cref="Engine.Parties.FringeCeilings.None"/> is a no-op, which is what the EU path and
+        /// every existing test pass.
+        ///
+        /// <para>A cap belongs here rather than in <see cref="Score"/>'s term list because it is a
+        /// statement about a party's <i>share</i>, and share only exists once the whole row is
+        /// known.</para>
+        /// </summary>
+        public Engine.Parties.FringeCeilings FringeCeilings { get; set; } = Engine.Parties.FringeCeilings.None;
     }
 }

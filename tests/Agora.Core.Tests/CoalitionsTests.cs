@@ -844,7 +844,7 @@ namespace Agora.Core.Tests
             Assert.Equal(CoalitionStatus.Collapsed, r.Status);
             Assert.Equal(CoalitionCollapseReason.MandateFailure, r.CollapseReason);
             Assert.Equal(MidTerm, r.EndedDate);
-            Assert.Equal(new SimDate(1996, 6, 10), r.SnapElectionDate); // snapElectionDelayMonths = 3
+            Assert.Equal(new SimDate(1996, 4, 10), r.SnapElectionDate); // snapElectionDelayMonths = 1
         }
 
         [Fact]
@@ -907,7 +907,7 @@ namespace Agora.Core.Tests
 
             Assert.True(r.Collapsed);
             Assert.Equal(CoalitionCollapseReason.PartnerWithdrawal, r.CollapseReason);
-            Assert.Equal(new SimDate(1996, 6, 10), r.SnapElectionDate);
+            Assert.Equal(new SimDate(1996, 4, 10), r.SnapElectionDate);
         }
 
         [Fact]
@@ -940,7 +940,7 @@ namespace Agora.Core.Tests
                 Assert.Equal(1.0, r.MaxPairwiseDistance, 10);
                 Assert.True(r.Collapsed, "drift at maximum distance must always end the government");
                 Assert.Equal(CoalitionCollapseReason.IdeologicalDrift, r.CollapseReason);
-                Assert.Equal(new SimDate(1996, 6, 10), r.SnapElectionDate);
+                Assert.Equal(new SimDate(1996, 4, 10), r.SnapElectionDate);
             }
         }
 
