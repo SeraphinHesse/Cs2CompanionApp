@@ -379,15 +379,33 @@ namespace Agora.Core.Engine
                 snapshot.Indices = state.Indices;
             }
 
-            // --- 5. Affinity. The voter model proper: how much each bloc likes each party today.
-            IReadOnlyList<Party> ballot = OnBallot(state.Parties);
-
             // Per-issue city grievance. Hoisted out of RunLifecycle, which used to be its only caller:
             // the fringe ceiling needs it every tick, not only on a lifecycle month, and computing it
             // twice would be both wasteful and a chance for the two readings to disagree. Blocs are
             // settled in stage 1 and nothing between here and stage 12 touches them, so one reading
             // serves both.
             IssueClimate climate = IssueClimate.FromBlocs(state.Blocs);
+
+            // --- 4b. Manifestos. Parties on the ballot move toward whatever the city is currently
+            // aggrieved about, once per campaign.
+            //
+            // Edge-triggered on campaign season opening, not run every campaign month: the drift is
+            // capped per cycle, and applying it monthly would compound that cap into a platform that
+            // sprints across the issue space. `state` is still a clone of the prior tick here, so its
+            // IsCampaignSeason is last month's — the comparison against the plan is the edge.
+            //
+            // This is what lets a major party win a protest vote back. Without it the fringe ceiling
+            // is a ratchet: grievance opens it, and nothing an establishment party does can answer the
+            // grievance and close it again. Placed before affinity so voters are scored against the
+            // platform the party is actually campaigning on, and before the election so the winner's
+            // mandates are generated from the manifesto it ran on.
+            if (plan.IsCampaignSeason && !state.IsCampaignSeason)
+            {
+                state.Parties = RefreshManifestos(state.Parties, saveGuid, date, climate.Grievance, tuning);
+            }
+
+            // --- 5. Affinity. The voter model proper: how much each bloc likes each party today.
+            IReadOnlyList<Party> ballot = OnBallot(state.Parties);
 
             // --- 5a. Fringe ceilings. Built from the CLOSED failure record, so the ballot that ends a
             // term is fought under the ceiling that term inherited — an unlock earned this month first
@@ -1227,6 +1245,36 @@ namespace Agora.Core.Engine
                                           state.Government.LeadPartyId) == 0) terms++;
             }
             return terms;
+        }
+
+        /// <summary>
+        /// Rewrites every on-ballot party's manifesto against the current grievance vector, leaving
+        /// parties that are off the ballot exactly as they were.
+        /// </summary>
+        /// <remarks>
+        /// The returned list is sorted by id, like every other party list the engine hands on. Each
+        /// party is refreshed through <see cref="PartyPlatform.RefreshManifesto"/>, which clones
+        /// rather than mutating and draws its jitter from a per-party sub-stream — so adding a party
+        /// cannot shift another party's drift, and the pass is order-free.
+        /// </remarks>
+        private static List<Party> RefreshManifestos(IReadOnlyList<Party> parties, Guid saveGuid,
+                                                     SimDate date, IssueWeights grievance,
+                                                     EngineTuning tuning)
+        {
+            var refreshed = new List<Party>(parties.Count);
+
+            for (int i = 0; i < parties.Count; i++)
+            {
+                Party p = parties[i];
+                if (p == null) continue;
+
+                refreshed.Add(PartyRegistry.IsOnBallot(p)
+                    ? PartyPlatform.RefreshManifesto(saveGuid, date, p, grievance, tuning)
+                    : p);
+            }
+
+            refreshed.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            return refreshed;
         }
 
         /// <summary>

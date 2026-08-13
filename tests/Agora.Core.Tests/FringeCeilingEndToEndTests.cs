@@ -270,6 +270,85 @@ namespace Agora.Core.Tests
         }
 
         // ------------------------------------------------------------------------------------------
+        // Manifestos: the thing that stops the ceiling being a ratchet
+        // ------------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Manifestos must actually be refreshed. RefreshManifesto sat unreferenced outside tests for
+        /// most of this project's life, which meant establishment parties never moved toward what the
+        /// city wanted — so grievance could open the fringe ceiling and nothing a major party did
+        /// could answer the grievance and close it again.
+        /// </summary>
+        [Fact]
+        public void PartiesMoveTheirPlatformsAcrossACampaign()
+        {
+            List<EngineTickResult> run = RunAll(36);
+
+            var moved = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 1; i < run.Count; i++)
+            {
+                PoliticalState before = run[i - 1].State!;
+                PoliticalState after = run[i].State!;
+
+                foreach (Party a in after.Parties)
+                {
+                    Party? b = before.Parties.FirstOrDefault(p => p.Id == a.Id);
+                    if (b == null) continue;
+                    if (a.Platform.Distance(b.Platform) > 1e-9) moved.Add(a.Id);
+                }
+            }
+
+            Assert.True(moved.Count > 0, "no party ever changed its platform across three years");
+        }
+
+        /// <summary>
+        /// And only on the tick the campaign opens. The drift is capped per cycle; applying it every
+        /// campaign month would compound that cap into a platform sprinting across the issue space.
+        ///
+        /// <para>
+        /// Asserted against the edge rather than by counting moves, because counting cannot tell the
+        /// two apart: the lifecycle pass also drifts platforms once a year, so "one refresh per
+        /// campaign plus one lifecycle drift" and "a refresh on each of the two campaign months"
+        /// both come to the same total. What distinguishes them is <i>which</i> ticks move — a
+        /// campaign month that is not the first must leave platforms alone.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ManifestosRefreshWhenTheCampaignOpens_AndNotOnLaterCampaignMonths()
+        {
+            List<EngineTickResult> run = RunAll(120);
+
+            int continuingCampaignMonths = 0;
+
+            for (int i = 1; i < run.Count; i++)
+            {
+                PoliticalState before = run[i - 1].State!;
+                PoliticalState after = run[i].State!;
+
+                // A campaign month that is not the opening one, and not a lifecycle month either —
+                // the lifecycle drifts platforms on its own schedule and is not what is under test.
+                bool continuingCampaign = after.IsCampaignSeason && before.IsCampaignSeason;
+                if (!continuingCampaign) continue;
+                if (after.TermNumber != before.TermNumber) continue;
+
+                continuingCampaignMonths++;
+
+                foreach (Party a in after.Parties)
+                {
+                    Party? b = before.Parties.FirstOrDefault(p => p.Id == a.Id);
+                    if (b == null) continue;
+
+                    Assert.True(a.Platform.Distance(b.Platform) <= 1e-9,
+                        a.Id + " moved its platform at " + after.Date +
+                        ", which is a continuing campaign month — the refresh is not edge-triggered");
+                }
+            }
+
+            Assert.True(continuingCampaignMonths > 0,
+                "the run never saw a second campaign month, so this proves nothing");
+        }
+
+        // ------------------------------------------------------------------------------------------
         // EU is not touched
         // ------------------------------------------------------------------------------------------
 
