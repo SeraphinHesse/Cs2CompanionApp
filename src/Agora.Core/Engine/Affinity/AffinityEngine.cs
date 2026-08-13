@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Agora.Core.Contracts;
 using Agora.Core.Determinism;
+using Agora.Core.Engine.Parties;
 using Agora.Core.Tuning;
 
 namespace Agora.Core.Engine.Affinity
@@ -49,6 +50,7 @@ namespace Agora.Core.Engine.Affinity
             if (tuning == null) throw new ArgumentNullException(nameof(tuning));
 
             Context ctx = Context.Build(request, tuning);
+            AffinityTuning t = tuning.Affinity;
             List<Bloc> blocs = OrderedBlocs(request.Blocs);
             List<Party> parties = BallotParties(request.Parties);
 
@@ -60,12 +62,16 @@ namespace Agora.Core.Engine.Affinity
                 Bloc bloc = blocs[b];
                 var row = new List<BlocAffinity>(parties.Count);
 
-                for (int p = 0; p < parties.Count; p++)
-                {
-                    BlocAffinity scored = Score(bloc, parties[p], ctx);
-                    row.Add(scored);
-                    affinities.Add(scored);
-                }
+                for (int p = 0; p < parties.Count; p++) row.Add(Score(bloc, parties[p], ctx));
+
+                // The fringe ceiling, applied to the finished row rather than folded into Score: a
+                // ceiling is a claim about a party's share, and share does not exist until the whole
+                // row does. Expressed as a shift on Affinity, so the election packet's independent
+                // re-softmax of these same values reproduces the capped distribution without knowing
+                // ceilings exist. A no-op when ctx.Ceilings is empty, which is the EU path.
+                FringeCeiling.ApplyToRow(row, ctx.Ceilings, t.SoftmaxTemperature);
+
+                for (int p = 0; p < row.Count; p++) affinities.Add(row[p]);
 
                 blocShares.Add(new BlocVoteShares(bloc.DistrictId, bloc.Key, ToVoteShares(row, tuning)));
             }
@@ -81,6 +87,14 @@ namespace Agora.Core.Engine.Affinity
         /// caller that needs a single cell; <see cref="Compute"/> is the cheaper path for a full tick
         /// because it sorts and filters the request once instead of per cell.
         /// </summary>
+        /// <remarks>
+        /// Does <b>not</b> apply the fringe ceiling, and cannot: a ceiling is a statement about a
+        /// party's share of a bloc, which is only defined once every party on the ballot has been
+        /// scored. A single cell returned from here is therefore the uncapped affinity, and callers
+        /// comparing it against a row from <see cref="Compute"/> will see them differ for a suppressed
+        /// party. That is the correct reading — the difference is exactly
+        /// <see cref="BlocAffinity.CeilingComponent"/>.
+        /// </remarks>
         public static BlocAffinity ComputeFor(Bloc bloc, Party party, AffinityRequest request, EngineTuning tuning)
         {
             if (bloc == null) throw new ArgumentNullException(nameof(bloc));
@@ -640,13 +654,15 @@ namespace Agora.Core.Engine.Affinity
             public readonly SimDate? LastElectionDate;
             public readonly double NationalDiscontent;
             public readonly bool HasNationalDiscontent;
+            public readonly FringeCeilings Ceilings;
 
             private readonly string[] _governingPartyIds;
 
             private Context(Guid saveGuid, SimDate date, AffinityTuning tuning, Mandate[] mandates,
                             TimelineEvent[] events, string[] governingPartyIds, SimDate? lastElectionDate,
-                            double nationalDiscontent, bool hasNationalDiscontent)
+                            double nationalDiscontent, bool hasNationalDiscontent, FringeCeilings ceilings)
             {
+                Ceilings = ceilings;
                 SaveGuid = saveGuid;
                 Date = date;
                 Tuning = tuning;
@@ -682,7 +698,8 @@ namespace Agora.Core.Engine.Affinity
                 double national = hasNational ? Clamp(r.Indices!.DiscontentIndex, 0.0, 1.0) : 0.0;
 
                 return new Context(r.SaveGuid, date, tuning.Affinity, mandates, events, governing,
-                                   r.LastElectionDate, national, hasNational);
+                                   r.LastElectionDate, national, hasNational,
+                                   r.FringeCeilings ?? FringeCeilings.None);
             }
 
             /// <summary>
