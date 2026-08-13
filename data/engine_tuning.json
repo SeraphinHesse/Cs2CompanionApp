@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
@@ -436,5 +436,25 @@
       "city-oil-resource-amount":         { "scope": "city", "modifier": "OilResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
       "city-ore-resource-amount":         { "scope": "city", "modifier": "OreResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" }
     }
+  },
+
+  "fringe": {
+    "_comment": "Packet 15. NA/FPTP only — the 'weak third parties' half of the ratified NA system (plan section 3). A party with isMajor false is pinned at baseCeiling until the majors have failed unlockConsecutiveTerms terms running; the ceiling then opens toward maxCeiling in proportion to how badly they failed, how long the failure has run, and how aggrieved the city is on that specific fringe party's own core issue. The EU proportional threshold (electionsPr.thresholdShare) is deliberately untouched — multiparty PR is supposed to have viable small parties. The three signal weights must sum to 1.",
+    "enabled": true,
+
+    "baseCeiling": 0.03,
+    "maxCeiling": 0.40,
+    "unlockConsecutiveTerms": 3,
+    "fullUnlockTerms": 6,
+    "failureTermScoreThreshold": 0.50,
+
+    "defianceWeight": 0.40,
+    "discontentWeight": 0.35,
+    "churnWeight": 0.25,
+
+    "defianceSurgeForFullSignal": 0.08,
+    "discontentFloor": 0.50,
+    "churnEventsForFullSignal": 2,
+    "grievanceFloor": 0.35
   }
 }

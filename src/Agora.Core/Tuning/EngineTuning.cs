@@ -22,7 +22,7 @@ namespace Agora.Core.Tuning
     public sealed class EngineTuning
     {
         /// <summary>Bumped whenever a key is added, removed or renamed. Runs through <c>/schema-change</c>.</summary>
-        public int SchemaVersion { get; internal set; } = 2;
+        public int SchemaVersion { get; internal set; } = 3;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -38,6 +38,7 @@ namespace Agora.Core.Tuning
         public SchedulerTuning Scheduler { get; internal set; } = new SchedulerTuning();
         public IndicesTuning Indices { get; internal set; } = new IndicesTuning();
         public EffectsTuning Effects { get; internal set; } = new EffectsTuning();
+        public FringeTuning Fringe { get; internal set; } = new FringeTuning();
 
         /// <summary>
         /// Keys that were missing or the wrong shape, in the order they were read. Empty for a file
@@ -79,6 +80,7 @@ namespace Agora.Core.Tuning
             t.Scheduler = SchedulerTuning.Read(reader.Section("scheduler"), d.Scheduler);
             t.Indices = IndicesTuning.Read(reader.Section("indices"), d.Indices);
             t.Effects = EffectsTuning.Read(reader.Section("effects"), d.Effects);
+            t.Fringe = FringeTuning.Read(reader.Section("fringe"), d.Fringe);
             t.Warnings = warnings;
             return t;
         }
@@ -1297,5 +1299,93 @@ namespace Agora.Core.Tuning
 
             return m;
         }
+    }
+
+    /// <summary>
+    /// Packet 15 — the fringe-party ceiling. JSON section <c>fringe</c>.
+    ///
+    /// <para>
+    /// NA/FPTP only, and the enforcement point checks the system before any of this is read. It exists
+    /// because the two-party system was not actually behaving like one: a bloc's support is a softmax
+    /// over affinity, affinity differences between parties are small next to
+    /// <c>affinity.softmaxTemperature</c>, and neither the incumbency nor the mandate term can hand a
+    /// fringe party anything — both are party-scoped and can only subtract from the incumbent. So a
+    /// minor party collected a large share simply for existing, and no amount of good government
+    /// pushed it back down.
+    /// </para>
+    ///
+    /// <para>
+    /// The fix is a ceiling that starts shut and opens only on a record of failure, so a third party
+    /// becomes viable the way it does in reality — because the establishment earned it.
+    /// </para>
+    /// </summary>
+    public sealed class FringeTuning
+    {
+        /// <summary>Master switch. False makes the whole packet inert and is the control in tests.</summary>
+        public bool Enabled { get; internal set; } = true;
+
+        /// <summary>
+        /// Share a minor party is pinned at while the ceiling is shut. Must stay above
+        /// <c>parties.deathVoteShareThreshold</c>, or the suppression kills the parties it suppresses.
+        /// </summary>
+        public double BaseCeiling { get; internal set; } = 0.03;
+
+        /// <summary>Ceiling at full unlock. Far enough to displace a major, which is the point.</summary>
+        public double MaxCeiling { get; internal set; } = 0.40;
+
+        /// <summary>Consecutive failure terms before the ceiling moves off <see cref="BaseCeiling"/> at all.</summary>
+        public int UnlockConsecutiveTerms { get; internal set; } = 3;
+
+        /// <summary>Consecutive failure terms at which the streak factor reaches 1.</summary>
+        public int FullUnlockTerms { get; internal set; } = 6;
+
+        /// <summary>Failure score at or above which a closed term counts as a failure term.</summary>
+        public double FailureTermScoreThreshold { get; internal set; } = 0.50;
+
+        /// <summary>Weight of defied major-party mandates in the failure score.</summary>
+        public double DefianceWeight { get; internal set; } = 0.40;
+
+        /// <summary>Weight of sustained city discontent in the failure score.</summary>
+        public double DiscontentWeight { get; internal set; } = 0.35;
+
+        /// <summary>Weight of government and mayoral turnover in the failure score.</summary>
+        public double ChurnWeight { get; internal set; } = 0.25;
+
+        /// <summary>
+        /// Summed opposition surge that saturates the defiance signal. 0.08 is two full-salience
+        /// defiances at <c>mandates.oppositionSurgeOnDefiance</c>.
+        /// </summary>
+        public double DefianceSurgeForFullSignal { get; internal set; } = 0.08;
+
+        /// <summary>Mean discontent below which the discontent signal reads zero.</summary>
+        public double DiscontentFloor { get; internal set; } = 0.50;
+
+        /// <summary>Collapses plus mayoral changes in one term that saturate the churn signal.</summary>
+        public int ChurnEventsForFullSignal { get; internal set; } = 2;
+
+        /// <summary>
+        /// City grievance on a fringe party's own core issue below which its ceiling stays shut however
+        /// badly the majors governed. Deliberately equal to <c>parties.revivalGrievanceThreshold</c>:
+        /// "aggrieved enough to revive a dead brand" and "aggrieved enough to lift a ceiling" should be
+        /// the same bar.
+        /// </summary>
+        public double GrievanceFloor { get; internal set; } = 0.35;
+
+        internal static FringeTuning Read(TuningReader r, FringeTuning d) => new FringeTuning
+        {
+            Enabled = r.Flag("enabled", d.Enabled),
+            BaseCeiling = r.Num("baseCeiling", d.BaseCeiling),
+            MaxCeiling = r.Num("maxCeiling", d.MaxCeiling),
+            UnlockConsecutiveTerms = r.Int("unlockConsecutiveTerms", d.UnlockConsecutiveTerms),
+            FullUnlockTerms = r.Int("fullUnlockTerms", d.FullUnlockTerms),
+            FailureTermScoreThreshold = r.Num("failureTermScoreThreshold", d.FailureTermScoreThreshold),
+            DefianceWeight = r.Num("defianceWeight", d.DefianceWeight),
+            DiscontentWeight = r.Num("discontentWeight", d.DiscontentWeight),
+            ChurnWeight = r.Num("churnWeight", d.ChurnWeight),
+            DefianceSurgeForFullSignal = r.Num("defianceSurgeForFullSignal", d.DefianceSurgeForFullSignal),
+            DiscontentFloor = r.Num("discontentFloor", d.DiscontentFloor),
+            ChurnEventsForFullSignal = r.Int("churnEventsForFullSignal", d.ChurnEventsForFullSignal),
+            GrievanceFloor = r.Num("grievanceFloor", d.GrievanceFloor)
+        };
     }
 }

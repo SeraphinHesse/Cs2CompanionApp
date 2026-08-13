@@ -631,7 +631,9 @@ namespace Agora.Core.Tests
         private static EngineTuning TuningWith(string json)
         {
             EngineTuning t = EngineTuning.FromJson(json);
-            Assert.Equal(2, t.SchemaVersion);   // unspecified sections fall back to the shipped defaults
+            // Unspecified sections fall back to the shipped defaults, which is what makes these
+            // fixtures one-line overrides rather than whole tuning documents.
+            Assert.Equal(EngineTuning.Default.SchemaVersion, t.SchemaVersion);
             return t;
         }
 
