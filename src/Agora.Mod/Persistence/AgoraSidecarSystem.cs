@@ -137,6 +137,14 @@ namespace Agora.Mod.Persistence
         public Func<PoliticalState> StateProvider { get; set; }
 
         /// <summary>
+        /// Supplies the sensor layer's rent and land-value memory to write at save time. Separate
+        /// from <see cref="StateProvider"/> because the two are independent: a city with no politics
+        /// yet is still accumulating the history, and a session whose engine failed to attach should
+        /// not also lose a year of measurements.
+        /// </summary>
+        public Func<MetricHistoryFile> MetricHistoryProvider { get; set; }
+
+        /// <summary>
         /// The most recent load result, for a consumer that starts after <c>OnGameLoaded</c> has
         /// already fired. Null before the first load.
         /// </summary>
@@ -351,6 +359,12 @@ namespace Agora.Mod.Persistence
 
                 if (_saveGuid == Guid.Empty) return;
 
+                // Before the state, and not gated on it. The trend history is a measurement record,
+                // so it is worth writing for a city whose politics have not started — and if it were
+                // written after the early return below, that city would restart its rent history from
+                // zero on every load, which is the failure metric_history.json exists to end.
+                WriteMetricHistory();
+
                 Func<PoliticalState> provider = StateProvider;
                 if (provider == null)
                 {
@@ -377,6 +391,30 @@ namespace Agora.Mod.Persistence
         }
 
         // ------------------------------------------------------------ helpers
+
+        /// <summary>
+        /// Writes the sensor's trend memory, if there is a provider and it produced something. Its own
+        /// try/catch so that a failure here cannot cost the state file that is written next — losing
+        /// a year of rent samples is a blemish, losing the political state is not.
+        /// </summary>
+        private void WriteMetricHistory()
+        {
+            try
+            {
+                Func<MetricHistoryFile> provider = MetricHistoryProvider;
+                if (provider == null) return;
+
+                MetricHistoryFile history = provider();
+                if (history == null) return;
+
+                _store.SaveMetricHistory(_saveGuid, history);
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Error(ex, "Agora could not write its metric history during save; the " +
+                                       "rent and land-value trends will rebuild from the previous file.");
+            }
+        }
 
         private void EnsureIdentity(Context context)
         {

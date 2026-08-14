@@ -1,6 +1,6 @@
 # Contract — Agora.Core engine types and tuning
 
-**schemaVersion: contracts 1 · `CitySnapshot` 2 · `engine_tuning.json` 2**
+**schemaVersion: contracts 1 · `CitySnapshot` 3 · `engine_tuning.json` 2**
 
 Frozen at the M2 contract pass. Every engine packet codes against these types and reads every
 coefficient through `EngineTuning`. If you need a field or a key that is not here, **stop and report
@@ -192,20 +192,38 @@ and is filled in deterministically by the scheduler.
 
 ## 9. Snapshot
 
-`CitySnapshot` — **`SchemaVersion = 2`.** City block: `Date`, `Population`, `Households`,
+`CitySnapshot` — **`SchemaVersion = 3`.** City block: `Date`, `Population`, `Households`,
 `Happiness` (0–100), `Unemployment` (0–1), `Money`, `Income`, `Expenses`, `BudgetBalance`, `Debt`
 (all `long`), `WealthDistribution Wealth`, `EducationDistribution Education`, `AgeDistribution Age`,
 `PollutionLevels Pollution`, `ServiceCoverage Services`, `TaxRates Taxes`, `CrimeRate`, `SickRate`,
-`AverageLandValue`, `LandValueTrend`, `AverageRent`, `RentTrend`, `RentBurden`, `TransitRidership`,
+`AverageLandValue`, `LandValueTrend`, `AverageRent`, `RentTrend`, `RentBurden`,
+`AverageHouseholdUpkeep`, `AverageHouseholdResourceSpend`, `DisposableMargin`, `TransitRidership`,
 `AverageCommuteMinutes`, `TrafficCongestion`, `List<string> ActivePolicyIds`,
 `List<string> RecentDisasterIds`, `List<string> InProgressMandateIds`, `DerivedIndices Indices`,
 `List<DistrictSnapshot> Districts` (sorted by `Id`).
 
 `DistrictSnapshot`: `Id`, `Name`, `Population`, `Households`, `Happiness`, `Unemployment`, `Wealth`,
 `Education`, `Age`, `Pollution`, `Services`, `CrimeRate`, `SickRate`, `AverageLandValue`,
-`LandValueTrend`, `AverageRent`, `RentTrend`, `RentBurden`, `TransitRidership`,
+`LandValueTrend`, `AverageRent`, `RentTrend`, `RentBurden`, `AverageHouseholdUpkeep`,
+`AverageHouseholdResourceSpend`, `DisposableMargin`, `TransitRidership`,
 `AverageCommuteMinutes`, `TrafficCongestion`, `bool HasCityFallbacks`,
 `List<string> CityFallbackFields`.
+
+**The household budget (v3).** `AverageHouseholdUpkeep` and `AverageHouseholdResourceSpend` are mean
+*daily* spend per household in game currency — the same two figures the game's own district panel
+labels "upkeep" and "resources", read from `Household.m_MoneySpendOnBuildingLevelingLastDay` and
+`Household.m_ShoppedValuePerDay`. `DisposableMargin` is what the engine is actually meant to read:
+`1 − (rent/day + upkeep + goods) / income/day`, **signed and uncapped**. 1 is "nothing is spent",
+0 is "every unit earned is committed", negative is "households are drawing down savings". It is a
+ratio for the same reason `RentBurden` is — game currency has no fixed scale — and it is null-safe
+rather than zero-safe: a district with no measured income reports nothing and falls back, rather than
+claiming a margin of zero. Utility fees are **not** in it yet, so it is a floor on household pressure
+rather than the whole of it.
+
+**Trends are Agora's own measurements, not the game's.** `RentTrend` and `LandValueTrend` have no
+source in the game — CS2 stores no rent time series — so the sensor keeps its own month-indexed
+history and persists it in `metric_history.json` (§5). Both stay unmeasurable, and so fall back to
+the city figure, until that history spans `sensors.trendWindowMonths` (12).
 
 Value structs: `WealthDistribution(LowShare, MiddleShare, HighShare)` ·
 `EducationDistribution(UneducatedShare … HighlyEducatedShare)` with `Index()` → `[0,1]` ·

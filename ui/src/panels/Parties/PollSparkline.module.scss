@@ -11,11 +11,13 @@ $plot-height: 52rem;
 .chart {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   margin: 2rem 0 4rem 0;
 }
 
 .empty {
   display: flex;
+  flex-shrink: 0;
   margin: 2rem 0 4rem 0;
   color: $text-faint;
   font-size: 10rem;

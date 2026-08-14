@@ -152,6 +152,7 @@ namespace Agora.Mod.Llm
             sb.Append("- mood: ").Append(HappinessBand(snapshot.Happiness)).Append('\n');
             sb.Append("- work: ").Append(UnemploymentBand(snapshot.Unemployment)).Append('\n');
             sb.Append("- cost of living: ").Append(RentBurdenBand(snapshot.RentBurden)).Append('\n');
+            sb.Append("- household budgets: ").Append(DisposableMarginBand(snapshot.DisposableMargin)).Append('\n');
             sb.Append("- pollution: ").Append(UnitBand(snapshot.Pollution.Mean(), "clean", "mostly clean", "noticeable", "bad", "choking")).Append('\n');
             sb.Append("- public services: ").Append(CoverageBand(snapshot.Services.Mean())).Append('\n');
             sb.Append("- crime: ").Append(UnitBand(Normalise01(snapshot.CrimeRate), "rare", "low", "a live issue", "serious", "out of hand")).Append('\n');
@@ -479,6 +480,20 @@ namespace Agora.Mod.Llm
         private static string RentBurdenBand(double rentBurden) =>
             UnitBand(Clamp01(1.0 - rentBurden), "rents are crushing", "rents bite hard",
                      "rents are a common complaint", "rents are manageable", "rents are easy");
+
+        /// <summary>
+        /// What is left of a day's household income after rent, upkeep and goods, as a phrase.
+        /// </summary>
+        /// <remarks>
+        /// Qualitative, like every other line in this block, because non-negotiable #1 runs in both
+        /// directions: the model must not read a number here any more than it may write one back.
+        /// The margin arrives signed and uncapped, so it is clamped into the band scale rather than
+        /// asserted to be in it — a district drawing down savings reads -0.4, not 0.
+        /// </remarks>
+        private static string DisposableMarginBand(double disposableMargin) =>
+            UnitBand(Clamp01(disposableMargin), "households are going backwards",
+                     "nothing is left at the end of the day", "budgets are tight",
+                     "most households have something spare", "households are comfortable");
 
         private static string CoverageBand(double coverage) =>
             UnitBand(Clamp01(coverage), "absent", "thin", "patchy", "decent", "excellent");

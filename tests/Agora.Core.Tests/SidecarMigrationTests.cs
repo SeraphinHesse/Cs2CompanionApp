@@ -2,8 +2,10 @@
 // five files it loads beside. See the comment there for why they are linked rather than referenced.
 
 using System;
+using System.Globalization;
 using System.IO;
 using Agora.Core.Contracts;
+using Agora.Core.Engine.Parties;
 using Agora.Mod.Persistence;
 using Newtonsoft.Json.Linq;
 using Xunit;
@@ -289,7 +291,7 @@ namespace Agora.Core.Tests
         /// deliberately scrambled array order, because the migration must reconstruct majors from id
         /// order and not from however the writer happened to emit the list.
         /// </summary>
-        private static string StateV2(string theme, string parties)
+        private static string StateV2(string theme, string parties, string? blocs = null)
         {
             return "{" +
                 "\"schemaVersion\": 2," +
@@ -309,6 +311,7 @@ namespace Agora.Core.Tests
                     "\"showAllReports\": false" +
                 "}," +
                 "\"parties\": " + parties + "," +
+                (blocs == null ? "" : "\"blocs\": " + blocs + ",") +
                 "\"factions\": []," +
                 "\"electionHistory\": []," +
                 "\"firedEventIds\": []," +
@@ -317,7 +320,13 @@ namespace Agora.Core.Tests
             "}";
         }
 
-        private static string PartyV2(string id, string status = "Active")
+        /// <summary>
+        /// A v2 party. The three optional fields are <b>omitted from the JSON when null</b>, not
+        /// written as nulls: every pre-existing call site stays byte-identical, which is what keeps the
+        /// id-order tests below honest tests of the fallback rather than of the archetype rule.
+        /// </summary>
+        private static string PartyV2(string id, string status = "Active", string? archetypeId = null,
+                                      string? predecessorPartyId = null, double? lastVoteShare = null)
         {
             return "{" +
                 "\"id\": \"" + id + "\"," +
@@ -325,10 +334,42 @@ namespace Agora.Core.Tests
                 "\"shortName\": \"" + id + "\"," +
                 "\"colorHex\": \"#3366aa\"," +
                 "\"status\": \"" + status + "\"," +
+                (archetypeId == null ? "" : "\"archetypeId\": \"" + archetypeId + "\",") +
+                (predecessorPartyId == null ? "" : "\"predecessorPartyId\": \"" + predecessorPartyId + "\",") +
+                (lastVoteShare == null
+                    ? ""
+                    : "\"lastVoteShare\": " +
+                      lastVoteShare.Value.ToString("R", CultureInfo.InvariantCulture) + ",") +
                 "\"foundedDate\": \"1990-01-01\"," +
                 "\"revivalCount\": 0," +
                 "\"playerOverrides\": \"None\"" +
             "}";
+        }
+
+        /// <summary>A bloc carrying only what the share clamp reads.</summary>
+        private static string BlocV2(string previousVote)
+        {
+            return "{" +
+                "\"districtId\": \"\"," +
+                "\"population\": 1000," +
+                "\"eligibleVoters\": 800," +
+                "\"previousVote\": " + previousVote +
+            "}";
+        }
+
+        private static string VoteShare(string partyId, double share) =>
+            "{\"partyId\": \"" + partyId + "\", \"share\": " +
+            share.ToString("R", CultureInfo.InvariantCulture) + "}";
+
+        private static double ShareOf(JObject root, string partyId)
+        {
+            foreach (JToken token in Arr(root, "parties"))
+            {
+                var party = (JObject)token;
+                if ((string?)party["id"] == partyId) return (double)party["lastVoteShare"]!;
+            }
+
+            throw new Xunit.Sdk.XunitException("no party " + partyId + " in the migrated document");
         }
 
         private static bool IsMajor(JObject root, string partyId)
@@ -343,12 +384,14 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// The reconstruction that matters. Defaulting <c>isMajor</c> to false would tell the fringe
-        /// ceiling that an existing NA save has no majors at all, and the ceiling would then pin every
-        /// party on the ballot to 3% — so the migration has to work out which two they were.
+        /// The fallback, exercised because no party in this fixture carries an <c>archetypeId</c>.
+        /// Id order is a guess and a bad one — see
+        /// <see cref="Migrate_StateV2_ReconstructsMajorsFromTheArchetypeIdNotTheIdOrder"/> for what it
+        /// gets wrong — but zero majors on an NA save is worse: the ceiling caps every non-major, so
+        /// an all-minor ballot would be pinned at 3% in its entirety.
         /// </summary>
         [Fact]
-        public void Migrate_StateV2_MarksTheTwoLowestNaPartyIdsAsMajors()
+        public void Migrate_StateV2_FallsBackToIdOrderWhenNoPartyCarriesAnArchetype()
         {
             MigrationResult result;
             JObject root = Migrate(StateV2("Na", "[" +
@@ -366,10 +409,10 @@ namespace Agora.Core.Tests
 
         /// <summary>
         /// A dead brand must not consume a major slot that belongs to a live party — the same reason
-        /// <c>NextPartyId</c> counts past dissolved ids.
+        /// <c>NextPartyId</c> counts past dissolved ids. Still the id-order fallback: no archetypes here.
         /// </summary>
         [Fact]
-        public void Migrate_StateV2_SkipsDeadBrandsWhenPickingTheMajors()
+        public void Migrate_StateV2_SkipsDeadBrandsInTheIdOrderFallback()
         {
             MigrationResult result;
             JObject root = Migrate(StateV2("Na", "[" +
@@ -395,6 +438,211 @@ namespace Agora.Core.Tests
             Assert.False(IsMajor(root, "party-01"));
             Assert.False(IsMajor(root, "party-02"));
             Assert.False(IsMajor(root, "party-03"));
+        }
+
+        /// <summary>
+        /// The regression guard for the whole fix, and the case the id-order rule gets wrong in the
+        /// field: the original <c>liberal</c> dissolved, so the lowest live id belongs to the green.
+        /// Id order would flag <c>party-02</c> and <c>party-03</c> — a populist and a green — and the
+        /// fringe ceiling would then never cap either of them.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_ReconstructsMajorsFromTheArchetypeIdNotTheIdOrder()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", "Dissolved", archetypeId: "liberal") + "," +
+                PartyV2("party-02", archetypeId: "populist") + "," +
+                PartyV2("party-03", archetypeId: "green") + "," +
+                PartyV2("party-04", archetypeId: "conservative") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.True(IsMajor(root, "party-04"));
+
+            Assert.False(IsMajor(root, "party-02"));
+            Assert.False(IsMajor(root, "party-03"));
+
+            // The dead liberal is not resurrected into a major slot, and the answer is not padded back
+            // up to two from the fringe brands that remain.
+            Assert.False(IsMajor(root, "party-01"));
+        }
+
+        /// <summary>
+        /// The shape of the real save this fix was reported against: a healthy four-party NA registry
+        /// where the archetypes and the ids happen to agree. Both rules answer the same here, which is
+        /// the point — the fix must not disturb a save that was already correct.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_MarksTheLiberalAndTheConservativeOnAHealthyNaRegistry()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", archetypeId: "liberal") + "," +
+                PartyV2("party-02", archetypeId: "conservative") + "," +
+                PartyV2("party-03", archetypeId: "green") + "," +
+                PartyV2("party-04", archetypeId: "populist") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.True(IsMajor(root, "party-01"));
+            Assert.True(IsMajor(root, "party-02"));
+            Assert.False(IsMajor(root, "party-03"));
+            Assert.False(IsMajor(root, "party-04"));
+        }
+
+        /// <summary>
+        /// A splinter copies its parent's archetype verbatim, so the archetype alone would make two
+        /// liberals. <c>predecessorPartyId</c> is the whole discriminator.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_DoesNotMakeASplinterAMajor()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", archetypeId: "liberal") + "," +
+                PartyV2("party-02", archetypeId: "conservative") + "," +
+                PartyV2("party-05", archetypeId: "liberal", predecessorPartyId: "party-01") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.True(IsMajor(root, "party-01"));
+            Assert.True(IsMajor(root, "party-02"));
+            Assert.False(IsMajor(root, "party-05"));
+        }
+
+        /// <summary>
+        /// Every share in a v2 file was computed before the ceiling existed. The minors come down to
+        /// the base ceiling; a major is untouched however large, and a minor already below it is left
+        /// exactly as it was rather than raised.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_ClampsStaleMinorSharesToTheBaseCeiling()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", archetypeId: "liberal", lastVoteShare: 0.40) + "," +
+                PartyV2("party-02", archetypeId: "conservative", lastVoteShare: 0.35) + "," +
+                PartyV2("party-03", archetypeId: "green", lastVoteShare: 0.225) + "," +
+                PartyV2("party-04", archetypeId: "populist", lastVoteShare: 0.01) + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(0.40, ShareOf(root, "party-01"), 6);
+            Assert.Equal(0.35, ShareOf(root, "party-02"), 6);
+            Assert.Equal(0.03, ShareOf(root, "party-03"), 6);
+            Assert.Equal(0.01, ShareOf(root, "party-04"), 6);
+        }
+
+        /// <summary>
+        /// The bloc rows are capped in place. Clamping rather than stripping matters:
+        /// <c>AffinityEngine.PreviousShare</c> reads 0 for a party it cannot find, so removing the
+        /// entry would delete the habitual-loyalty term instead of capping it. The majors' entries are
+        /// asserted byte-identical, which is what proves the row was not renormalised.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_ClampsMinorEntriesInEveryBlocPreviousVoteWithoutRenormalising()
+        {
+            string blocs = "[" + BlocV2("[" +
+                VoteShare("party-01", 0.30) + "," +
+                VoteShare("party-02", 0.20) + "," +
+                VoteShare("party-03", 0.28) + "," +
+                VoteShare("party-04", 0.22) + "]") + "]";
+
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", archetypeId: "liberal") + "," +
+                PartyV2("party-02", archetypeId: "conservative") + "," +
+                PartyV2("party-03", archetypeId: "green") + "," +
+                PartyV2("party-04", archetypeId: "populist") + "]", blocs), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+
+            var row = (JArray)((JObject)Arr(root, "blocs")[0])["previousVote"]!;
+            Assert.Equal(4, row.Count);
+
+            Assert.Equal(0.30, (double)((JObject)row[0])["share"]!, 6);
+            Assert.Equal(0.20, (double)((JObject)row[1])["share"]!, 6);
+            Assert.Equal(0.03, (double)((JObject)row[2])["share"]!, 6);
+            Assert.Equal(0.03, (double)((JObject)row[3])["share"]!, 6);
+        }
+
+        /// <summary>
+        /// The clamp is NA-gated. The ceiling is FPTP-only, and multiparty PR is supposed to have
+        /// viable small parties — flattening them here would be silent, permanent data loss.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_LeavesEuSharesAlone()
+        {
+            string blocs = "[" + BlocV2("[" + VoteShare("party-02", 0.28) + "]") + "]";
+
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Eu", "[" +
+                PartyV2("party-01", archetypeId: "green", lastVoteShare: 0.31) + "," +
+                PartyV2("party-02", archetypeId: "labour", lastVoteShare: 0.28) + "]", blocs), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(0.31, ShareOf(root, "party-01"), 6);
+            Assert.Equal(0.28, ShareOf(root, "party-02"), 6);
+
+            var row = (JArray)((JObject)Arr(root, "blocs")[0])["previousVote"]!;
+            Assert.Equal(0.28, (double)((JObject)row[0])["share"]!, 6);
+        }
+
+        /// <summary>
+        /// The clamp caps what is there and never conjures a field. Inventing an election result for a
+        /// party that never recorded one is not this step's business, and
+        /// <c>Migrate_StateV1_ChangesNothingElse</c> would fail on it.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV2_DoesNotCreateALastVoteShareThatWasAbsent()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", archetypeId: "liberal") + "," +
+                PartyV2("party-03", archetypeId: "green") + "]"), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+
+            foreach (JToken token in Arr(root, "parties"))
+            {
+                Assert.Null(((JObject)token)["lastVoteShare"]);
+            }
+        }
+
+        /// <summary>
+        /// The anti-drift weld. The migration reads a JSON DOM and the load-time repair reads a
+        /// materialised registry; both project into <c>MajorCandidate</c> and call the same rule, so a
+        /// freshly migrated file must already satisfy the repair. If the two projections ever disagree,
+        /// the repair reports a change here and this fails.
+        /// </summary>
+        [Fact]
+        public void Migration_AndLoadTimeRepair_Agree()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV2("Na", "[" +
+                PartyV2("party-01", "Dissolved", archetypeId: "liberal") + "," +
+                PartyV2("party-02", archetypeId: "populist") + "," +
+                PartyV2("party-03", archetypeId: "green") + "," +
+                PartyV2("party-04", archetypeId: "conservative") + "," +
+                PartyV2("party-05", archetypeId: "conservative", predecessorPartyId: "party-04") + "]"),
+                out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+
+            PoliticalState state = AgoraJson.ToObject<PoliticalState>(root)!;
+            MajorRepairResult repair = NaMajorParties.Repair(
+                state.Parties, SidecarSchema.NaMajorArchetypeIdsV3, 2);
+
+            Assert.False(repair.Changed);
+        }
+
+        /// <summary>
+        /// The frozen archetype list the migration carries must still describe the live catalog. A
+        /// divergence is allowed — a migration reproduces what a file was written with — but it has to
+        /// be a decision someone made, not a drift nobody noticed.
+        /// </summary>
+        [Fact]
+        public void Migrate_FrozenMajorArchetypeIdsStillMatchTheLiveCatalog()
+        {
+            Assert.Equal(NaMajorParties.DefaultMajorArchetypeIds(2).ToArray(),
+                         SidecarSchema.NaMajorArchetypeIdsV3);
         }
 
         /// <summary>
@@ -530,6 +778,89 @@ namespace Agora.Core.Tests
 
                 SidecarLoadResult again = store.Load(Save, date);
 
+                Assert.Equal(AgoraJson.Fingerprint(loaded.State), AgoraJson.Fingerprint(again.State));
+            }
+            finally
+            {
+                Delete(root);
+            }
+        }
+
+        /// <summary>
+        /// The system is a property of the theme and nothing else — <c>RegionThemeRules.SystemFor</c>
+        /// says there is no override — but it was only ever derived at save creation and at a retheme,
+        /// so a stored disagreement was believed on the load path. An NA save that came back as
+        /// Proportional ran North American parties through a list election with no mayor and, worse for
+        /// this bug, silently disabled the fringe ceiling: <c>FringeFailureModel.Ceilings</c> returns
+        /// None under anything but FPTP.
+        /// </summary>
+        [Fact]
+        public void SidecarStore_DerivesTheSystemFromTheThemeOnLoad()
+        {
+            string root = TempRoot("system-from-theme");
+
+            try
+            {
+                string directory = Path.Combine(root, SidecarPaths.FormatGuid(Save));
+                Directory.CreateDirectory(directory);
+
+                // Theme Na, system Proportional: a combination the engine cannot produce.
+                string state = StateV2("Na", "[" + PartyV2("party-01", archetypeId: "liberal") + "]")
+                    .Replace("\"system\": \"FirstPastThePost\"", "\"system\": \"Proportional\"");
+                File.WriteAllText(Path.Combine(directory, "state_1994_03.json"), state);
+
+                var store = new SidecarStore(root, NullSidecarLog.Instance);
+                SidecarLoadResult loaded = store.Load(Save, new SimDate(1994, 3, 1));
+
+                Assert.True(loaded.HasState);
+                Assert.Equal(ElectoralSystem.FirstPastThePost, loaded.Settings.System);
+                Assert.Equal(ElectoralSystem.FirstPastThePost, loaded.State.Settings.System);
+            }
+            finally
+            {
+                Delete(root);
+            }
+        }
+
+        /// <summary>
+        /// The NA sibling of the round-trip above, and the non-negotiable #6 gate on this change: the
+        /// migration moves the fingerprint once, and a save/reload after it moves nothing.
+        /// </summary>
+        [Fact]
+        public void SidecarStore_RoundTripsAnNaV2StateFile()
+        {
+            string root = TempRoot("roundtrip-na");
+
+            try
+            {
+                string directory = Path.Combine(root, SidecarPaths.FormatGuid(Save));
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "state_1994_03.json"), StateV2("Na", "[" +
+                    PartyV2("party-01", archetypeId: "liberal", lastVoteShare: 0.44) + "," +
+                    PartyV2("party-02", archetypeId: "conservative", lastVoteShare: 0.41) + "," +
+                    PartyV2("party-03", archetypeId: "green", lastVoteShare: 0.225) + "," +
+                    PartyV2("party-04", archetypeId: "populist", lastVoteShare: 0.28) + "]"));
+
+                var store = new SidecarStore(root, NullSidecarLog.Instance);
+                var date = new SimDate(1994, 3, 1);
+
+                SidecarLoadResult loaded = store.Load(Save, date);
+
+                Assert.True(loaded.HasState);
+                Assert.True(loaded.State.Parties[0].IsMajor);
+                Assert.True(loaded.State.Parties[1].IsMajor);
+                Assert.False(loaded.State.Parties[2].IsMajor);
+                Assert.False(loaded.State.Parties[3].IsMajor);
+
+                // The two majors keep their real results; the two fringe parties come down off the
+                // shares they were handed before any ceiling existed.
+                Assert.Equal(0.44, loaded.State.Parties[0].LastVoteShare, 6);
+                Assert.Equal(0.03, loaded.State.Parties[2].LastVoteShare, 6);
+                Assert.Equal(0.03, loaded.State.Parties[3].LastVoteShare, 6);
+
+                Assert.True(store.SaveState(loaded.State));
+
+                SidecarLoadResult again = store.Load(Save, date);
                 Assert.Equal(AgoraJson.Fingerprint(loaded.State), AgoraJson.Fingerprint(again.State));
             }
             finally

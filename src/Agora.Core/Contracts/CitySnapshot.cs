@@ -214,10 +214,12 @@ namespace Agora.Core.Contracts
     public sealed class CitySnapshot
     {
         /// <summary>
-        /// 2 as of the M2 contract freeze: v1 carried only population, happiness, unemployment and
-        /// money.
+        /// 3 as of the household-budget pass. v1 carried only population, happiness, unemployment and
+        /// money; v2 was the M2 contract freeze; v3 adds
+        /// <see cref="AverageHouseholdUpkeep"/>, <see cref="AverageHouseholdResourceSpend"/> and
+        /// <see cref="DisposableMargin"/>.
         /// </summary>
-        public int SchemaVersion { get; set; } = 2;
+        public int SchemaVersion { get; set; } = 3;
 
         public SimDate Date { get; set; }
 
@@ -278,6 +280,42 @@ namespace Agora.Core.Contracts
 
         /// <summary>Rent as a share of mean household income, 0–1+. The cost-of-living signal.</summary>
         public double RentBurden { get; set; }
+
+        /// <summary>
+        /// Mean daily spend per household on keeping its home standing, in game currency. The game's
+        /// district panel shows this as "upkeep".
+        /// </summary>
+        public double AverageHouseholdUpkeep { get; set; }
+
+        /// <summary>
+        /// Mean daily spend per household on goods, in game currency. The game's district panel shows
+        /// this as "resources".
+        /// </summary>
+        public double AverageHouseholdResourceSpend { get; set; }
+
+        /// <summary>
+        /// Share of daily household income left after rent, upkeep and resources. 1 is "nothing is
+        /// spent"; 0 is "every unit earned is committed"; negative means households are eating into
+        /// savings.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A ratio rather than a currency figure, for the same reason <see cref="RentBurden"/> is one:
+        /// game currency has no fixed scale across cities or across patches, and an engine coefficient
+        /// tuned against an absolute margin would silently retune itself whenever the economy did.
+        /// </para>
+        /// <para>
+        /// Uncapped in both directions, deliberately. Clamping at zero would hide the households the
+        /// cost-of-living issue most wants to find, and clamping at one would hide a district where
+        /// nobody pays rent at all.
+        /// </para>
+        /// <para>
+        /// Utility fees are <b>not</b> in this figure yet — the game charges them per property, from
+        /// the city's <c>ServiceFee</c> buffer, and reading them needs a wider walk than the sensor
+        /// currently takes. Until they are, this is a floor on household pressure, not the whole of it.
+        /// </para>
+        /// </remarks>
+        public double DisposableMargin { get; set; }
 
         /// <summary>Share of trips taken on public transit, 0–1.</summary>
         public double TransitRidership { get; set; }
@@ -360,6 +398,18 @@ namespace Agora.Core.Contracts
 
         /// <summary>0–1+.</summary>
         public double RentBurden { get; set; }
+
+        /// <summary>Mean daily household upkeep spend, in game currency.</summary>
+        public double AverageHouseholdUpkeep { get; set; }
+
+        /// <summary>Mean daily household spend on goods, in game currency.</summary>
+        public double AverageHouseholdResourceSpend { get; set; }
+
+        /// <summary>
+        /// Share of daily household income left after rent, upkeep and resources. Signed; see
+        /// <see cref="CitySnapshot.DisposableMargin"/>.
+        /// </summary>
+        public double DisposableMargin { get; set; }
 
         /// <summary>0–1.</summary>
         public double TransitRidership { get; set; }

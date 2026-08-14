@@ -195,7 +195,7 @@ namespace Agora.Core.Contracts
         /// True for one of the two dominant parties in the NA theme; false for everything else,
         /// including every party in the EU theme.
         ///
-        /// <para>Engine-owned, set once at generation. Until this field existed, major-versus-minor
+        /// <para>Engine-owned. Until this field existed, major-versus-minor
         /// was encoded only as position in <c>PartyArchetypes.NaArray</c> — the majors come first so
         /// <c>PartyRegistry.GenerateInitial</c> can take a prefix — which meant nothing downstream
         /// could ask the question. The <c>fringe</c> packet needs to, so the ordering convention is
@@ -204,6 +204,14 @@ namespace Agora.Core.Contracts
         /// <para>A brand that splits off a major is <b>not</b> a major: new parties keep the default
         /// false. In the EU theme nothing reads it — the fringe ceiling is FPTP-only — and it stays
         /// false rather than true so that a stray reader cannot change proportional behaviour.</para>
+        ///
+        /// <para>There are two writers, not one. <c>GenerateInitial</c> sets it at generation, and
+        /// <c>NaMajorParties.Repair</c> reconciles it on every load. The second exists because
+        /// generation is not the only way a registry arrives: a save restored from a sidecar written
+        /// before this field existed has it reconstructed from <see cref="ArchetypeId"/>, and a save
+        /// whose flags were written by a build that guessed wrong has no other route back — a
+        /// migration fires at one version boundary and never again. The repair is idempotent and
+        /// leaves off-ballot brands alone, so it moves the state fingerprint at most once per save.</para>
         /// </summary>
         public bool IsMajor { get; set; }
 

@@ -131,6 +131,7 @@ ModsData/Agora/<saveGuid>/
   timeline_progress.json            # fired event IDs
   settings.json                     # per-save settings
   flavor_cache.json                 # last good Claude prose
+  metric_history.json               # sensor memory for the rent and land-value trends
 ```
 
 ### Rules

@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
@@ -37,6 +42,9 @@ namespace Agora.Mod.Sensors
         private const string FieldAverageRent = "AverageRent";
         private const string FieldRentTrend = "RentTrend";
         private const string FieldRentBurden = "RentBurden";
+        private const string FieldAverageHouseholdUpkeep = "AverageHouseholdUpkeep";
+        private const string FieldAverageHouseholdResourceSpend = "AverageHouseholdResourceSpend";
+        private const string FieldDisposableMargin = "DisposableMargin";
         private const string FieldTransitRidership = "TransitRidership";
         private const string FieldAverageCommuteMinutes = "AverageCommuteMinutes";
         private const string FieldTrafficCongestion = "TrafficCongestion";
@@ -74,6 +82,9 @@ namespace Agora.Mod.Sensors
                 AverageRent = city.AverageRent ?? 0.0,
                 RentTrend = city.RentTrend ?? 0.0,
                 RentBurden = city.RentBurden ?? 0.0,
+                AverageHouseholdUpkeep = city.AverageHouseholdUpkeep ?? 0.0,
+                AverageHouseholdResourceSpend = city.AverageHouseholdResourceSpend ?? 0.0,
+                DisposableMargin = city.DisposableMargin ?? 0.0,
                 TransitRidership = city.TransitRidership ?? 0.0,
                 AverageCommuteMinutes = city.AverageCommuteMinutes ?? 0.0,
                 TrafficCongestion = city.TrafficCongestion ?? 0.0,
@@ -142,6 +153,9 @@ namespace Agora.Mod.Sensors
             district.AverageRent = Resolve(reading.AverageRent, city.AverageRent, FieldAverageRent, fallbacks);
             district.RentTrend = Resolve(reading.RentTrend, city.RentTrend, FieldRentTrend, fallbacks);
             district.RentBurden = Resolve(reading.RentBurden, city.RentBurden, FieldRentBurden, fallbacks);
+            district.AverageHouseholdUpkeep = Resolve(reading.AverageHouseholdUpkeep, city.AverageHouseholdUpkeep, FieldAverageHouseholdUpkeep, fallbacks);
+            district.AverageHouseholdResourceSpend = Resolve(reading.AverageHouseholdResourceSpend, city.AverageHouseholdResourceSpend, FieldAverageHouseholdResourceSpend, fallbacks);
+            district.DisposableMargin = Resolve(reading.DisposableMargin, city.DisposableMargin, FieldDisposableMargin, fallbacks);
             district.TransitRidership = Resolve(reading.TransitRidership, city.TransitRidership, FieldTransitRidership, fallbacks);
             district.AverageCommuteMinutes = Resolve(reading.AverageCommuteMinutes, city.AverageCommuteMinutes, FieldAverageCommuteMinutes, fallbacks);
             district.TrafficCongestion = Resolve(reading.TrafficCongestion, city.TrafficCongestion, FieldTrafficCongestion, fallbacks);

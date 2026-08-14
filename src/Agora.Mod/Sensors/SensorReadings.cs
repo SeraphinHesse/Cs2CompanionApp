@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System.Collections.Generic;
 using Agora.Core.Contracts;
 
@@ -38,6 +43,9 @@ namespace Agora.Mod.Sensors
         public double? AverageRent;
         public double? RentTrend;
         public double? RentBurden;
+        public double? AverageHouseholdUpkeep;
+        public double? AverageHouseholdResourceSpend;
+        public double? DisposableMargin;
         public double? TransitRidership;
         public double? AverageCommuteMinutes;
         public double? TrafficCongestion;
@@ -77,6 +85,9 @@ namespace Agora.Mod.Sensors
         public double? AverageRent;
         public double? RentTrend;
         public double? RentBurden;
+        public double? AverageHouseholdUpkeep;
+        public double? AverageHouseholdResourceSpend;
+        public double? DisposableMargin;
         public double? TransitRidership;
         public double? AverageCommuteMinutes;
         public double? TrafficCongestion;

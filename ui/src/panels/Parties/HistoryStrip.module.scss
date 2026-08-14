@@ -11,6 +11,7 @@ $bar-height: 44rem;
 .strip {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   margin-bottom: 4rem;
 }
 

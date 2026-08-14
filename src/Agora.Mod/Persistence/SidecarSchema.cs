@@ -6,17 +6,19 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Agora.Core.Engine.Parties;
 using Newtonsoft.Json.Linq;
 
 namespace Agora.Mod.Persistence
 {
-    /// <summary>Which of the four sidecar documents a version number belongs to.</summary>
+    /// <summary>Which of the five sidecar documents a version number belongs to.</summary>
     public enum SidecarDocument
     {
         State = 0,
         Settings = 1,
         TimelineProgress = 2,
-        FlavorCache = 3
+        FlavorCache = 3,
+        MetricHistory = 4
     }
 
     /// <summary>What happened when a document's <c>schemaVersion</c> was reconciled with this build.</summary>
@@ -122,6 +124,19 @@ namespace Agora.Mod.Persistence
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
         public const int CurrentTimelineProgressVersion = 1;
+
+        /// <summary>
+        /// <c>metric_history.json</c>, the sensor layer's rent and land-value memory. New in this
+        /// build, so there is no v0 to migrate from and <see cref="MetricHistorySteps"/> is empty.
+        /// </summary>
+        /// <remarks>
+        /// An absent file is the normal case for every save that predates it, and it is handled
+        /// without a migration step: <c>SidecarStore.LoadMetricHistory</c> returns null, the sensor
+        /// starts with no samples, and the first year of play refills it. That is the same position
+        /// every save was already in on every load, so this is a floor that rises rather than a
+        /// behaviour change that needs unwinding.
+        /// </remarks>
+        public const int CurrentMetricHistoryVersion = 1;
 
         /// <summary>
         /// Not consulted by anything. <c>flavor_cache.json</c> is read by <c>Agora.Mod/Llm</c>, which
@@ -235,23 +250,34 @@ namespace Agora.Mod.Persistence
         }
 
         /// <summary>
-        /// v2 → v3: <c>parties[].isMajor</c> and the root <c>fringe</c> watch.
+        /// v2 → v3: <c>parties[].isMajor</c>, the root <c>fringe</c> watch, and a one-off correction of
+        /// the vote shares the ceiling was never applied to.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <c>isMajor</c> is reconstructed rather than defaulted, because defaulting it to false would
         /// tell the fringe ceiling that an existing NA save has no major parties at all and pin the
-        /// whole ballot at 3%. The reconstruction is exact: NA generation walks
-        /// <c>PartyArchetypes.NaArray</c> majors-first and hands out <c>party-01</c>, <c>party-02</c>,
-        /// … in that order, so the two lowest ids are the two majors. Later ids can only be splinters
-        /// or entrants, which are fringe by definition, and EU saves have no majors at all.
+        /// whole ballot at 3%. The reconstruction runs on <c>archetypeId</c>, which these files have
+        /// carried all along: the NA majors are exactly the brands generated from <c>liberal</c> and
+        /// <c>conservative</c>, with <c>predecessorPartyId</c> separating an original brand from a
+        /// splinter that copied its archetype. The rule itself lives in
+        /// <see cref="NaMajorParties.Reconstruct"/> and is shared with the load-time repair, so the two
+        /// cannot come to disagree; this method only projects the DOM into candidates.
         /// </para>
         /// <para>
-        /// Dissolved and merged brands are skipped when picking the two lowest, for the same reason
-        /// <c>NextPartyId</c> counts past them: a dead <c>party-01</c> must not consume a major slot
-        /// that belongs to a live party. The <c>fringe</c> block is written zeroed — a save that has
-        /// never observed a failure term has not had one, and inventing a streak here would hand an
-        /// existing save an unearned fringe surge on its next tick.
+        /// An earlier version of this step guessed from id order — "the two lowest live ids are the
+        /// majors" — on the reasoning that NA generation hands out ids in majors-first catalog order.
+        /// That is true at generation and false afterwards: a save whose original <c>liberal</c> had
+        /// dissolved would promote whichever brand held the next-lowest id, which is a fringe party by
+        /// construction, and the ceiling would then leave it uncapped for good. The id-order rule
+        /// survives only as the fallback for a file old enough to predate <c>archetypeId</c>.
+        /// </para>
+        /// <para>
+        /// The <c>fringe</c> block is written zeroed — a save that has never observed a failure term
+        /// has not had one, and inventing a streak here would hand an existing save an unearned fringe
+        /// surge on its next tick. Off-ballot brands are left at false for the same reason the live
+        /// repair leaves them alone: nothing reads the flag while a brand is dead, and
+        /// <c>PartyLifecycle.ApplyRevivals</c> does not restore it either, so this matches the engine.
         /// </para>
         /// </remarks>
         private static void MigrateStateV2ToV3(JObject root)
@@ -261,28 +287,45 @@ namespace Agora.Mod.Persistence
             var parties = root["parties"] as JArray;
             if (parties != null)
             {
-                // Ordinal sort over ids reproduces generation order: FormatId zero-pads, so string
-                // order and numeric order agree. Explicit, because JArray order is whatever the
-                // writer happened to emit.
-                var live = new List<JObject>();
+                var partyObjects = new List<JObject>();
+                var candidates = new List<MajorCandidate>();
+
                 foreach (JToken token in parties)
                 {
                     var party = token as JObject;
                     if (party == null) continue;
 
                     party["isMajor"] = false;
+                    partyObjects.Add(party);
 
+                    // "Not Dissolved and not Merged" is exactly PartyRegistry.IsOnBallot over the five
+                    // PartyStatus values, so the projection matches what the live repair will compute.
                     string status = (string)party["status"] ?? "Active";
-                    if (string.Equals(status, "Dissolved", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(status, "Merged", StringComparison.OrdinalIgnoreCase)) continue;
+                    bool onBallot =
+                        !string.Equals(status, "Dissolved", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(status, "Merged", StringComparison.OrdinalIgnoreCase);
 
-                    live.Add(party);
+                    candidates.Add(new MajorCandidate
+                    {
+                        PartyId = (string)party["id"] ?? "",
+                        ArchetypeId = (string)party["archetypeId"] ?? "",
+                        IsOnBallot = onBallot,
+                        HasPredecessor = !string.IsNullOrEmpty((string)party["predecessorPartyId"])
+                    });
                 }
 
                 if (isNa)
                 {
-                    live.Sort((a, b) => string.CompareOrdinal((string)a["id"] ?? "", (string)b["id"] ?? ""));
-                    for (int i = 0; i < live.Count && i < NaMajorCount; i++) live[i]["isMajor"] = true;
+                    List<string> majors = NaMajorParties.Reconstruct(
+                        candidates, NaMajorArchetypeIdsV3, NaMajorCount);
+
+                    for (int i = 0; i < partyObjects.Count; i++)
+                    {
+                        string id = (string)partyObjects[i]["id"] ?? "";
+                        if (IndexOfOrdinal(majors, id) >= 0) partyObjects[i]["isMajor"] = true;
+                    }
+
+                    ClampStalePreCeilingShares(root, partyObjects, majors);
                 }
             }
 
@@ -304,10 +347,96 @@ namespace Agora.Mod.Persistence
         }
 
         /// <summary>
+        /// Every minor share in a v2 file was computed before the fringe ceiling existed, so this step
+        /// pulls them down to what the ceiling would have allowed. NA only: the ceiling is FPTP-only
+        /// (<c>FringeFailureModel.Ceilings</c> returns None under proportional), and clamping an EU
+        /// save's minor parties would be silent, permanent data loss on a theme that is supposed to
+        /// have viable small parties.
+        /// </summary>
+        /// <remarks>
+        /// Shares are clamped, never zeroed and never removed. Zeroing <c>lastVoteShare</c> would make
+        /// the dashboard render a fabricated positive swing — it draws
+        /// <c>currentPollShare - lastVoteShare</c> — for a party that is in fact being suppressed, and
+        /// would erase the record of a real election. Removing a <c>previousVote</c> entry is the same
+        /// thing by another route: <c>AffinityEngine.PreviousShare</c> returns 0 for a party it cannot
+        /// find, so a stripped entry and a zeroed one both delete the loyalty term instead of capping it.
+        /// <para>
+        /// The rows are deliberately NOT renormalised. Neither consumer treats <c>previousVote</c> as a
+        /// distribution: <c>AffinityEngine.LoyaltyTerm</c> reads one party's share on its own, and the
+        /// dashboard divides by eligible voters rather than by the row sum. Renormalising would hand the
+        /// majors a habitual-loyalty bonus no voter ever gave them.
+        /// </para>
+        /// </remarks>
+        private static void ClampStalePreCeilingShares(JObject root, List<JObject> partyObjects,
+                                                       List<string> majors)
+        {
+            for (int i = 0; i < partyObjects.Count; i++)
+            {
+                JObject party = partyObjects[i];
+                if (IndexOfOrdinal(majors, (string)party["id"] ?? "") >= 0) continue;
+
+                // Never CREATE the property. Migrate_StateV1_ChangesNothingElse compares everything
+                // outside the fields a step is allowed to add, and a lastVoteShare conjured onto a
+                // party that had none would fail it — correctly, since inventing an election result is
+                // not this step's business.
+                ClampShareInPlace(party["lastVoteShare"] as JValue);
+            }
+
+            var blocs = root["blocs"] as JArray;
+            if (blocs == null) return;
+
+            foreach (JToken blocToken in blocs)
+            {
+                var previous = (blocToken as JObject)?["previousVote"] as JArray;
+                if (previous == null) continue;
+
+                foreach (JToken entryToken in previous)
+                {
+                    var entry = entryToken as JObject;
+                    if (entry == null) continue;
+                    if (IndexOfOrdinal(majors, (string)entry["partyId"] ?? "") >= 0) continue;
+
+                    ClampShareInPlace(entry["share"] as JValue);
+                }
+            }
+        }
+
+        private static void ClampShareInPlace(JValue share)
+        {
+            if (share == null) return;
+            if (share.Type != JTokenType.Float && share.Type != JTokenType.Integer) return;
+
+            double value = share.Value<double>();
+            if (value > FringeBaseCeilingAtV3) share.Value = FringeBaseCeilingAtV3;
+        }
+
+        private static int IndexOfOrdinal(List<string> ids, string value)
+        {
+            if (ids == null || string.IsNullOrEmpty(value)) return -1;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (string.CompareOrdinal(ids[i], value) == 0) return i;
+            }
+            return -1;
+        }
+
+        /// <summary>
         /// Mirrors <c>parties.targetCountNa</c>. Deliberately a local constant and not a tuning read:
         /// a migration must reproduce what the file was written with, and tuning is free to change.
         /// </summary>
         private const int NaMajorCount = 2;
+
+        /// <summary>
+        /// Mirrors the majors-first prefix of <c>PartyArchetypes.NaArray</c> at the version this step
+        /// was written for. Frozen here for the same reason as <see cref="NaMajorCount"/> — the catalog
+        /// may be reordered or renamed later, and this step must keep answering for the files it was
+        /// written against. <c>NaMajorPartiesTests</c> asserts it still matches the live catalog, so a
+        /// divergence is a deliberate decision rather than a silent one.
+        /// </summary>
+        internal static readonly string[] NaMajorArchetypeIdsV3 = { "liberal", "conservative" };
+
+        /// <summary>Mirrors <c>fringe.baseCeiling</c> at the version this step was written for.</summary>
+        private const double FringeBaseCeilingAtV3 = 0.03;
 
         // One table per document, so that adding a step is a visible edit in a reviewed place rather
         // than a conditional buried in a loader. Each list must be ordered by FromVersion ascending;
@@ -332,6 +461,13 @@ namespace Agora.Mod.Persistence
         private static readonly List<MigrationStep> TimelineProgressSteps = new List<MigrationStep>();
         private static readonly List<MigrationStep> FlavorCacheSteps = new List<MigrationStep>();
 
+        // Empty because metric_history.json is at its first version. Unlike the flavor cache's table
+        // this one IS reached — SidecarStore.LoadMetricHistory routes through Migrate — which is safe
+        // only while CurrentMetricHistoryVersion is 1: an unversioned or v1 file equals the target and
+        // never enters the step loop. Bumping that constant without adding a 1 -> 2 step here turns
+        // every existing history into NoPathForward, i.e. silently discards it.
+        private static readonly List<MigrationStep> MetricHistorySteps = new List<MigrationStep>();
+
         public static int CurrentVersionOf(SidecarDocument document)
         {
             switch (document)
@@ -340,6 +476,7 @@ namespace Agora.Mod.Persistence
                 case SidecarDocument.Settings: return CurrentSettingsVersion;
                 case SidecarDocument.TimelineProgress: return CurrentTimelineProgressVersion;
                 case SidecarDocument.FlavorCache: return CurrentFlavorCacheVersion;
+                case SidecarDocument.MetricHistory: return CurrentMetricHistoryVersion;
                 default: throw new ArgumentOutOfRangeException("document");
             }
         }
@@ -352,6 +489,7 @@ namespace Agora.Mod.Persistence
                 case SidecarDocument.Settings: return SettingsSteps;
                 case SidecarDocument.TimelineProgress: return TimelineProgressSteps;
                 case SidecarDocument.FlavorCache: return FlavorCacheSteps;
+                case SidecarDocument.MetricHistory: return MetricHistorySteps;
                 default: throw new ArgumentOutOfRangeException("document");
             }
         }

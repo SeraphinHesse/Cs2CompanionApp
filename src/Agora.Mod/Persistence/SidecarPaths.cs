@@ -73,6 +73,7 @@ namespace Agora.Mod.Persistence
     ///   timeline_progress.json            fired event ids
     ///   settings.json                     per-save settings (non-negotiable #10)
     ///   flavor_cache.json                 last good Claude prose
+    ///   metric_history.json               sensor memory for the rent and land-value trends
     /// </code>
     ///
     /// <para>
@@ -92,6 +93,7 @@ namespace Agora.Mod.Persistence
         public const string SettingsFileName = "settings.json";
         public const string TimelineProgressFileName = "timeline_progress.json";
         public const string FlavorCacheFileName = "flavor_cache.json";
+        public const string MetricHistoryFileName = "metric_history.json";
 
         /// <summary><c>&lt;userData&gt;/ModsData/Agora</c>.</summary>
         public static string Root(string userDataPath)
@@ -155,6 +157,16 @@ namespace Agora.Mod.Persistence
         public static string FlavorCachePath(string saveDirectory)
         {
             return Path.Combine(saveDirectory, FlavorCacheFileName);
+        }
+
+        /// <summary>
+        /// The sensor layer's rent and land-value memory. Unlike <see cref="FlavorCachePath"/> this
+        /// one is owned by <c>SidecarStore</c>, because there is nothing special about the bytes —
+        /// it is an ordinary versioned document that goes through <c>SidecarSchema.Migrate</c>.
+        /// </summary>
+        public static string MetricHistoryPath(string saveDirectory)
+        {
+            return Path.Combine(saveDirectory, MetricHistoryFileName);
         }
 
         /// <summary>

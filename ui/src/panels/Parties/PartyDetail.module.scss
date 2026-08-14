@@ -4,10 +4,16 @@
 // Colours come from the shared token file — see _tokens.scss for why none are declared here.
 @use "../../shell/tokens" as *;
 
+// `flex-shrink` is 0 here and on every section below, and that is load-bearing rather than tidy. The
+// pane is a column inside a Scrollable whose height is capped by the panel, so a shrinkable pane is
+// squeezed to the viewport instead of scrolling - and the squeeze is passed on to whichever child can
+// take it. The issue bars are the tallest such child and their rows do not compress (`flex: 0 0 auto`
+// per row), so they overflowed their own box and the Lifecycle heading was laid out over them.
+// Nothing in this pane may shrink: it is scrolled content, and its height is the sum of its sections.
 .pane {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 1 0 auto;
   min-width: 0;
   padding-right: 4rem;
 }
@@ -19,6 +25,7 @@
 .paneHeadBlock {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .paneHead {
@@ -86,6 +93,7 @@
 
 .notice {
   display: flex;
+  flex-shrink: 0;
   margin-bottom: 6rem;
   padding: 5rem 6rem;
   border-radius: 3rem;
@@ -97,6 +105,7 @@
 
 .note {
   display: flex;
+  flex-shrink: 0;
   margin: 2rem 0 4rem 0;
   color: $text-faint;
   font-size: 10rem;
@@ -105,6 +114,7 @@
 
 .slogan {
   display: flex;
+  flex-shrink: 0;
   margin-bottom: 4rem;
   color: $text-dim;
   font-size: 12rem;
@@ -114,6 +124,7 @@
 
 .description {
   display: flex;
+  flex-shrink: 0;
   margin-bottom: 4rem;
   color: $text-dim;
   font-size: 11rem;
@@ -122,6 +133,7 @@
 
 .line {
   display: flex;
+  flex-shrink: 0;
   margin-bottom: 2rem;
   font-size: 11rem;
   line-height: 1.4;
@@ -129,6 +141,7 @@
 
 .lineDim {
   display: flex;
+  flex-shrink: 0;
   margin-bottom: 2rem;
   color: $text-faint;
   font-size: 10rem;
@@ -141,6 +154,7 @@
   display: flex;
   flex-direction: row;
   align-items: baseline;
+  flex-shrink: 0;
   margin: 8rem 0 5rem 0;
   padding-bottom: 3rem;
   border-bottom: 1rem solid $line;
@@ -174,6 +188,7 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   margin-bottom: 2rem;
 }
 

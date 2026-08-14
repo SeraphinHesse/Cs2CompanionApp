@@ -523,6 +523,12 @@ namespace Agora.Mod.Core
                     // so anything captured by value here would go stale on the first month boundary.
                     _sidecar.StateProvider = GetStateForSave;
 
+                    // The sensor layer's rent and land-value memory, written alongside the state.
+                    // Same Func reasoning, and resolved through _snapshots at call time rather than
+                    // captured: Detach nulls that field, and a closure holding the old system would
+                    // write the previous city's rents into this one's directory.
+                    _sidecar.MetricHistoryProvider = GetMetricHistoryForSave;
+
                     // A load that already happened before this ran (system creation order is the
                     // game's business, not ours) must not be missed.
                     if (_sidecar.PendingLoad != null) OnSidecarLoaded(_sidecar.PendingLoad);
@@ -568,6 +574,7 @@ namespace Agora.Mod.Core
                 {
                     _sidecar.LoadHandler = null;
                     _sidecar.StateProvider = null;
+                    _sidecar.MetricHistoryProvider = null;
                 }
 
                 // No second AgoraEffects.Shutdown here: ResetForNewSave shuts the effect layer down
@@ -740,6 +747,12 @@ namespace Agora.Mod.Core
 
                 ConfigureClock();
 
+                // Before anything that can capture a snapshot — CreateInitialState below does, and a
+                // capture records the present month, so a history restored afterwards would be
+                // overwritten by a series one sample long. ResetForNewSave (first line above) is what
+                // cleared it, so this has to sit between the two.
+                RestoreMetricHistory(result);
+
                 // Per-save kill-switch (#10). False computes all the politics and applies none of it.
                 AgoraEffects.EffectsEnabled = _saveSettings.EffectsEnabled;
 
@@ -768,6 +781,12 @@ namespace Agora.Mod.Core
                     // reverted by the next save.
                     _state.Settings = _saveSettings;
                 }
+
+                // After the if/else, so one call site covers both branches, and before anything below
+                // reads the state. On the freshly-minted branch it is a provable no-op — GenerateInitial
+                // flags the NaArray prefix, which is exactly what the reconstruction returns — so it
+                // doubles as a live assertion that generation and repair still agree.
+                RepairLoadedState();
 
                 // Raised HERE, the moment there is a state to serve, and deliberately before the
                 // flavor and replay work below.
@@ -975,6 +994,89 @@ namespace Agora.Mod.Core
             {
                 AgoraMod.Log.Warn("Agora could not write settings.json (" + ex.Message + "); the " +
                                   "setting is live for this session and will be written with the save.");
+            }
+        }
+
+        /// <summary>
+        /// Reconciles the two things about a loaded state that are derivable from something else it
+        /// carries, and that nothing on the load path used to re-derive: the electoral system, and
+        /// which parties are the NA majors.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This exists because the v2 → v3 sidecar migration is a one-shot. It fires at one version
+        /// boundary and never again, so a file already stamped 3 with wrong flags — written by a build
+        /// whose reconstruction guessed from party ids — had no route back. A load-time reconciliation
+        /// has no such boundary: it converges every save, at whatever version, on the first load.
+        /// </para>
+        /// <para>
+        /// The invariant is a set comparison against the reconstruction, not a count. "Exactly
+        /// <c>targetCountNa</c> majors" looks equivalent and is not: <c>PartyLifecycle.ApplyDeaths</c>
+        /// has no protection for a major and the NA ballot floor is satisfiable by two minors, so a
+        /// save can legitimately be down to one major. A count check would warn about that on every
+        /// load, forever. The set form is silent when correct and also catches identity errors — green
+        /// flagged, conservative not — that a count of two would wave through.
+        /// </para>
+        /// <para>
+        /// The share clamp is deliberately limited to parties this pass just DEMOTED. Those had their
+        /// shares computed with no ceiling aimed at them, so the recorded number is meaningless. A
+        /// party that was already correctly minor is left alone, because once the failure streak
+        /// unlocks, <c>FringeFailureModel.CeilingFor</c> opens toward <c>maxCeiling</c> and a legitimate
+        /// surge well above the base ceiling is exactly what the packet is for — an unconditional clamp
+        /// here would delete it on every reload.
+        /// </para>
+        /// <para>
+        /// In its own try, like the flavor block above it: a reconciliation that throws must cost the
+        /// save its flags, not its politics.
+        /// </para>
+        /// </remarks>
+        private static void RepairLoadedState()
+        {
+            if (_state == null || _saveSettings == null) return;
+
+            try
+            {
+                // Re-assert the system even though ResolveSettings now derives it: _saveSettings can
+                // arrive from somewhere other than the store, and this is one comparison.
+                ElectoralSystem derived = RegionThemeRules.SystemFor(_saveSettings.Theme);
+                if (_saveSettings.System != derived)
+                {
+                    AgoraMod.Log.Warn("Agora: this save recorded " + _saveSettings.System + " under the " +
+                                      _saveSettings.Theme + " theme, which is not a state the engine can " +
+                                      "produce; running it as " + derived + ".");
+                    _saveSettings.System = derived;
+                }
+                if (_state.Settings != null) _state.Settings.System = derived;
+
+                int majorCount = _saveSettings.Theme == RegionTheme.Na ? Tuning.Parties.TargetCountNa : 0;
+
+                MajorRepairResult repair = NaMajorParties.Repair(
+                    _state.Parties, NaMajorParties.DefaultMajorArchetypeIds(majorCount), majorCount);
+
+                if (!repair.Changed) return;
+
+                for (int i = 0; i < repair.Demoted.Count; i++)
+                {
+                    Party demoted = PartyRegistry.Find(_state.Parties, repair.Demoted[i]);
+                    if (demoted == null) continue;
+                    if (demoted.LastVoteShare > Tuning.Fringe.BaseCeiling)
+                    {
+                        demoted.LastVoteShare = Tuning.Fringe.BaseCeiling;
+                    }
+                }
+
+                _stateVersion++;
+
+                AgoraMod.Log.Warn("Agora: repaired the major/minor party flags on load (" +
+                                  repair.Summary + "). A demoted party's last recorded vote share was " +
+                                  "taken with no ceiling applied, so it has been capped at " +
+                                  Tuning.Fringe.BaseCeiling.ToString("F2", CultureInfo.InvariantCulture) +
+                                  "; the next tick recomputes the live standings.");
+            }
+            catch (Exception repairEx)
+            {
+                AgoraMod.Log.Warn("Agora: could not reconcile the loaded political state (" +
+                                  repairEx.Message + "); it runs with the flags it was saved with.");
             }
         }
 
@@ -2598,6 +2700,50 @@ namespace Agora.Mod.Core
         private static PoliticalState GetStateForSave()
         {
             return _state;
+        }
+
+        /// <summary>
+        /// The sensor layer's rent and land-value memory, for the sidecar to write beside the state.
+        /// Null before the sensors exist, which the sidecar handles by writing nothing — leaving the
+        /// previous file intact rather than replacing a real history with an empty one.
+        /// </summary>
+        private static MetricHistoryFile GetMetricHistoryForSave()
+        {
+            try
+            {
+                return _snapshots != null ? _snapshots.ExportHistory() : null;
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Warn("Agora could not export its metric history (" + ex.Message +
+                                  "); the previous metric_history.json is left in place.");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Hands the sensors the trend history the sidecar just read, so that a rent trend measured
+        /// over a year is actually reachable by a player who quits the game.
+        /// </summary>
+        /// <remarks>
+        /// Warn rather than throw, and never rethrow: a history that will not restore costs the two
+        /// trend fields until they refill, which is precisely the state every save was already in
+        /// before this file existed. It must not be able to take the load down with it.
+        /// </remarks>
+        private static void RestoreMetricHistory(SidecarLoadResult result)
+        {
+            try
+            {
+                if (result == null || result.MetricHistory == null) return;
+                if (_snapshots == null) return;
+
+                _snapshots.RestoreHistory(result.MetricHistory);
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Warn("Agora could not restore its metric history (" + ex.Message +
+                                  "); the rent and land-value trends rebuild from this session.");
+            }
         }
 
         private static CitySnapshot CaptureSnapshot()

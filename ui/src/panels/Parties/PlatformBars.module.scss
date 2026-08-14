@@ -16,10 +16,13 @@ $bar-centre-width: 1rem;
 // it takes out of that half - keep it narrow.
 $bar-marker-width: 2rem;
 
+// Never shrinks. Its rows are `flex: 0 0 auto` and cannot give up any height, so a shrunk `.bars` box
+// does not compress - the rows simply spill past its bottom edge and the next section in the pane is
+// drawn over them. Six rows plus the pole strip is exactly how tall this block is, always.
 .bars {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 

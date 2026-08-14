@@ -99,7 +99,20 @@ namespace Agora.Mod.Sensors
         public double RentPeriodDays { get; private set; } = 30.0;
 
         /// <summary>Months of history compared when computing rent and land-value trends.</summary>
-        public int TrendWindowMonths { get; private set; } = 24;
+        /// <remarks>
+        /// Twelve, not twenty-four. Two reasons, and the first is arithmetic: a trend needs a baseline
+        /// at or before <c>now - window</c>, so a 24-month window is silent for the first two years of
+        /// a save and a 12-month one for the first year. The second is political — a term is a year,
+        /// so a one-year window is the span a party is actually judged over, and a rent rise that
+        /// began under the previous administration should not still be the incumbent's headline.
+        ///
+        /// <para>
+        /// This is only a defensible number now that <c>metric_history.json</c> exists. While the
+        /// history died with the session, <i>every</i> window was effectively infinite: the samples
+        /// never survived long enough to satisfy any of them.
+        /// </para>
+        /// </remarks>
+        public int TrendWindowMonths { get; private set; } = 12;
 
         // --- Sampling --------------------------------------------------------------------------
 

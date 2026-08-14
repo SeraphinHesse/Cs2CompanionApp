@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
@@ -47,6 +52,10 @@ namespace Agora.Mod.Sensors
         private long _rentSamples;
         private double _dailySalarySum;
         private long _dailySalarySamples;
+        private double _dailyUpkeepSum;
+        private long _dailyUpkeepSamples;
+        private double _dailyResourceSpendSum;
+        private long _dailyResourceSpendSamples;
 
         /// <summary>
         /// Records one resident.
@@ -98,7 +107,15 @@ namespace Agora.Mod.Sensors
         /// <param name="wealth">Liquid household resources, in game currency.</param>
         /// <param name="rent">Rent charged for the property, or null for a household that pays none.</param>
         /// <param name="dailySalary">Household salary for the last day, or null when unknown.</param>
-        public void AddHousehold(double wealth, double? rent, double? dailySalary)
+        /// <param name="dailyUpkeep">
+        /// Yesterday's spend on keeping the home standing, in game currency. Unlike rent and salary
+        /// this is <b>not</b> nullable and zero is counted: every household carries the figure, and a
+        /// household that spent nothing yesterday spent nothing. Dropping the zeros would bias the
+        /// mean upward by exactly the households with no upkeep to pay.
+        /// </param>
+        /// <param name="dailyResourceSpend">Yesterday's spend on goods. Zero is counted, as above.</param>
+        public void AddHousehold(double wealth, double? rent, double? dailySalary,
+                                 double dailyUpkeep, double dailyResourceSpend)
         {
             Households++;
             HouseholdWealth.Add(wealth);
@@ -113,6 +130,18 @@ namespace Agora.Mod.Sensors
             {
                 _dailySalarySum += dailySalary.Value;
                 _dailySalarySamples++;
+            }
+
+            if (!double.IsNaN(dailyUpkeep) && dailyUpkeep >= 0.0)
+            {
+                _dailyUpkeepSum += dailyUpkeep;
+                _dailyUpkeepSamples++;
+            }
+
+            if (!double.IsNaN(dailyResourceSpend) && dailyResourceSpend >= 0.0)
+            {
+                _dailyResourceSpendSum += dailyResourceSpend;
+                _dailyResourceSpendSamples++;
             }
         }
 
@@ -200,6 +229,57 @@ namespace Agora.Mod.Sensors
             if (meanPeriodIncome <= 0.0) return null;
 
             return SensorMath.SafeDivide(meanRent, meanPeriodIncome);
+        }
+
+        /// <summary>
+        /// Mean daily spend on keeping the home standing, or null when no household was counted.
+        /// </summary>
+        public double? MeanDailyUpkeep() =>
+            _dailyUpkeepSamples <= 0 ? (double?)null : _dailyUpkeepSum / _dailyUpkeepSamples;
+
+        /// <summary>Mean daily spend on goods, or null when no household was counted.</summary>
+        public double? MeanDailyResourceSpend() =>
+            _dailyResourceSpendSamples <= 0 ? (double?)null : _dailyResourceSpendSum / _dailyResourceSpendSamples;
+
+        /// <summary>
+        /// Share of daily household income left after rent, upkeep and goods, or null when income was
+        /// never measured. Signed and uncapped — see <c>CitySnapshot.DisposableMargin</c> for why.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A ratio of means, not a mean of ratios, matching <see cref="RentBurden"/>. The alternative
+        /// divides by each household's own income, which is zero for every retired and every
+        /// unemployed household in the sample — so the per-household form is undefined for exactly the
+        /// households under the most pressure, and any convention for filling that hole (drop them,
+        /// floor them, treat them as fully committed) is a political judgement a sensor is not allowed
+        /// to make.
+        /// </para>
+        /// <para>
+        /// Costs a household does not report are treated as zero rather than as a reason to return
+        /// null. A district where nothing is rented has no rent to subtract, and calling its margin
+        /// unmeasurable would hand it the city's figure and mark it a fallback — a worse answer than
+        /// the true one. Income is the sole exception: with no income there is no denominator, and
+        /// there is nothing to report.
+        /// </para>
+        /// </remarks>
+        public double? DisposableMargin(double rentPeriodDays)
+        {
+            if (_dailySalarySamples <= 0) return null;
+
+            double meanDailyIncome = _dailySalarySum / _dailySalarySamples;
+            if (meanDailyIncome <= 0.0) return null;
+
+            double meanDailyRent = (_rentSamples > 0 && rentPeriodDays > 0.0)
+                ? (_rentSum / _rentSamples) / rentPeriodDays
+                : 0.0;
+
+            double meanDailyUpkeep = _dailyUpkeepSamples > 0 ? _dailyUpkeepSum / _dailyUpkeepSamples : 0.0;
+            double meanDailyGoods = _dailyResourceSpendSamples > 0
+                ? _dailyResourceSpendSum / _dailyResourceSpendSamples
+                : 0.0;
+
+            double committed = meanDailyRent + meanDailyUpkeep + meanDailyGoods;
+            return 1.0 - SensorMath.SafeDivide(committed, meanDailyIncome);
         }
     }
 

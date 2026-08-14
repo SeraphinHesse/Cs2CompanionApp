@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Mod.Persistence;
 
 namespace Agora.Mod.Sensors
 {
@@ -29,6 +30,11 @@ namespace Agora.Mod.Sensors
         /// Rent and land-value history, the only state a snapshot needs beyond the current frame.
         /// Sized well past the widest trend window the calibration allows.
         /// </summary>
+        /// <remarks>
+        /// Persisted, via <see cref="ExportHistory"/> and <see cref="RestoreHistory"/>, to
+        /// <c>metric_history.json</c>. It used to be session-scoped, which quietly made both trend
+        /// fields unmeasurable for anyone who ever quit the game.
+        /// </remarks>
         private readonly MetricHistory _history = new MetricHistory(64);
 
         private CitySnapshot _latest;
@@ -70,6 +76,45 @@ namespace Agora.Mod.Sensors
             if (_environment != null) _environment.Invalidate();
             if (_services != null) _services.Invalidate();
             if (_mobility != null) _mobility.Invalidate();
+        }
+
+        /// <summary>
+        /// The trend history as the sidecar document, for <c>AgoraSidecarSystem</c> to write at save
+        /// time. Never null: a save taken before the first capture writes an empty history, which is
+        /// the truth about that city.
+        /// </summary>
+        public MetricHistoryFile ExportHistory()
+        {
+            return _history.ToFile();
+        }
+
+        /// <summary>
+        /// Adopts the history the sidecar just read, trimmed to the date being loaded into.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Must run <b>after</b> <see cref="Invalidate"/> and <b>before</b> the first
+        /// <see cref="Capture"/> of the session — <see cref="Invalidate"/> clears the history, and a
+        /// capture would otherwise record the present month against an empty series and report no
+        /// trend for a save that has years of them. <c>AgoraRuntime.OnSidecarLoaded</c> owns that
+        /// ordering.
+        /// </para>
+        /// <para>
+        /// The date comes from the clock rather than from the caller, because the clock is the one
+        /// that knows: on a §5 reconciliation onto an earlier snapshot, "today" IS the earlier date,
+        /// and that is exactly the boundary the trim needs. A capture taken before the clock is
+        /// readable trims against <c>default(SimDate)</c>, which would discard everything — so the
+        /// restore is skipped entirely in that case and the next load repeats it.
+        /// </para>
+        /// </remarks>
+        public void RestoreHistory(MetricHistoryFile file)
+        {
+            if (file == null) return;
+
+            SimDate today;
+            if (!TryGetToday(out today)) return;
+
+            _history.RestoreFrom(file, today);
         }
 
         /// <summary>

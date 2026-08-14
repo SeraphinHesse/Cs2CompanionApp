@@ -106,6 +106,18 @@ namespace Agora.Mod.Persistence
         /// </remarks>
         public bool SettingsAreDefaults { get; set; }
 
+        /// <summary>
+        /// The sensor layer's rent and land-value memory, or null when this save has none yet —
+        /// which is every save made before <c>metric_history.json</c> existed, and every save whose
+        /// history was unreadable. Null means "start collecting", never "the rents held flat".
+        /// </summary>
+        /// <remarks>
+        /// Loaded here rather than by the sensor because the sensor has no filesystem and no save
+        /// guid; <c>AgoraRuntime.OnSidecarLoaded</c> hands it on to <c>AgoraSnapshotSystem</c>, which
+        /// trims it against the loaded date before using it.
+        /// </remarks>
+        public MetricHistoryFile MetricHistory { get; set; }
+
         /// <summary>Sim date of <see cref="State"/>, or <c>default</c> when there is none.</summary>
         public SimDate SnapshotDate { get; set; }
 
@@ -241,6 +253,15 @@ namespace Agora.Mod.Persistence
                 result.Settings = ResolveSettings(result.State, directory, result.Warnings,
                                                   out settingsAreDefaults);
                 result.SettingsAreDefaults = settingsAreDefaults;
+
+                // Independent of everything above: the trend history is a measurement record, so a
+                // save that has no political state at all — Agora newly installed into an existing
+                // city — can still carry one, and a save whose state was refused should not also lose
+                // its rents. ReadDocument returns null on any failure, which is the "start collecting"
+                // signal the sensor already handles.
+                result.MetricHistory = ReadDocument<MetricHistoryFile>(
+                    SidecarPaths.MetricHistoryPath(directory), SidecarDocument.MetricHistory,
+                    result.Warnings);
 
                 string summary = "Sidecar: " + (result.Explanation ?? "loaded.");
 
@@ -381,19 +402,56 @@ namespace Agora.Mod.Persistence
 
             if (state != null && state.Settings != null)
             {
-                return state.Settings;
+                return Normalize(state.Settings);
             }
 
             AgoraSettings fromFile = ReadDocument<AgoraSettings>(
                 SidecarPaths.SettingsPath(directory), SidecarDocument.Settings, warnings);
 
-            if (fromFile != null) return fromFile;
+            if (fromFile != null) return Normalize(fromFile);
 
             // Defaults, not a crash: a save with no settings file is a save that has never been
             // through a full Agora session, and StartYear 1990 / Proportional is the documented
             // default set (§3).
             areDefaults = true;
-            return new AgoraSettings();
+            return Normalize(new AgoraSettings());
+        }
+
+        /// <summary>
+        /// Re-derives everything about a loaded settings block that is a function of something else it
+        /// carries. Today that is exactly one field: the electoral system.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>RegionThemeRules.SystemFor</c> is the single mapping from theme to system and states that
+        /// there is no override — the system is a property of the theme, not a separate choice. But it
+        /// was only ever called at save creation and at a retheme, never on the load path, so a stored
+        /// <c>system</c> that disagreed with the stored <c>theme</c> was believed. There is no
+        /// legitimate save in that state, which is what makes deriving unconditionally safe: it cannot
+        /// destroy a player's choice, because the player never had one to make.
+        /// </para>
+        /// <para>
+        /// The blast radius of getting this wrong is why it is worth a helper. <c>Settings.System</c>
+        /// gates whether the fringe ceiling is computed at all, which election engine runs, how long a
+        /// term is, whether the fringe ledger is kept, whether factions are generated, and whether a
+        /// coalition forms. An NA save carrying <c>Proportional</c> would silently run North American
+        /// parties through a list election with no mayor and no ceiling — the same failure
+        /// <c>PoliticalEngine.CreateInitialState</c> already guards against at the other end.
+        /// </para>
+        /// <para>
+        /// This mutates and returns the same instance rather than copying: the first branch above hands
+        /// back <c>state.Settings</c> by reference, so one write fixes both the resolved settings and
+        /// the block embedded in the state that the caller is about to run on.
+        /// </para>
+        /// </remarks>
+        private static AgoraSettings Normalize(AgoraSettings settings)
+        {
+            if (settings == null) return null;
+
+            ElectoralSystem derived = RegionThemeRules.SystemFor(settings.Theme);
+            if (settings.System != derived) settings.System = derived;
+
+            return settings;
         }
 
         // ---------------------------------------------------------------- save
@@ -493,6 +551,52 @@ namespace Agora.Mod.Persistence
             if (file == null || file.FiredEventIds == null) return new List<string>();
 
             return file.FiredEventIds;
+        }
+
+        /// <summary>
+        /// Writes <c>metric_history.json</c>. Returns false and logs on failure — a trend the mod
+        /// could not persist costs a year of history, which must not cost the player their save.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately NOT folded into <see cref="SaveState"/>, even though both run from the same
+        /// save hook. <see cref="SaveState"/> refuses outright when there is no political state, and
+        /// the sensor's memory is worth keeping in exactly that case: a city whose politics have not
+        /// started yet is still accumulating the rent history the first election will be fought over.
+        /// </remarks>
+        public bool SaveMetricHistory(Guid saveGuid, MetricHistoryFile history)
+        {
+            try
+            {
+                if (saveGuid == Guid.Empty || history == null) return false;
+
+                string directory = DirectoryFor(saveGuid);
+                Directory.CreateDirectory(directory);
+
+                history.SchemaVersion = SidecarSchema.CurrentMetricHistoryVersion;
+                AtomicFile.WriteAllText(SidecarPaths.MetricHistoryPath(directory),
+                                        AgoraJson.Serialize(history));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Sidecar: could not write metric_history.json; the rent and land-value " +
+                           "trends will rebuild from the previous file.", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The sensor layer's rent and land-value memory, or null when there is none to read. Also
+        /// reachable from <see cref="Load"/>'s result; this is the standalone form.
+        /// </summary>
+        public MetricHistoryFile LoadMetricHistory(Guid saveGuid)
+        {
+            if (saveGuid == Guid.Empty) return null;
+
+            var warnings = new List<string>();
+            return ReadDocument<MetricHistoryFile>(
+                SidecarPaths.MetricHistoryPath(DirectoryFor(saveGuid)),
+                SidecarDocument.MetricHistory, warnings);
         }
 
         /// <summary>

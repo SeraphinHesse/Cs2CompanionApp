@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <!--
-    Twenty-eight Agora.Mod files compiled in BY LINK, not by project reference.
+    Thirty-five Agora.Mod files compiled in BY LINK, not by project reference.
 
     politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
     this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
@@ -111,7 +111,20 @@
     ClaudeCliProvider, the one game-facing type among the CLI files, is in a file of its own so that
     it does not come along.
 
-    All twenty-eight files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
+    The pure half of the sensor layer — SensorMath, DemographicTally, MetricHistory, SensorReadings,
+    SensorMerge and SnapshotAssembly — is here because two of the things it decides are invisible in
+    the code and obvious in a fixture. SnapshotAssembly is where §6's best-effort rule is actually
+    enforced: a district field that cannot be measured becomes the city's number plus an entry in
+    cityFallbackFields, and the difference between "marked" and "silently presented as local" is one
+    call to Resolve that no reader would notice going missing. MetricHistory is the other: it is the
+    sole memory behind RentTrend and LandValueTrend, it now round-trips through metric_history.json,
+    and the failure it exists to end — a history that dies with the session, so the trend is
+    permanently unmeasurable and every district reports it as a city fallback — is precisely the kind
+    of bug that reads as correct and behaves as broken. DemographicTally and SensorMath come with them
+    because they are what the fixtures are written against; the ECS-walking sensor systems, which do
+    name game types, deliberately stay out.
+
+    All thirty-five files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
     use only System.*, Newtonsoft and Agora.Core), so linking them keeps the property this suite
     exists to protect: it still builds and passes on a machine with no copy of Cities: Skylines II.
     Adding a file here that does reference the game will fail this project's build immediately, which
@@ -133,6 +146,7 @@
     <Compile Include="..\..\src\Agora.Mod\Persistence\SidecarPaths.cs" Link="ModPersistence\SidecarPaths.cs" />
     <Compile Include="..\..\src\Agora.Mod\Persistence\LoadReconciliation.cs" Link="ModPersistence\LoadReconciliation.cs" />
     <Compile Include="..\..\src\Agora.Mod\Persistence\SidecarStore.cs" Link="ModPersistence\SidecarStore.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Persistence\MetricHistoryFile.cs" Link="ModPersistence\MetricHistoryFile.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\FlavorJsonReader.cs" Link="ModLlm\FlavorJsonReader.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeResponseReader.cs" Link="ModLlm\ClaudeResponseReader.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\FlavorLog.cs" Link="ModLlm\FlavorLog.cs" />
@@ -151,6 +165,12 @@
     <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliOptions.cs" Link="ModLlm\ClaudeCliOptions.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliLocator.cs" Link="ModLlm\ClaudeCliLocator.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliRunner.cs" Link="ModLlm\ClaudeCliRunner.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\SensorMath.cs" Link="ModSensors\SensorMath.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\DemographicTally.cs" Link="ModSensors\DemographicTally.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\MetricHistory.cs" Link="ModSensors\MetricHistory.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\SensorReadings.cs" Link="ModSensors\SensorReadings.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\SensorMerge.cs" Link="ModSensors\SensorMerge.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\SnapshotAssembly.cs" Link="ModSensors\SnapshotAssembly.cs" />
   </ItemGroup>
 
 </Project>

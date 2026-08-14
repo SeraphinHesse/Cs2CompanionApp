@@ -1,3 +1,8 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System.Collections.Generic;
 
 namespace Agora.Mod.Sensors
@@ -53,6 +58,10 @@ namespace Agora.Mod.Sensors
                 merged.AverageRent = merged.AverageRent ?? source.AverageRent;
                 merged.RentTrend = merged.RentTrend ?? source.RentTrend;
                 merged.RentBurden = merged.RentBurden ?? source.RentBurden;
+                merged.AverageHouseholdUpkeep = merged.AverageHouseholdUpkeep ?? source.AverageHouseholdUpkeep;
+                merged.AverageHouseholdResourceSpend =
+                    merged.AverageHouseholdResourceSpend ?? source.AverageHouseholdResourceSpend;
+                merged.DisposableMargin = merged.DisposableMargin ?? source.DisposableMargin;
                 merged.TransitRidership = merged.TransitRidership ?? source.TransitRidership;
                 merged.AverageCommuteMinutes = merged.AverageCommuteMinutes ?? source.AverageCommuteMinutes;
                 merged.TrafficCongestion = merged.TrafficCongestion ?? source.TrafficCongestion;
@@ -122,6 +131,10 @@ namespace Agora.Mod.Sensors
             target.AverageRent = target.AverageRent ?? source.AverageRent;
             target.RentTrend = target.RentTrend ?? source.RentTrend;
             target.RentBurden = target.RentBurden ?? source.RentBurden;
+            target.AverageHouseholdUpkeep = target.AverageHouseholdUpkeep ?? source.AverageHouseholdUpkeep;
+            target.AverageHouseholdResourceSpend =
+                target.AverageHouseholdResourceSpend ?? source.AverageHouseholdResourceSpend;
+            target.DisposableMargin = target.DisposableMargin ?? source.DisposableMargin;
             target.TransitRidership = target.TransitRidership ?? source.TransitRidership;
             target.AverageCommuteMinutes = target.AverageCommuteMinutes ?? source.AverageCommuteMinutes;
             target.TrafficCongestion = target.TrafficCongestion ?? source.TrafficCongestion;

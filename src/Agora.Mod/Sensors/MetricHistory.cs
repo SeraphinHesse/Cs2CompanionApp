@@ -1,6 +1,12 @@
+// Compiled into BOTH Agora.Mod and (by <Compile Link>) tests/Agora.Core.Tests: it must stay free of
+// every Game.*, Unity.* and Colossal.* type. #nullable disable keeps it warning-clean in the test
+// project, which enables nullable, without annotating a file the mod compiles unannotated.
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Mod.Persistence;
 
 namespace Agora.Mod.Sensors
 {
@@ -16,8 +22,17 @@ namespace Agora.Mod.Sensors
     ///
     /// <para>
     /// Pure — <see cref="SimDate"/> in, <c>double</c> out, no game types and no wall clock. Keyed by
-    /// series name in a dictionary, but nothing ever iterates that dictionary: every read is a
-    /// lookup by an explicit key, so ordering cannot leak into a result.
+    /// series name in a dictionary, but nothing ever iterates that dictionary <i>unordered</i>:
+    /// every read is a lookup by an explicit key, and <see cref="ToFile"/>, the one place that does
+    /// enumerate it, sorts before it writes.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>It survives a reload.</b> <see cref="ToFile"/> and <see cref="RestoreFrom"/> are the two
+    /// ends of <c>metric_history.json</c>. Without them this class was session-scoped, and a trend
+    /// window measured in months could never be reached by a player who quits — which made
+    /// <c>RentTrend</c> and <c>LandValueTrend</c> permanently unmeasurable and left every district
+    /// reporting them as a city fallback.
     /// </para>
     /// </summary>
     public sealed class MetricHistory
@@ -134,6 +149,109 @@ namespace Agora.Mod.Sensors
         /// history into another would be a fabricated trend.
         /// </summary>
         public void Clear() => _series.Clear();
+
+        // ---------------------------------------------------------------- persistence
+
+        /// <summary>
+        /// Everything held, as the sidecar document. Series are sorted by key and samples stay in
+        /// month order, so two runs over the same history serialize byte-identically — which is what
+        /// non-negotiable #3's fingerprint definition requires of anything written to disk.
+        /// </summary>
+        public MetricHistoryFile ToFile()
+        {
+            var keys = new List<string>(_series.Keys);
+            keys.Sort(StringComparer.Ordinal);
+
+            var file = new MetricHistoryFile();
+
+            for (int i = 0; i < keys.Count; i++)
+            {
+                List<Sample> samples = _series[keys[i]];
+                if (samples == null || samples.Count == 0) continue;
+
+                var series = new MetricSeriesFile { Series = keys[i] };
+                for (int s = 0; s < samples.Count; s++)
+                {
+                    series.Samples.Add(new MetricSampleFile
+                    {
+                        TotalMonths = samples[s].TotalMonths,
+                        Value = samples[s].Value
+                    });
+                }
+
+                file.Series.Add(series);
+            }
+
+            return file;
+        }
+
+        /// <summary>
+        /// Replaces everything held with what <paramref name="file"/> carries, discarding any sample
+        /// dated after <paramref name="asOf"/>.
+        /// </summary>
+        /// <param name="asOf">
+        /// The sim date being loaded into. The trim is the whole reason this takes a date: §5 allows
+        /// a load to reconcile onto an <i>earlier</i> snapshot, and a history that still held next
+        /// decade's rents would compute a trend against a present that has not happened. Samples in
+        /// the same month as <paramref name="asOf"/> are kept — that month is the present, not the
+        /// future.
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// <b>Null is a no-op, not an erasure.</b> Null means "there was no file to read" — the save
+        /// predates <c>metric_history.json</c>, or it would not parse — and destroying whatever this
+        /// session has already collected on the strength of a missing file would turn a benign absence
+        /// into data loss. An empty-but-present document is the opposite claim, "this save genuinely
+        /// has no history", and that one does clear.
+        /// </para>
+        /// <para>
+        /// Garbage inside the document — a null series, a blank key, a NaN, a sample out of order — is
+        /// dropped sample by sample rather than failing the restore, on the same fail-soft rule the
+        /// rest of the sidecar follows.
+        /// </para>
+        /// </remarks>
+        public void RestoreFrom(MetricHistoryFile file, SimDate asOf)
+        {
+            if (file == null) return;
+
+            _series.Clear();
+            if (file.Series == null) return;
+
+            int cutoff = asOf.TotalMonths;
+
+            for (int i = 0; i < file.Series.Count; i++)
+            {
+                MetricSeriesFile series = file.Series[i];
+                if (series == null || string.IsNullOrEmpty(series.Series) || series.Samples == null) continue;
+
+                var restored = new List<Sample>();
+
+                for (int s = 0; s < series.Samples.Count; s++)
+                {
+                    MetricSampleFile sample = series.Samples[s];
+                    if (sample == null) continue;
+                    if (sample.TotalMonths > cutoff) continue;
+                    if (double.IsNaN(sample.Value) || double.IsInfinity(sample.Value)) continue;
+
+                    // Month order is what TrendOver walks backwards over, and a hand-edited file could
+                    // arrive out of order. Appending only when the month advances keeps the invariant
+                    // Record maintains — strictly ascending, one sample per month — without a sort.
+                    if (restored.Count > 0 && sample.TotalMonths <= restored[restored.Count - 1].TotalMonths)
+                    {
+                        continue;
+                    }
+
+                    restored.Add(new Sample(sample.TotalMonths, sample.Value));
+                }
+
+                while (restored.Count > _maxSamplesPerSeries)
+                {
+                    restored.RemoveAt(0);
+                }
+
+                if (restored.Count > 0) _series[series.Series] = restored;
+            }
+        }
 
         /// <summary>Series key for a city-wide metric.</summary>
         public static string CityKey(string metric) => "city/" + metric;

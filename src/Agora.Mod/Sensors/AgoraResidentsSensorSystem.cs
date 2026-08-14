@@ -13,8 +13,9 @@ namespace Agora.Mod.Sensors
 {
     /// <summary>
     /// The residents sensor: everything measured per person or per household — population,
-    /// households, age, education, wealth, happiness, sickness, employment, commute, rent and rent
-    /// burden — for the city and for each district.
+    /// households, age, education, wealth, happiness, sickness, employment, commute, and the
+    /// household budget (rent, rent burden, upkeep, goods and what is left over) — for the city and
+    /// for each district.
     ///
     /// <para>
     /// One walk, many metrics, deliberately. All of these hang off the same
@@ -167,8 +168,21 @@ namespace Agora.Mod.Sensors
                 rent = propertyRenter.m_Rent;
             }
 
-            cityTally.AddHousehold(wealth, rent, dailySalary);
-            if (districtTally != null) districtTally.AddHousehold(wealth, rent, dailySalary);
+            // The other two lines of the game's own household budget, read from the component already
+            // in hand — the same two fields ResidentsSection shows as "upkeep" and "resources" when a
+            // district is selected. Levelling spend arrives signed (it is an outgoing) and is taken as
+            // a magnitude, which is what the game's panel displays.
+            double dailyUpkeep = householdData.m_MoneySpendOnBuildingLevelingLastDay < 0
+                ? -(double)householdData.m_MoneySpendOnBuildingLevelingLastDay
+                : householdData.m_MoneySpendOnBuildingLevelingLastDay;
+
+            double dailyResourceSpend = householdData.m_ShoppedValuePerDay;
+
+            cityTally.AddHousehold(wealth, rent, dailySalary, dailyUpkeep, dailyResourceSpend);
+            if (districtTally != null)
+            {
+                districtTally.AddHousehold(wealth, rent, dailySalary, dailyUpkeep, dailyResourceSpend);
+            }
 
             for (int i = 0; i < members.Length; i++)
             {
@@ -228,6 +242,9 @@ namespace Agora.Mod.Sensors
             _city.AverageCommuteMinutes = tally.MeanCommuteMinutes();
             _city.AverageRent = tally.MeanRent();
             _city.RentBurden = tally.RentBurden(calibration.RentPeriodDays);
+            _city.AverageHouseholdUpkeep = tally.MeanDailyUpkeep();
+            _city.AverageHouseholdResourceSpend = tally.MeanDailyResourceSpend();
+            _city.DisposableMargin = tally.DisposableMargin(calibration.RentPeriodDays);
         }
 
         private void PublishDistricts(IReadOnlyList<DistrictEntry> districts,
@@ -271,6 +288,9 @@ namespace Agora.Mod.Sensors
                     reading.Wealth = tally.WealthShares(cuts);
                     reading.AverageRent = tally.MeanRent();
                     reading.RentBurden = tally.RentBurden(calibration.RentPeriodDays);
+                    reading.AverageHouseholdUpkeep = tally.MeanDailyUpkeep();
+                    reading.AverageHouseholdResourceSpend = tally.MeanDailyResourceSpend();
+                    reading.DisposableMargin = tally.DisposableMargin(calibration.RentPeriodDays);
                 }
 
                 _byDistrictId[entry.Id] = reading;

@@ -147,6 +147,9 @@
         "averageRent": { "type": "number" },
         "rentTrend": { "type": "number" },
         "rentBurden": { "type": "number", "minimum": 0 },
+        "averageHouseholdUpkeep": { "type": "number", "minimum": 0 },
+        "averageHouseholdResourceSpend": { "type": "number", "minimum": 0 },
+        "disposableMargin": { "type": "number" },
         "transitRidership": { "$ref": "#/$defs/unitInterval" },
         "averageCommuteMinutes": { "type": "number", "minimum": 0 },
         "trafficCongestion": { "$ref": "#/$defs/unitInterval" },
@@ -159,8 +162,8 @@
   "properties": {
     "schemaVersion": {
       "type": "integer",
-      "const": 2,
-      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze."
+      "const": 3,
+      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze. v3 adds the household budget: averageHouseholdUpkeep, averageHouseholdResourceSpend and disposableMargin, city-wide and per district."
     },
     "date": { "$ref": "#/$defs/simDate" },
     "population": { "type": "integer", "minimum": 0 },
@@ -185,6 +188,12 @@
     "averageRent": { "type": "number" },
     "rentTrend": { "type": "number" },
     "rentBurden": { "type": "number", "minimum": 0 },
+    "averageHouseholdUpkeep": { "type": "number", "minimum": 0 },
+    "averageHouseholdResourceSpend": { "type": "number", "minimum": 0 },
+    "disposableMargin": {
+      "type": "number",
+      "$comment": "Share of daily household income left after rent, upkeep and goods. Signed and uncapped on purpose: negative means households are drawing down savings, which is the state the cost-of-living issue most needs to see."
+    },
     "transitRidership": { "$ref": "#/$defs/unitInterval" },
     "averageCommuteMinutes": { "type": "number", "minimum": 0 },
     "trafficCongestion": { "$ref": "#/$defs/unitInterval" },
