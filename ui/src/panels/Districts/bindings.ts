@@ -66,6 +66,14 @@ export const EMPTY_DISTRICT_DETAIL: Agora.DistrictDetail = {
     discontent: 0,
     gini: 0,
   },
+  budget: {
+    averageRent: 0,
+    rentBurden: 0,
+    averageHouseholdUpkeep: 0,
+    averageHouseholdResourceSpend: 0,
+    averageHouseholdFees: 0,
+    disposableMargin: 0,
+  },
   hasCityFallbacks: false,
   cityFallbackFields: [],
 };

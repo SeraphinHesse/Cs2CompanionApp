@@ -4,7 +4,10 @@ using Colossal.Entities;
 using Game.Areas;
 using Game.Buildings;
 using Game.Citizens;
+using Game.City;
 using Game.Common;
+using Game.Prefabs;
+using Game.Simulation;
 using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
@@ -38,6 +41,13 @@ namespace Agora.Mod.Sensors
         private EntityQuery _residentialBuildingQuery;
         private AgoraDistrictSensorSystem _districtSensor;
 
+        /// <summary>
+        /// Holds the city entity, which is where the <see cref="ServiceFee"/> buffer lives — the
+        /// player's utility fee sliders. Resolved once; the buffer is read once per capture, never
+        /// per building.
+        /// </summary>
+        private CitySystem _citySystem;
+
         private readonly CityReading _city = new CityReading();
         private readonly Dictionary<string, DistrictReading> _byDistrictId =
             new Dictionary<string, DistrictReading>();
@@ -55,6 +65,7 @@ namespace Agora.Mod.Sensors
         protected override void CreateQueries()
         {
             _districtSensor = World.GetOrCreateSystemManaged<AgoraDistrictSensorSystem>();
+            _citySystem = World.GetOrCreateSystemManaged<CitySystem>();
 
             // Renter is the buffer of tenants; Building carries the road link the other sensors need.
             // Companies rent too, so the walk re-checks each renter for a Household component rather
@@ -105,6 +116,14 @@ namespace Agora.Mod.Sensors
 
         private void Walk(DemographicTally cityTally, Dictionary<Entity, DemographicTally> tallyByDistrict)
         {
+            // The player's utility fee sliders, read once for the whole capture. A city that has not
+            // been deserialized yet has no buffer, in which case every property reports no fees —
+            // which is a true statement about a city with no utilities rather than a reason to skip
+            // the whole walk.
+            DynamicBuffer<ServiceFee> fees = default(DynamicBuffer<ServiceFee>);
+            bool hasFees = _citySystem != null && _citySystem.City != Entity.Null &&
+                           EntityManager.TryGetBuffer(_citySystem.City, true, out fees);
+
             NativeArray<Entity> buildings = _residentialBuildingQuery.ToEntityArray(Allocator.TempJob);
             try
             {
@@ -129,9 +148,16 @@ namespace Agora.Mod.Sensors
                     DynamicBuffer<Renter> renters;
                     if (!EntityManager.TryGetBuffer(building, true, out renters)) continue;
 
+                    // Utility fees are charged to the PROPERTY, then split across its tenants, so
+                    // this is computed once per building rather than once per household — which is
+                    // both cheaper than the game's own per-household version and identical in result,
+                    // because the property it re-resolves from PropertyRenter.m_Property is this
+                    // building.
+                    double feesPerRenter = hasFees ? PropertyFeesPerRenter(building, fees, renters.Length) : 0.0;
+
                     for (int r = 0; r < renters.Length; r++)
                     {
-                        AddHousehold(renters[r].m_Renter, cityTally, districtTally);
+                        AddHousehold(renters[r].m_Renter, cityTally, districtTally, feesPerRenter);
                     }
                 }
             }
@@ -150,7 +176,62 @@ namespace Agora.Mod.Sensors
             return stride < 2 ? 2 : stride;
         }
 
-        private void AddHousehold(Entity household, DemographicTally cityTally, DemographicTally districtTally)
+        /// <summary>
+        /// What one tenant of <paramref name="building"/> pays in utility fees, in game currency.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A transcription of <c>Game.UI.InGame.ResidentsSection.GetHouseholdEconomyData</c> — the
+        /// method behind the "fees" row the game shows when a district is selected — kept deliberately
+        /// line-for-line rather than improved. Electricity and water are billed on <i>fulfilled</i>
+        /// consumption, not wanted: a property the grid never reached is not charged for the power it
+        /// did not get, and using the wanted figure would invoice the player's brownouts back to their
+        /// voters. Garbage is the exception and comes off the prefab's accumulation rate rather than
+        /// off a consumer component, because rubbish is produced whether or not anyone collects it.
+        /// </para>
+        /// <para>
+        /// Water is charged twice against one fee — fresh in, sewage out — which reads like a bug and
+        /// is what the game does. <c>PlayerResource.Water</c> is the only fee either side pays.
+        /// </para>
+        /// <para>
+        /// The divisor is the full <c>Renter</c> buffer length, companies included, again matching the
+        /// game. A mixed-use block splits its bill across every tenant, so counting only the households
+        /// would overstate what each one pays.
+        /// </para>
+        /// </remarks>
+        private double PropertyFeesPerRenter(Entity building, DynamicBuffer<ServiceFee> fees, int renterCount)
+        {
+            double total = 0.0;
+
+            ElectricityConsumer electricity;
+            if (EntityManager.TryGetComponent(building, out electricity))
+            {
+                total += electricity.m_FulfilledConsumption *
+                         ServiceFeeSystem.GetFee(PlayerResource.Electricity, fees);
+            }
+
+            WaterConsumer water;
+            if (EntityManager.TryGetComponent(building, out water))
+            {
+                float waterFee = ServiceFeeSystem.GetFee(PlayerResource.Water, fees);
+                total += water.m_FulfilledFresh * waterFee;
+                total += water.m_FulfilledSewage * waterFee;
+            }
+
+            PrefabRef prefabRef;
+            ConsumptionData consumption;
+            if (EntityManager.TryGetComponent(building, out prefabRef) &&
+                EntityManager.TryGetComponent(prefabRef.m_Prefab, out consumption))
+            {
+                total += consumption.m_GarbageAccumulation *
+                         ServiceFeeSystem.GetFee(PlayerResource.Garbage, fees);
+            }
+
+            return renterCount > 0 ? total / renterCount : total;
+        }
+
+        private void AddHousehold(Entity household, DemographicTally cityTally,
+                                  DemographicTally districtTally, double dailyFees)
         {
             Household householdData;
             if (!EntityManager.TryGetComponent(household, out householdData)) return;
@@ -178,10 +259,10 @@ namespace Agora.Mod.Sensors
 
             double dailyResourceSpend = householdData.m_ShoppedValuePerDay;
 
-            cityTally.AddHousehold(wealth, rent, dailySalary, dailyUpkeep, dailyResourceSpend);
+            cityTally.AddHousehold(wealth, rent, dailySalary, dailyUpkeep, dailyResourceSpend, dailyFees);
             if (districtTally != null)
             {
-                districtTally.AddHousehold(wealth, rent, dailySalary, dailyUpkeep, dailyResourceSpend);
+                districtTally.AddHousehold(wealth, rent, dailySalary, dailyUpkeep, dailyResourceSpend, dailyFees);
             }
 
             for (int i = 0; i < members.Length; i++)
@@ -244,6 +325,7 @@ namespace Agora.Mod.Sensors
             _city.RentBurden = tally.RentBurden(calibration.RentPeriodDays);
             _city.AverageHouseholdUpkeep = tally.MeanDailyUpkeep();
             _city.AverageHouseholdResourceSpend = tally.MeanDailyResourceSpend();
+            _city.AverageHouseholdFees = tally.MeanDailyFees();
             _city.DisposableMargin = tally.DisposableMargin(calibration.RentPeriodDays);
         }
 
@@ -290,6 +372,7 @@ namespace Agora.Mod.Sensors
                     reading.RentBurden = tally.RentBurden(calibration.RentPeriodDays);
                     reading.AverageHouseholdUpkeep = tally.MeanDailyUpkeep();
                     reading.AverageHouseholdResourceSpend = tally.MeanDailyResourceSpend();
+                    reading.AverageHouseholdFees = tally.MeanDailyFees();
                     reading.DisposableMargin = tally.DisposableMargin(calibration.RentPeriodDays);
                 }
 

@@ -4252,6 +4252,38 @@ declare namespace Agora {
   }
 
   /**
+   * The household ledger, mirroring `CitySnapshot` v3 one-for-one — the same rows the game itself
+   * shows when a district is selected.
+   *
+   * **The property names are the snapshot's own, camelCased, and must stay that way.**
+   * `cityFallbackFields` carries the C# property names, and `makeFallbackSet` matches them
+   * case-insensitively against the `field` prop each cell passes. Renaming one of these away from
+   * its snapshot property stops that cell being dimmed, and fails nowhere.
+   *
+   * **Mixed periods, deliberately.** Rent is per rent period (30 days); upkeep, goods and fees are
+   * per day. That is how the game bills each of them, and converting would produce a number that no
+   * longer matches the one in the game's own panel.
+   */
+  interface DistrictBudgetView {
+    /** Mean rent charged, in game currency, per rent period. */
+    averageRent: number;
+    /** Rent as a share of income over that period. [0,1+] — uncapped above 1. */
+    rentBurden: number;
+    /** Mean daily spend keeping the home standing, in game currency. */
+    averageHouseholdUpkeep: number;
+    /** Mean daily spend on goods, in game currency. */
+    averageHouseholdResourceSpend: number;
+    /** Mean daily utility bill at the player's own fee rates, in game currency. */
+    averageHouseholdFees: number;
+    /**
+     * Share of a day's income left after all four costs. **Signed and uncapped** — negative means
+     * households are drawing down savings. Clamp it for a meter fill; never clamp the label, or the
+     * panel invents a floor the engine deliberately refused to impose.
+     */
+    disposableMargin: number;
+  }
+
+  /**
    * `agora.districts.list` — sorted by `id` ordinal ascending. Empty value: [].
    * The row for a list view; open `agora.districts.detail` for the full split.
    */
@@ -4311,6 +4343,7 @@ declare namespace Agora {
     education: EducationSplit;
     age: AgeSplit;
     indices: DistrictIndicesView;
+    budget: DistrictBudgetView;
     hasCityFallbacks: boolean;
     /** Property names of the fields above that fell back to a city value. Sorted ascending. */
     cityFallbackFields: string[];

@@ -45,6 +45,7 @@ namespace Agora.Mod.Sensors
         public double? RentBurden;
         public double? AverageHouseholdUpkeep;
         public double? AverageHouseholdResourceSpend;
+        public double? AverageHouseholdFees;
         public double? DisposableMargin;
         public double? TransitRidership;
         public double? AverageCommuteMinutes;
@@ -87,6 +88,7 @@ namespace Agora.Mod.Sensors
         public double? RentBurden;
         public double? AverageHouseholdUpkeep;
         public double? AverageHouseholdResourceSpend;
+        public double? AverageHouseholdFees;
         public double? DisposableMargin;
         public double? TransitRidership;
         public double? AverageCommuteMinutes;

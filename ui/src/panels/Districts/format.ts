@@ -65,6 +65,30 @@ export function int(value: number): string {
   return negative ? "-" + out : out;
 }
 
+/**
+ * Game currency. Small figures keep a decimal, because the household budget lines are single digits
+ * a day and rounding them to whole units would render three different costs as the same "5".
+ *
+ * No Intl and no currency symbol: the symbol is a locale setting of the base game that this panel
+ * cannot read, and guessing one would put a wrong currency in front of a right number. The unit is
+ * carried by the label instead.
+ */
+export function money(value: number, digits?: number): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return NO_VALUE;
+  }
+  const places = typeof digits === "number" ? digits : Math.abs(value) < 100 ? 1 : 0;
+  if (places <= 0) {
+    return int(value);
+  }
+  const factor = Math.pow(10, places);
+  const rounded = Math.round(value * factor) / factor;
+  const whole = Math.trunc(rounded);
+  const fraction = Math.abs(Math.round((rounded - whole) * factor));
+  const sign = rounded < 0 && whole === 0 ? "-" : "";
+  return sign + int(whole) + "." + String(fraction).padStart(places, "0");
+}
+
 /** A [0,1] share as a CSS width. Widths below a hair are still given a sliver so a tiny party shows. */
 export function widthPct(share: number): string {
   const v = clamp01(share);

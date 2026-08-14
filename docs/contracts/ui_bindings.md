@@ -462,6 +462,39 @@ in `cityFallbackFields` is a city number wearing a district's name. The panel mu
 visually (dimmed + a tooltip) and must never present them as a local fact. This is
 `politicsmodplan.md` §6, and the reviewer checks it.
 
+#### `DistrictDetail.budget` — the household ledger (M4, extended)
+
+A named group on `agora.districts.detail`, alongside `wealth` / `education` / `age` / `indices` and
+under the same one-level nesting limit:
+
+| Property | Meaning | Units |
+|---|---|---|
+| `averageRent` | mean rent charged | currency, per rent period (30 days) |
+| `rentBurden` | rent as a share of income over that period | share, 0–1+ |
+| `averageHouseholdUpkeep` | mean spend keeping the home standing | currency **per day** |
+| `averageHouseholdResourceSpend` | mean spend on goods | currency **per day** |
+| `averageHouseholdFees` | mean utility bill at the player's own fee rates | currency **per day** |
+| `disposableMargin` | what is left of a day's income after all four | share, **signed and uncapped** |
+
+Mirrors `CitySnapshot` v3 one-for-one; the C# publisher copies `DistrictSnapshot` without deriving
+anything, so the panel and the engine cannot come to disagree about a household's budget.
+
+**The fallback field names are the snapshot's property names, camelCased** — `averageRent`,
+`rentBurden`, `averageHouseholdUpkeep`, `averageHouseholdResourceSpend`, `averageHouseholdFees`,
+`disposableMargin`. That is not a coincidence to be tidied: `cityFallbackFields` carries the C#
+property names, and `makeFallbackSet` matches them case-insensitively against the `field` prop each
+cell passes. Renaming a payload property away from its snapshot property silently stops that cell
+being dimmed, with nothing failing anywhere.
+
+**`disposableMargin` is signed and may exceed 1.** A meter fill must clamp it; the *label* must not.
+A district at −0.12 is drawing down savings, and rendering that as an empty bar reading "0%" would be
+the panel inventing a floor the engine deliberately refused to impose.
+
+**Mixed periods are contractual, not an oversight.** Rent is billed per rent period and the other
+three per day, exactly as the game bills them. The panel labels the periods rather than converting,
+because a converted figure would not match the number the player sees in the game's own district
+panel — which is the whole point of showing it.
+
 ### 4.5 `agora.news` — feed + mandate tracker + the alert queue
 
 | Binding | Kind | Direction | C# type | TS type | Cadence | Empty / loading | Since |

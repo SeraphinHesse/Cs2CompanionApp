@@ -879,6 +879,18 @@ namespace Agora.Mod.UiBindings
         public double AgeChild, AgeTeen, AgeAdult, AgeElderly;
         public double IdxGentrification, IdxCommuteMisery, IdxServiceCoverage, IdxDiscontent, IdxGini;
 
+        /// <summary>
+        /// The household ledger, copied from <c>DistrictSnapshot</c> without deriving anything.
+        /// </summary>
+        /// <remarks>
+        /// Rent is per rent period; upkeep, goods and fees are per day, matching how the game bills
+        /// each of them. <see cref="BudgetDisposableMargin"/> is signed and uncapped — a district
+        /// drawing down savings reads negative, and the panel clamps only the meter fill, never the
+        /// number.
+        /// </remarks>
+        public double BudgetAverageRent, BudgetRentBurden;
+        public double BudgetUpkeep, BudgetResourceSpend, BudgetFees, BudgetDisposableMargin;
+
         public bool HasCityFallbacks;
         public List<string> CityFallbackFields = new List<string>();
 
@@ -932,6 +944,20 @@ namespace Agora.Mod.UiBindings
             UiJson.Number(writer, "serviceCoverage", IdxServiceCoverage);
             UiJson.Number(writer, "discontent", IdxDiscontent);
             UiJson.Number(writer, "gini", IdxGini);
+            writer.TypeEnd();
+
+            // Property names are the snapshot's own, camelCased, and must stay that way: they are
+            // what arrives in cityFallbackFields, and the panel matches the two to decide whether a
+            // cell is a local fact or a city number wearing this district's name. A rename here
+            // stops a cell being dimmed and fails nowhere.
+            writer.PropertyName("budget");
+            writer.TypeBegin("agora.DistrictBudgetView");
+            UiJson.Number(writer, "averageRent", BudgetAverageRent);
+            UiJson.Number(writer, "rentBurden", BudgetRentBurden);
+            UiJson.Number(writer, "averageHouseholdUpkeep", BudgetUpkeep);
+            UiJson.Number(writer, "averageHouseholdResourceSpend", BudgetResourceSpend);
+            UiJson.Number(writer, "averageHouseholdFees", BudgetFees);
+            UiJson.Number(writer, "disposableMargin", BudgetDisposableMargin);
             writer.TypeEnd();
 
             UiJson.Flag(writer, "hasCityFallbacks", HasCityFallbacks);

@@ -149,6 +149,7 @@
         "rentBurden": { "type": "number", "minimum": 0 },
         "averageHouseholdUpkeep": { "type": "number", "minimum": 0 },
         "averageHouseholdResourceSpend": { "type": "number", "minimum": 0 },
+        "averageHouseholdFees": { "type": "number", "minimum": 0 },
         "disposableMargin": { "type": "number" },
         "transitRidership": { "$ref": "#/$defs/unitInterval" },
         "averageCommuteMinutes": { "type": "number", "minimum": 0 },
@@ -163,7 +164,7 @@
     "schemaVersion": {
       "type": "integer",
       "const": 3,
-      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze. v3 adds the household budget: averageHouseholdUpkeep, averageHouseholdResourceSpend and disposableMargin, city-wide and per district."
+      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze. v3 adds the household budget: averageHouseholdUpkeep, averageHouseholdResourceSpend, averageHouseholdFees and the disposableMargin they add up to, city-wide and per district."
     },
     "date": { "$ref": "#/$defs/simDate" },
     "population": { "type": "integer", "minimum": 0 },
@@ -190,9 +191,10 @@
     "rentBurden": { "type": "number", "minimum": 0 },
     "averageHouseholdUpkeep": { "type": "number", "minimum": 0 },
     "averageHouseholdResourceSpend": { "type": "number", "minimum": 0 },
+    "averageHouseholdFees": { "type": "number", "minimum": 0 },
     "disposableMargin": {
       "type": "number",
-      "$comment": "Share of daily household income left after rent, upkeep and goods. Signed and uncapped on purpose: negative means households are drawing down savings, which is the state the cost-of-living issue most needs to see."
+      "$comment": "Share of daily household income left after rent, upkeep, goods and utility fees. Signed and uncapped on purpose: negative means households are drawing down savings, which is the state the cost-of-living issue most needs to see."
     },
     "transitRidership": { "$ref": "#/$defs/unitInterval" },
     "averageCommuteMinutes": { "type": "number", "minimum": 0 },

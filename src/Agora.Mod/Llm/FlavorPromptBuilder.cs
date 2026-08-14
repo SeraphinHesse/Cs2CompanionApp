@@ -482,7 +482,8 @@ namespace Agora.Mod.Llm
                      "rents are a common complaint", "rents are manageable", "rents are easy");
 
         /// <summary>
-        /// What is left of a day's household income after rent, upkeep and goods, as a phrase.
+        /// What is left of a day's household income after rent, upkeep, goods and utility fees, as a
+        /// phrase.
         /// </summary>
         /// <remarks>
         /// Qualitative, like every other line in this block, because non-negotiable #1 runs in both

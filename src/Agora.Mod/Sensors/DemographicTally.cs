@@ -56,6 +56,8 @@ namespace Agora.Mod.Sensors
         private long _dailyUpkeepSamples;
         private double _dailyResourceSpendSum;
         private long _dailyResourceSpendSamples;
+        private double _dailyFeesSum;
+        private long _dailyFeesSamples;
 
         /// <summary>
         /// Records one resident.
@@ -114,8 +116,14 @@ namespace Agora.Mod.Sensors
         /// mean upward by exactly the households with no upkeep to pay.
         /// </param>
         /// <param name="dailyResourceSpend">Yesterday's spend on goods. Zero is counted, as above.</param>
+        /// <param name="dailyFees">
+        /// This household's share of its property's utility bill — electricity, water, sewage and
+        /// garbage at the player's own fee rates. Zero is counted, as above, and is the honest reading
+        /// for a household on no utilities at all. This is the only cost line the player sets
+        /// directly, which is what makes it the politically live one.
+        /// </param>
         public void AddHousehold(double wealth, double? rent, double? dailySalary,
-                                 double dailyUpkeep, double dailyResourceSpend)
+                                 double dailyUpkeep, double dailyResourceSpend, double dailyFees)
         {
             Households++;
             HouseholdWealth.Add(wealth);
@@ -142,6 +150,12 @@ namespace Agora.Mod.Sensors
             {
                 _dailyResourceSpendSum += dailyResourceSpend;
                 _dailyResourceSpendSamples++;
+            }
+
+            if (!double.IsNaN(dailyFees) && dailyFees >= 0.0)
+            {
+                _dailyFeesSum += dailyFees;
+                _dailyFeesSamples++;
             }
         }
 
@@ -242,8 +256,15 @@ namespace Agora.Mod.Sensors
             _dailyResourceSpendSamples <= 0 ? (double?)null : _dailyResourceSpendSum / _dailyResourceSpendSamples;
 
         /// <summary>
-        /// Share of daily household income left after rent, upkeep and goods, or null when income was
-        /// never measured. Signed and uncapped — see <c>CitySnapshot.DisposableMargin</c> for why.
+        /// Mean daily utility bill per household, or null when no household was counted.
+        /// </summary>
+        public double? MeanDailyFees() =>
+            _dailyFeesSamples <= 0 ? (double?)null : _dailyFeesSum / _dailyFeesSamples;
+
+        /// <summary>
+        /// Share of daily household income left after rent, upkeep, goods and utility fees, or null
+        /// when income was never measured. Signed and uncapped — see
+        /// <c>CitySnapshot.DisposableMargin</c> for why.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -277,8 +298,9 @@ namespace Agora.Mod.Sensors
             double meanDailyGoods = _dailyResourceSpendSamples > 0
                 ? _dailyResourceSpendSum / _dailyResourceSpendSamples
                 : 0.0;
+            double meanDailyFees = _dailyFeesSamples > 0 ? _dailyFeesSum / _dailyFeesSamples : 0.0;
 
-            double committed = meanDailyRent + meanDailyUpkeep + meanDailyGoods;
+            double committed = meanDailyRent + meanDailyUpkeep + meanDailyGoods + meanDailyFees;
             return 1.0 - SensorMath.SafeDivide(committed, meanDailyIncome);
         }
     }

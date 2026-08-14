@@ -197,7 +197,8 @@ and is filled in deterministically by the scheduler.
 (all `long`), `WealthDistribution Wealth`, `EducationDistribution Education`, `AgeDistribution Age`,
 `PollutionLevels Pollution`, `ServiceCoverage Services`, `TaxRates Taxes`, `CrimeRate`, `SickRate`,
 `AverageLandValue`, `LandValueTrend`, `AverageRent`, `RentTrend`, `RentBurden`,
-`AverageHouseholdUpkeep`, `AverageHouseholdResourceSpend`, `DisposableMargin`, `TransitRidership`,
+`AverageHouseholdUpkeep`, `AverageHouseholdResourceSpend`, `AverageHouseholdFees`,
+`DisposableMargin`, `TransitRidership`,
 `AverageCommuteMinutes`, `TrafficCongestion`, `List<string> ActivePolicyIds`,
 `List<string> RecentDisasterIds`, `List<string> InProgressMandateIds`, `DerivedIndices Indices`,
 `List<DistrictSnapshot> Districts` (sorted by `Id`).
@@ -205,20 +206,32 @@ and is filled in deterministically by the scheduler.
 `DistrictSnapshot`: `Id`, `Name`, `Population`, `Households`, `Happiness`, `Unemployment`, `Wealth`,
 `Education`, `Age`, `Pollution`, `Services`, `CrimeRate`, `SickRate`, `AverageLandValue`,
 `LandValueTrend`, `AverageRent`, `RentTrend`, `RentBurden`, `AverageHouseholdUpkeep`,
-`AverageHouseholdResourceSpend`, `DisposableMargin`, `TransitRidership`,
+`AverageHouseholdResourceSpend`, `AverageHouseholdFees`, `DisposableMargin`, `TransitRidership`,
 `AverageCommuteMinutes`, `TrafficCongestion`, `bool HasCityFallbacks`,
 `List<string> CityFallbackFields`.
 
-**The household budget (v3).** `AverageHouseholdUpkeep` and `AverageHouseholdResourceSpend` are mean
-*daily* spend per household in game currency — the same two figures the game's own district panel
-labels "upkeep" and "resources", read from `Household.m_MoneySpendOnBuildingLevelingLastDay` and
-`Household.m_ShoppedValuePerDay`. `DisposableMargin` is what the engine is actually meant to read:
-`1 − (rent/day + upkeep + goods) / income/day`, **signed and uncapped**. 1 is "nothing is spent",
-0 is "every unit earned is committed", negative is "households are drawing down savings". It is a
-ratio for the same reason `RentBurden` is — game currency has no fixed scale — and it is null-safe
-rather than zero-safe: a district with no measured income reports nothing and falls back, rather than
-claiming a margin of zero. Utility fees are **not** in it yet, so it is a floor on household pressure
-rather than the whole of it.
+**The household budget (v3).** Three mean *daily* spends per household, in game currency, mirroring
+the rows the game's own district panel shows — read in `ResidentsSection.GetHouseholdEconomyData`
+and reproduced by `AgoraResidentsSensorSystem`:
+
+| Field | Game source |
+|---|---|
+| `AverageHouseholdUpkeep` | `Household.m_MoneySpendOnBuildingLevelingLastDay` (magnitude) |
+| `AverageHouseholdResourceSpend` | `Household.m_ShoppedValuePerDay` |
+| `AverageHouseholdFees` | fulfilled electricity/water/sewage consumption and prefab garbage accumulation × the player's `ServiceFee` rates, split across the property's renters |
+
+`DisposableMargin` is what the engine is actually meant to read:
+`1 − (rent/day + upkeep + goods + fees) / income/day`, **signed and uncapped**. 1 is "nothing is
+spent", 0 is "every unit earned is committed", negative is "households are drawing down savings". It
+is a ratio for the same reason `RentBurden` is — game currency has no fixed scale — and a ratio of
+means rather than a mean of ratios, because the per-household form is undefined for every retired and
+unemployed household, i.e. exactly the ones under most pressure. Only income can make it
+unmeasurable: a cost a household does not report is a zero, but with no income there is no
+denominator, and the district falls back rather than claiming a margin.
+
+`AverageHouseholdFees` is the only line the player sets directly, which is what turns a utility
+budget slider into a political consequence. It is billed on *fulfilled* consumption, so a district
+the grid never reached is not charged for power it did not receive.
 
 **Trends are Agora's own measurements, not the game's.** `RentTrend` and `LandValueTrend` have no
 source in the game — CS2 stores no rent time series — so the sensor keeps its own month-indexed

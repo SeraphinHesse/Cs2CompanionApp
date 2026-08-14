@@ -215,9 +215,10 @@ namespace Agora.Core.Contracts
     {
         /// <summary>
         /// 3 as of the household-budget pass. v1 carried only population, happiness, unemployment and
-        /// money; v2 was the M2 contract freeze; v3 adds
-        /// <see cref="AverageHouseholdUpkeep"/>, <see cref="AverageHouseholdResourceSpend"/> and
-        /// <see cref="DisposableMargin"/>.
+        /// money; v2 was the M2 contract freeze; v3 adds the four cost lines the game's own district
+        /// panel shows — <see cref="AverageHouseholdUpkeep"/>,
+        /// <see cref="AverageHouseholdResourceSpend"/>, <see cref="AverageHouseholdFees"/> — and the
+        /// <see cref="DisposableMargin"/> they add up to.
         /// </summary>
         public int SchemaVersion { get; set; } = 3;
 
@@ -294,9 +295,21 @@ namespace Agora.Core.Contracts
         public double AverageHouseholdResourceSpend { get; set; }
 
         /// <summary>
-        /// Share of daily household income left after rent, upkeep and resources. 1 is "nothing is
-        /// spent"; 0 is "every unit earned is committed"; negative means households are eating into
-        /// savings.
+        /// Mean daily utility bill per household, in game currency: electricity, water, sewage and
+        /// garbage charged at the player's own fee rates. The game's district panel shows this as
+        /// "fees".
+        /// </summary>
+        /// <remarks>
+        /// The only cost line here the player sets directly, which makes it the one that turns a
+        /// budget slider into a political consequence. Billed on <i>fulfilled</i> consumption, so a
+        /// district the grid never reached is not charged for the power it did not receive.
+        /// </remarks>
+        public double AverageHouseholdFees { get; set; }
+
+        /// <summary>
+        /// Share of daily household income left after rent, upkeep, resources and utility fees. 1 is
+        /// "nothing is spent"; 0 is "every unit earned is committed"; negative means households are
+        /// eating into savings.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -310,9 +323,10 @@ namespace Agora.Core.Contracts
         /// nobody pays rent at all.
         /// </para>
         /// <para>
-        /// Utility fees are <b>not</b> in this figure yet — the game charges them per property, from
-        /// the city's <c>ServiceFee</c> buffer, and reading them needs a wider walk than the sensor
-        /// currently takes. Until they are, this is a floor on household pressure, not the whole of it.
+        /// All four cost lines the game itself bills a household are in it, so this is the whole of
+        /// measurable household pressure rather than a floor on it. What it still cannot see is
+        /// anything the game does not charge per household — it is the household's ledger, not the
+        /// city's.
         /// </para>
         /// </remarks>
         public double DisposableMargin { get; set; }
@@ -405,8 +419,11 @@ namespace Agora.Core.Contracts
         /// <summary>Mean daily household spend on goods, in game currency.</summary>
         public double AverageHouseholdResourceSpend { get; set; }
 
+        /// <summary>Mean daily household utility bill, in game currency.</summary>
+        public double AverageHouseholdFees { get; set; }
+
         /// <summary>
-        /// Share of daily household income left after rent, upkeep and resources. Signed; see
+        /// Share of daily household income left after rent, upkeep, resources and fees. Signed; see
         /// <see cref="CitySnapshot.DisposableMargin"/>.
         /// </summary>
         public double DisposableMargin { get; set; }

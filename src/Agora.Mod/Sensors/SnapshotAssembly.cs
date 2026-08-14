@@ -44,6 +44,7 @@ namespace Agora.Mod.Sensors
         private const string FieldRentBurden = "RentBurden";
         private const string FieldAverageHouseholdUpkeep = "AverageHouseholdUpkeep";
         private const string FieldAverageHouseholdResourceSpend = "AverageHouseholdResourceSpend";
+        private const string FieldAverageHouseholdFees = "AverageHouseholdFees";
         private const string FieldDisposableMargin = "DisposableMargin";
         private const string FieldTransitRidership = "TransitRidership";
         private const string FieldAverageCommuteMinutes = "AverageCommuteMinutes";
@@ -84,6 +85,7 @@ namespace Agora.Mod.Sensors
                 RentBurden = city.RentBurden ?? 0.0,
                 AverageHouseholdUpkeep = city.AverageHouseholdUpkeep ?? 0.0,
                 AverageHouseholdResourceSpend = city.AverageHouseholdResourceSpend ?? 0.0,
+                AverageHouseholdFees = city.AverageHouseholdFees ?? 0.0,
                 DisposableMargin = city.DisposableMargin ?? 0.0,
                 TransitRidership = city.TransitRidership ?? 0.0,
                 AverageCommuteMinutes = city.AverageCommuteMinutes ?? 0.0,
@@ -155,6 +157,7 @@ namespace Agora.Mod.Sensors
             district.RentBurden = Resolve(reading.RentBurden, city.RentBurden, FieldRentBurden, fallbacks);
             district.AverageHouseholdUpkeep = Resolve(reading.AverageHouseholdUpkeep, city.AverageHouseholdUpkeep, FieldAverageHouseholdUpkeep, fallbacks);
             district.AverageHouseholdResourceSpend = Resolve(reading.AverageHouseholdResourceSpend, city.AverageHouseholdResourceSpend, FieldAverageHouseholdResourceSpend, fallbacks);
+            district.AverageHouseholdFees = Resolve(reading.AverageHouseholdFees, city.AverageHouseholdFees, FieldAverageHouseholdFees, fallbacks);
             district.DisposableMargin = Resolve(reading.DisposableMargin, city.DisposableMargin, FieldDisposableMargin, fallbacks);
             district.TransitRidership = Resolve(reading.TransitRidership, city.TransitRidership, FieldTransitRidership, fallbacks);
             district.AverageCommuteMinutes = Resolve(reading.AverageCommuteMinutes, city.AverageCommuteMinutes, FieldAverageCommuteMinutes, fallbacks);

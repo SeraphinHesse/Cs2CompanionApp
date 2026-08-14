@@ -61,6 +61,7 @@ namespace Agora.Mod.Sensors
                 merged.AverageHouseholdUpkeep = merged.AverageHouseholdUpkeep ?? source.AverageHouseholdUpkeep;
                 merged.AverageHouseholdResourceSpend =
                     merged.AverageHouseholdResourceSpend ?? source.AverageHouseholdResourceSpend;
+                merged.AverageHouseholdFees = merged.AverageHouseholdFees ?? source.AverageHouseholdFees;
                 merged.DisposableMargin = merged.DisposableMargin ?? source.DisposableMargin;
                 merged.TransitRidership = merged.TransitRidership ?? source.TransitRidership;
                 merged.AverageCommuteMinutes = merged.AverageCommuteMinutes ?? source.AverageCommuteMinutes;
@@ -134,6 +135,7 @@ namespace Agora.Mod.Sensors
             target.AverageHouseholdUpkeep = target.AverageHouseholdUpkeep ?? source.AverageHouseholdUpkeep;
             target.AverageHouseholdResourceSpend =
                 target.AverageHouseholdResourceSpend ?? source.AverageHouseholdResourceSpend;
+            target.AverageHouseholdFees = target.AverageHouseholdFees ?? source.AverageHouseholdFees;
             target.DisposableMargin = target.DisposableMargin ?? source.DisposableMargin;
             target.TransitRidership = target.TransitRidership ?? source.TransitRidership;
             target.AverageCommuteMinutes = target.AverageCommuteMinutes ?? source.AverageCommuteMinutes;

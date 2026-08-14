@@ -19,6 +19,7 @@ import {
   happinessText,
   int,
   makeFallbackSet,
+  money,
   partyColor,
   partyName,
   pct,
@@ -79,6 +80,7 @@ export const DistrictDetailPane = (props: {
   const education = detail.education || EMPTY_DISTRICT_DETAIL.education;
   const age = detail.age || EMPTY_DISTRICT_DETAIL.age;
   const indices = detail.indices || EMPTY_DISTRICT_DETAIL.indices;
+  const budget = detail.budget || EMPTY_DISTRICT_DETAIL.budget;
 
   const fallbacks = useMemo(
     () => makeFallbackSet(detail.hasCityFallbacks, detail.cityFallbackFields),
@@ -271,6 +273,56 @@ export const DistrictDetailPane = (props: {
           fill={detail.unemployment}
           tint="#c25b4a"
           field="unemployment"
+          fallbacks={fallbacks}
+        />
+      </div>
+
+      <SectionTitle
+        title="Household budget"
+        note="What the game bills a household here, and what survives it"
+      />
+      <div className={styles.meterRow}>
+        <Meter
+          label="Rent burden"
+          value={pct(budget.rentBurden)}
+          fill={budget.rentBurden}
+          tint="#c9a06a"
+          field="rentBurden"
+          fallbacks={fallbacks}
+        />
+        <Meter
+          label={budget.disposableMargin < 0 ? "Left after costs (overdrawn)" : "Left after costs"}
+          value={pct(budget.disposableMargin)}
+          fill={budget.disposableMargin}
+          tint={budget.disposableMargin < 0 ? "#c25b4a" : "#4fb3a5"}
+          field="disposableMargin"
+          fallbacks={fallbacks}
+        />
+        <div className={styles.meterSpacer} />
+      </div>
+      <div className={styles.statRow}>
+        <StatCell
+          label="Rent / month"
+          value={money(budget.averageRent)}
+          field="averageRent"
+          fallbacks={fallbacks}
+        />
+        <StatCell
+          label="Upkeep / day"
+          value={money(budget.averageHouseholdUpkeep)}
+          field="averageHouseholdUpkeep"
+          fallbacks={fallbacks}
+        />
+        <StatCell
+          label="Goods / day"
+          value={money(budget.averageHouseholdResourceSpend)}
+          field="averageHouseholdResourceSpend"
+          fallbacks={fallbacks}
+        />
+        <StatCell
+          label="Fees / day"
+          value={money(budget.averageHouseholdFees)}
+          field="averageHouseholdFees"
           fallbacks={fallbacks}
         />
       </div>

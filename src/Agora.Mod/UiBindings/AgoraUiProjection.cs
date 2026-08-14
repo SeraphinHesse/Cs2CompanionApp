@@ -956,6 +956,17 @@ namespace Agora.Mod.UiBindings
             payload.AgeAdult = district.Age.AdultShare;
             payload.AgeElderly = district.Age.ElderlyShare;
 
+            // Straight copies. Nothing is derived here on purpose: DisposableMargin is already the
+            // ratio the engine reads, and recomputing it from the four cost lines on the way to the
+            // panel would give the player a number the engine never saw the moment the two formulas
+            // drifted.
+            payload.BudgetAverageRent = district.AverageRent;
+            payload.BudgetRentBurden = district.RentBurden;
+            payload.BudgetUpkeep = district.AverageHouseholdUpkeep;
+            payload.BudgetResourceSpend = district.AverageHouseholdResourceSpend;
+            payload.BudgetFees = district.AverageHouseholdFees;
+            payload.BudgetDisposableMargin = district.DisposableMargin;
+
             if (indices != null)
             {
                 payload.IdxGentrification = indices.GentrificationIndex;
