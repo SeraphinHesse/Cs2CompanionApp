@@ -25,6 +25,9 @@ namespace Agora.Mod.Sensors
         private AgoraEnvironmentSensorSystem _environment;
         private AgoraServiceCoverageSensorSystem _services;
         private AgoraMobilitySensorSystem _mobility;
+        private AgoraStatisticsSensorSystem _statistics;
+        private AgoraTourismSensorSystem _tourism;
+        private AgoraProgressionSensorSystem _progression;
 
         /// <summary>
         /// The metric history: the only state a snapshot needs beyond the current frame. Sized well
@@ -59,6 +62,9 @@ namespace Agora.Mod.Sensors
             _environment = World.GetOrCreateSystemManaged<AgoraEnvironmentSensorSystem>();
             _services = World.GetOrCreateSystemManaged<AgoraServiceCoverageSensorSystem>();
             _mobility = World.GetOrCreateSystemManaged<AgoraMobilitySensorSystem>();
+            _statistics = World.GetOrCreateSystemManaged<AgoraStatisticsSensorSystem>();
+            _tourism = World.GetOrCreateSystemManaged<AgoraTourismSensorSystem>();
+            _progression = World.GetOrCreateSystemManaged<AgoraProgressionSensorSystem>();
         }
 
         public override void Invalidate()
@@ -79,6 +85,13 @@ namespace Agora.Mod.Sensors
             if (_environment != null) _environment.Invalidate();
             if (_services != null) _services.Invalidate();
             if (_mobility != null) _mobility.Invalidate();
+
+            // The city-statistics pass. A sensor left out of this list carries one city's readings
+            // into the next save and nothing shows it until someone loads a second city, which is the
+            // per-save-reset bug class this method exists for.
+            if (_statistics != null) _statistics.Invalidate();
+            if (_tourism != null) _tourism.Invalidate();
+            if (_progression != null) _progression.Invalidate();
         }
 
         /// <summary>
@@ -146,6 +159,9 @@ namespace Agora.Mod.Sensors
             _environment.EnsureSampled(date);
             _services.EnsureSampled(date);
             _mobility.EnsureSampled(date);
+            _statistics.EnsureSampled(date);
+            _tourism.EnsureSampled(date);
+            _progression.EnsureSampled(date);
 
             // Fixed priority order. Families own disjoint fields, so nothing actually collides —
             // pinning the order anyway means a future overlap resolves the same way every time
@@ -157,6 +173,9 @@ namespace Agora.Mod.Sensors
                 _environment.City,
                 _services.City,
                 _mobility.City,
+                _statistics.City,
+                _tourism.City,
+                _progression.City,
             };
 
             var districtSources = new List<IReadOnlyDictionary<string, DistrictReading>>
@@ -165,6 +184,13 @@ namespace Agora.Mod.Sensors
                 _economy.Districts,
                 _environment.Districts,
                 _services.Districts,
+                _statistics.Districts,
+                _tourism.Districts,
+
+                // No progression entry: a district has no milestone and TaxSystem has no per-district,
+                // per-resource overload, so that system has no Districts property at all. An
+                // always-empty one would read as "measured nothing here" rather than "there is
+                // nothing here to measure".
             };
 
             IReadOnlyList<DistrictEntry> entries = _districts.Districts;

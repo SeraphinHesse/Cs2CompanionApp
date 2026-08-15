@@ -34,6 +34,15 @@ namespace Agora.Mod.Sensors
     /// </para>
     ///
     /// <para>
+    /// The v4 city-statistics vocabulary was added on exactly that rule: every field of
+    /// <c>Statistics</c>, <c>Tourism</c> and <c>Progression</c>, and the three per-district counts,
+    /// are read back here <i>because</i> <see cref="MetricHistory.RecordSnapshot"/> files them. The
+    /// two lists on the snapshot — unlocked features and per-resource tax rates — are neither
+    /// recorded nor returned, and that pairing is the point: a list has no scalar series behind it,
+    /// so returning one here would be an invention rather than a measurement.
+    /// </para>
+    ///
+    /// <para>
     /// The rule this file follows, uniformly: a field is written only when its series holds a sample
     /// in that month, and is otherwise left at the contract default. So the recorded set in
     /// <see cref="MetricHistory"/> is exactly the set a caller may trust here, and every other field
@@ -117,6 +126,18 @@ namespace Agora.Mod.Sensors
                 AverageRent = Read(history, MetricHistory.CityScope, MetricHistory.Rent, totalMonths),
                 AverageCommuteMinutes = Read(history, MetricHistory.CityScope, MetricHistory.CommuteMinutes, totalMonths),
                 TrafficCongestion = Read(history, MetricHistory.CityScope, MetricHistory.TrafficCongestion, totalMonths),
+
+                // The city-statistics pass. Every one of these is read back because every one of them
+                // is recorded — the two sets are the same set, and they are what a wave-3 `delta` or
+                // `windowMonths` trigger will read off a historical month. A field returned here that
+                // the recorder does not file would be a fabricated zero for every month before the
+                // current session.
+                Statistics = ReadStatistics(history, totalMonths),
+                Tourism = ReadTourism(history, totalMonths),
+                Progression = ReadProgression(history, totalMonths),
+                UncollectedGarbage = Read(history, MetricHistory.CityScope, MetricHistory.UncollectedGarbage, totalMonths),
+                AttractionCount = ReadInt(history, MetricHistory.CityScope, MetricHistory.AttractionCount, totalMonths),
+                SignatureBuildingCount = ReadInt(history, MetricHistory.CityScope, MetricHistory.SignatureBuildingCount, totalMonths),
             };
 
             for (int i = 0; i < districtIds.Count; i++)
@@ -141,6 +162,13 @@ namespace Agora.Mod.Sensors
                     Wealth = ReadWealth(history, id, totalMonths),
                     AverageLandValue = Read(history, id, MetricHistory.LandValue, totalMonths),
                     AverageRent = Read(history, id, MetricHistory.Rent, totalMonths),
+
+                    // The three v4 fields recorded at district scope. Nothing else from that pass is
+                    // read back here, because nothing else is recorded here — DistrictSnapshot has no
+                    // property for it and the game has no district figure behind it.
+                    UncollectedGarbage = Read(history, id, MetricHistory.UncollectedGarbage, totalMonths),
+                    AttractionCount = ReadInt(history, id, MetricHistory.AttractionCount, totalMonths),
+                    SignatureBuildingCount = ReadInt(history, id, MetricHistory.SignatureBuildingCount, totalMonths),
                 });
             }
 
@@ -167,6 +195,47 @@ namespace Agora.Mod.Sensors
                 Read(history, scope, MetricHistory.EducationEducated, totalMonths),
                 Read(history, scope, MetricHistory.EducationWellEducated, totalMonths),
                 Read(history, scope, MetricHistory.EducationHighlyEducated, totalMonths));
+        }
+
+        /// <summary>
+        /// The city-statistics block. City scope only, for the reason the contract type itself gives:
+        /// the game's statistics system has no district dimension, so there is no district series to
+        /// read and a district copy would be the city's number under a local name.
+        /// </summary>
+        private static CityStatistics ReadStatistics(MetricHistory history, int totalMonths)
+        {
+            const string Scope = MetricHistory.CityScope;
+
+            return new CityStatistics(
+                ReadInt(history, Scope, MetricHistory.Homeless, totalMonths),
+                Read(history, Scope, MetricHistory.HomelessShare, totalMonths),
+                ReadInt(history, Scope, MetricHistory.CitizensMovedIn, totalMonths),
+                ReadInt(history, Scope, MetricHistory.CitizensMovedAway, totalMonths),
+                ReadInt(history, Scope, MetricHistory.MovedAwayUnhappy, totalMonths),
+                ReadInt(history, Scope, MetricHistory.Births, totalMonths),
+                ReadInt(history, Scope, MetricHistory.Deaths, totalMonths),
+                Read(history, Scope, MetricHistory.GarbageProductionRate, totalMonths));
+        }
+
+        private static TourismLevels ReadTourism(MetricHistory history, int totalMonths)
+        {
+            const string Scope = MetricHistory.CityScope;
+
+            return new TourismLevels(
+                ReadInt(history, Scope, MetricHistory.Tourists, totalMonths),
+                ReadInt(history, Scope, MetricHistory.Attractiveness, totalMonths),
+                ReadInt(history, Scope, MetricHistory.LodgingUsed, totalMonths),
+                ReadInt(history, Scope, MetricHistory.LodgingTotal, totalMonths));
+        }
+
+        private static ProgressionState ReadProgression(MetricHistory history, int totalMonths)
+        {
+            const string Scope = MetricHistory.CityScope;
+
+            return new ProgressionState(
+                ReadInt(history, Scope, MetricHistory.MilestoneLevel, totalMonths),
+                ReadInt(history, Scope, MetricHistory.Experience, totalMonths),
+                Read(history, Scope, MetricHistory.MilestoneProgress, totalMonths));
         }
 
         private static WealthDistribution ReadWealth(MetricHistory history, string scope, int totalMonths)

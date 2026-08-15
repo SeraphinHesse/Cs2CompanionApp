@@ -4,6 +4,7 @@
 #nullable disable
 
 using System.Collections.Generic;
+using Agora.Core.Contracts;
 
 namespace Agora.Mod.Sensors
 {
@@ -67,8 +68,21 @@ namespace Agora.Mod.Sensors
                 merged.AverageCommuteMinutes = merged.AverageCommuteMinutes ?? source.AverageCommuteMinutes;
                 merged.TrafficCongestion = merged.TrafficCongestion ?? source.TrafficCongestion;
 
+                // The city-statistics pass (snapshot v4). Same first-source-wins rule as everything
+                // above: the three sensors that write these own disjoint fields, so nothing collides
+                // today, and pinning the rule means a future overlap resolves identically every run
+                // instead of by whichever ECS system the scheduler happened to run last.
+                merged.Statistics = merged.Statistics ?? source.Statistics;
+                merged.Tourism = merged.Tourism ?? source.Tourism;
+                merged.Progression = merged.Progression ?? source.Progression;
+                merged.UncollectedGarbage = merged.UncollectedGarbage ?? source.UncollectedGarbage;
+                merged.AttractionCount = merged.AttractionCount ?? source.AttractionCount;
+                merged.SignatureBuildingCount = merged.SignatureBuildingCount ?? source.SignatureBuildingCount;
+
                 AppendMissing(merged.ActivePolicyIds, source.ActivePolicyIds);
                 AppendMissing(merged.RecentDisasterIds, source.RecentDisasterIds);
+                AppendMissing(merged.UnlockedFeatureIds, source.UnlockedFeatureIds);
+                AppendMissingRates(merged.IndustryTaxRates, source.IndustryTaxRates);
             }
 
             return merged;
@@ -140,6 +154,12 @@ namespace Agora.Mod.Sensors
             target.TransitRidership = target.TransitRidership ?? source.TransitRidership;
             target.AverageCommuteMinutes = target.AverageCommuteMinutes ?? source.AverageCommuteMinutes;
             target.TrafficCongestion = target.TrafficCongestion ?? source.TrafficCongestion;
+
+            // The three v4 fields the game genuinely resolves per district; the rest of the
+            // city-statistics pass has no district dimension at source and so appears only above.
+            target.UncollectedGarbage = target.UncollectedGarbage ?? source.UncollectedGarbage;
+            target.AttractionCount = target.AttractionCount ?? source.AttractionCount;
+            target.SignatureBuildingCount = target.SignatureBuildingCount ?? source.SignatureBuildingCount;
         }
 
         private static void AppendMissing(List<string> target, List<string> source)
@@ -152,6 +172,34 @@ namespace Agora.Mod.Sensors
                 if (string.IsNullOrEmpty(value) || target.Contains(value)) continue;
                 target.Add(value);
             }
+        }
+
+        /// <summary>
+        /// Appends every rate whose <c>(Area, ResourceIndex)</c> the target does not already carry.
+        /// First source wins, matching every other field here — the key is the pair rather than the
+        /// whole struct so that two sources disagreeing about one resource's rate resolve to a fixed
+        /// answer instead of silently shipping both.
+        /// </summary>
+        private static void AppendMissingRates(List<ResourceTaxRate> target, List<ResourceTaxRate> source)
+        {
+            if (target == null || source == null) return;
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                ResourceTaxRate rate = source[i];
+                if (ContainsRate(target, rate)) continue;
+                target.Add(rate);
+            }
+        }
+
+        private static bool ContainsRate(List<ResourceTaxRate> target, ResourceTaxRate rate)
+        {
+            for (int i = 0; i < target.Count; i++)
+            {
+                if (target[i].Area == rate.Area && target[i].ResourceIndex == rate.ResourceIndex) return true;
+            }
+
+            return false;
         }
     }
 }
