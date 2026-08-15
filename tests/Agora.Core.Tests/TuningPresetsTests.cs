@@ -149,8 +149,10 @@ namespace Agora.Core.Tests
             EngineTuning tuning = Shipped();
             double before = tuning.Affinity.SoftmaxTemperature;
 
-            TuningPresets.Apply(tuning, null);
-            TuningPresets.Apply(null, new AgoraSettings());
+            // null! throughout: these arguments are deliberately null — the assertion is that the
+            // call tolerates it — so the annotation is suppressed rather than the test weakened.
+            TuningPresets.Apply(tuning, null!);
+            TuningPresets.Apply(null!, new AgoraSettings());
 
             Assert.Equal(before, tuning.Affinity.SoftmaxTemperature, 12);
         }
