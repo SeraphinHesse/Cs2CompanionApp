@@ -101,7 +101,12 @@ namespace Agora.Core.Engine.Parties
         /// party still holding one of those colours moved off it.
         /// </para>
         /// </remarks>
-        public static BrandRepairResult Apply(IList<Party> parties,
+        // List<Party> rather than IList<Party>: pass 2 hands the whole registry to
+        // PartyRegistry.RegenerateColor, which takes IReadOnlyList<Party>, and IList<T> does not
+        // derive from IReadOnlyList<T>. Every caller already passes PoliticalState.Parties or a
+        // List<Party> built for a test, so narrowing the parameter costs nothing and keeps the
+        // taken-colour set the full registry rather than a filtered copy of it.
+        public static BrandRepairResult Apply(List<Party> parties,
                                               IReadOnlyList<PartyArchetype> catalog,
                                               EngineTuning tuning)
         {

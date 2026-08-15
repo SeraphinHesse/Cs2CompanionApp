@@ -22,7 +22,13 @@ namespace Agora.Core.Tuning
     public sealed class EngineTuning
     {
         /// <summary>Bumped whenever a key is added, removed or renamed. Runs through <c>/schema-change</c>.</summary>
-        public int SchemaVersion { get; internal set; } = 3;
+        /// <summary>
+        /// Must equal <c>data/engine_tuning.json</c>'s own <c>schemaVersion</c>.
+        /// <c>ShippedTuningTests.ShippedTuningFile_MatchesBuiltInDefaults</c> pins them together,
+        /// because every other test in the suite runs against <see cref="Default"/> rather than the
+        /// file — so a value that differs here is a value the shipped engine never verified.
+        /// </summary>
+        public int SchemaVersion { get; internal set; } = 4;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();

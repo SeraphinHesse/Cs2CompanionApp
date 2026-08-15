@@ -262,7 +262,7 @@ namespace Agora.Core.Tests
             Strip(after);
 
             Assert.True(JToken.DeepEquals(before, after),
-                        "Migration changed something outside the six paths it is allowed to touch.");
+                        "Migration changed something outside the paths Strip lists as permitted.");
         }
 
         /// <summary>Removes the paths v1 → v2 is permitted to change, from either side.</summary>
@@ -276,6 +276,9 @@ namespace Agora.Core.Tests
             settings.Remove("themeLocked");
             settings.Remove("pauseOnMajorNews");
             settings.Remove("showAllReports");
+            settings.Remove("voteSharpness");
+            settings.Remove("newsInfluence");
+            settings.Remove("brandDiscipline");
 
             foreach (JToken party in Arr(root, "parties"))
             {
@@ -708,7 +711,12 @@ namespace Agora.Core.Tests
         [Fact]
         public void Migrate_RefusesAStateFileFromTheFuture()
         {
-            string json = StateV1(versionLine: "\"schemaVersion\": 4,");
+            // Relative to the current version, never a literal. It was a literal 4, which stopped
+            // being "the future" the moment CurrentStateVersion reached 4 — the test then asserted
+            // TooNew against a file this build migrates happily, and went red for a reason that had
+            // nothing to do with the refusal it exists to guard.
+            string future = (SidecarSchema.CurrentStateVersion + 1).ToString(CultureInfo.InvariantCulture);
+            string json = StateV1(versionLine: "\"schemaVersion\": " + future + ",");
 
             MigrationResult result;
             JObject root = Migrate(json, out result);

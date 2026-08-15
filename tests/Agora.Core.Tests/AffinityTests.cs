@@ -485,12 +485,21 @@ namespace Agora.Core.Tests
         public void Event_PushesTowardTheAlignedPlatformAndAwayFromTheOpposed()
         {
             // Uniform weights: alignment = (1 * pressure.env * platform.env) / 6.
-            // Component = eventModifierWeight (0.25) * alignment * decay(1) * severity 5/5.
+            // Component = eventModifierWeight * alignment * decay(1) * severity 5/5.
+            //
+            // The weight is read from tuning rather than written as a literal. It was a literal
+            // 0.25, and when eventModifierWeight was deliberately trimmed to 0.18 to go with the
+            // sharper softmax, this assertion and the cap one below both went red for no reason
+            // beyond having memorised a number that data/CLAUDE.md rule 4 puts in the tuning file.
+            // Reading it keeps the test about the SHAPE of the term — linear in the weight — which
+            // is the part a retune must not change.
+            double weight = EngineTuning.Default.Affinity.EventModifierWeight;
+
             double aligned = EventComponentWith(Jan1990, MakeEvent("e-1", GreenPlatform, 5, Jan1990));
             double opposed = EventComponentWith(Jan1990, MakeEvent("e-1", GreyPlatform, 5, Jan1990));
 
-            Assert.Equal(0.25 / 6.0, aligned, 12);
-            Assert.Equal(-0.25 / 6.0, opposed, 12);
+            Assert.Equal(weight / 6.0, aligned, 12);
+            Assert.Equal(-weight / 6.0, opposed, 12);
         }
 
         [Fact]
@@ -524,8 +533,11 @@ namespace Agora.Core.Tests
             TimelineEvent[] opposed = Enumerable.Range(0, 40)
                 .Select(i => MakeEvent("e-" + i.ToString("D2"), GreyPlatform, 5, Jan1990)).ToArray();
 
-            Assert.Equal(0.25, EventComponentWith(Jan1990, aligned), 12);
-            Assert.Equal(-0.25, EventComponentWith(Jan1990, opposed), 12);
+            // From tuning, not a literal — see Event_PushesTowardTheAlignedPlatformAndAwayFromTheOpposed.
+            double weight = EngineTuning.Default.Affinity.EventModifierWeight;
+
+            Assert.Equal(weight, EventComponentWith(Jan1990, aligned), 12);
+            Assert.Equal(-weight, EventComponentWith(Jan1990, opposed), 12);
         }
 
         [Fact]
