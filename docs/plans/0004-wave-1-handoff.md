@@ -41,8 +41,10 @@ file and line numbers, and **anything not marked CONFIRMED there does not get a 
 
 ## PR
 
-**PR:** _(recorded below once opened — see "PR link" at the end of this file)_
+**PR:** https://github.com/SeraphinHesse/Cs2CompanionApp/pull/4
 **Merge status: NOT merged.** The owner reviews. Wave 2 must not open its umbrella until it is in.
+
+Note **wave 0's PR #3 is merged**; #4 is the only one outstanding.
 
 ---
 
@@ -310,4 +312,5 @@ in `docs/plans/0004-wave-0-handoff.md` and `docs/status.md`.
 
 ## PR link
 
-_Recorded in the follow-up commit once the PR is opened._
+https://github.com/SeraphinHesse/Cs2CompanionApp/pull/4 — open, awaiting the owner. Wave 2 must not
+cut its umbrella until this is merged into `EventSystemRefresh`.
