@@ -238,33 +238,242 @@ namespace Agora.Core.Tests
 
         // --- the pool afterwards ------------------------------------------------------------------
 
-        /// <summary>
-        /// Drawn entries leave the pool and everything left behind ages by one. That aging is what the
-        /// pity weighting reads, so a cycle that forgot it would leave the pool permanently flat.
-        /// </summary>
-        [Fact]
-        public void Draft_RemovesTheDrawnEntriesAndAgesEveryOneLeftBehind()
+        /// <summary>The ids drawn into any story this cycle.</summary>
+        private static HashSet<string> DrawnIds(StoryDraftResult result)
         {
-            List<CivicEvent> catalog;
-            List<EventPoolEntry> pool;
-            FullPool(out catalog, out pool);
-
-            StoryDraftResult result = Draft(catalog, pool);
-
             var drawn = new HashSet<string>(StringComparer.Ordinal);
             foreach (Story story in result.DraftedStories)
             {
                 foreach (StorySlot slot in story.Slots) drawn.Add(slot.EventId);
             }
 
-            foreach (EventPoolEntry entry in result.UpdatedPool)
+            return drawn;
+        }
+
+        private static EventPoolEntry? Find(List<EventPoolEntry> pool, string eventId)
+        {
+            foreach (EventPoolEntry entry in pool)
             {
-                Assert.False(drawn.Contains(entry.EventId),
-                             "Drawn event '" + entry.EventId + "' is still in the pool.");
-                Assert.Equal(1, entry.MissStreak);
+                if (string.Equals(entry.EventId, eventId, StringComparison.Ordinal)) return entry;
             }
 
-            Assert.Equal(pool.Count - drawn.Count, result.UpdatedPool.Count);
+            return null;
+        }
+
+        /// <summary>
+        /// <b>A drawn entry STAYS in the pool</b>, retained with its <c>MissStreak</c> reset and its
+        /// <c>LastDraftedMonth</c> stamped. This reverses the original "clear the drawn entries"
+        /// instruction, and the reversal is load-bearing.
+        /// </summary>
+        /// <remarks>
+        /// The re-use cooldown lives on the entry, so the entry has to survive the months it is
+        /// counting. Drop it and it is re-admitted from the catalog next cycle at
+        /// <c>LastDraftedMonth = -1</c>, at which point the cooldown does nothing whatsoever — the
+        /// same class of bug as the archive-based rule it replaced, reached in one cycle instead of
+        /// fourteen.
+        /// </remarks>
+        [Fact]
+        public void Draft_RetainsEveryDrawnEntryWithItsStreakResetAndItsDraftMonthStamped()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            StoryDraftResult result = Draft(catalog, pool);
+            HashSet<string> drawn = DrawnIds(result);
+
+            Assert.NotEmpty(drawn);
+
+            foreach (string id in drawn)
+            {
+                EventPoolEntry? entry = Find(result.UpdatedPool, id);
+
+                Assert.True(entry != null,
+                    "Drawn event '" + id + "' left the pool. Its cooldown stamp goes with it, so it " +
+                    "is re-admitted next cycle at LastDraftedMonth = -1 and the cooldown does nothing.");
+
+                Assert.Equal(0, entry!.MissStreak);
+                Assert.Equal(March1994.TotalMonths, entry.LastDraftedMonth);
+            }
+
+            // Nothing left the pool at all: the whole set is still there.
+            Assert.Equal(pool.Count, result.UpdatedPool.Count);
+        }
+
+        /// <summary>
+        /// Everything not drawn ages by one. That ageing is what the pity weighting reads, so a cycle
+        /// that forgot it would leave the pool permanently flat.
+        /// </summary>
+        [Fact]
+        public void Draft_AgesEveryEntryItPassedOver()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            StoryDraftResult result = Draft(catalog, pool);
+            HashSet<string> drawn = DrawnIds(result);
+
+            int aged = 0;
+            foreach (EventPoolEntry entry in result.UpdatedPool)
+            {
+                if (drawn.Contains(entry.EventId)) continue;
+
+                Assert.Equal(1, entry.MissStreak);
+                aged++;
+            }
+
+            Assert.True(aged > 0, "Nothing was passed over, so this proves nothing about ageing.");
+        }
+
+        /// <summary>
+        /// <b>An entry sitting out its cooldown is not aged.</b> It was never offered, so it was never
+        /// passed over, and ageing it would hand it a pity bonus for time it did not spend waiting —
+        /// which on release would put it straight to the front of the draw.
+        /// </summary>
+        [Fact]
+        public void Draft_DoesNotAgeAnEntryServingItsCooldown()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            // Stamped this month, so it is mid-cooldown at every draft until the cooldown elapses.
+            EventPoolEntry cooling = StoryTestFixtures.Pooled("evt-cooling", missStreak: 0);
+            cooling.LastDraftedMonth = March1994.TotalMonths;
+
+            catalog.Add(StoryTestFixtures.Minor("evt-cooling"));
+            catalog.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            pool.Add(cooling);
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            EventPoolEntry? after = Find(result.UpdatedPool, "evt-cooling");
+            Assert.True(after != null, "The cooling entry left the pool.");
+            Assert.Equal(0, after!.MissStreak);
+        }
+
+        /// <summary>
+        /// An entry inside its cooldown is not drawn at all.
+        /// </summary>
+        [Fact]
+        public void Draft_DoesNotDrawAnEntryInsideItsCooldown()
+        {
+            var events = new List<CivicEvent> { StoryTestFixtures.Major("evt-major-00") };
+            for (int i = 0; i < 6; i++) events.Add(StoryTestFixtures.Minor("evt-minor-" + i.ToString("00")));
+
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            Build(events, out catalog, out pool);
+
+            // Every minor was told last month, so only the major is drawable and the cycle degrades
+            // rather than re-telling something the player just read.
+            foreach (EventPoolEntry entry in pool)
+            {
+                if (entry.EventId.StartsWith("evt-minor", StringComparison.Ordinal))
+                {
+                    entry.LastDraftedMonth = March1994.TotalMonths - 1;
+                }
+            }
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            foreach (Story story in result.DraftedStories)
+            {
+                foreach (StorySlot slot in story.Slots)
+                {
+                    Assert.False(slot.EventId.StartsWith("evt-minor", StringComparison.Ordinal),
+                        "'" + slot.EventId + "' was re-told one month after its last outing, well " +
+                        "inside stories.reuseCooldownMonths of " + Tuning.Stories.ReuseCooldownMonths + ".");
+                }
+            }
+        }
+
+        /// <summary>
+        /// A mandatory event ignores the cooldown entirely. A mandatory trigger is a statement about
+        /// the city right now; suppressing it because the same event was told two years ago would drop
+        /// a genuine crisis silently — no story, no power movement, no prose.
+        /// </summary>
+        [Fact]
+        public void Draft_DeliversAMandatoryEventEvenInsideItsCooldown()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            EventPoolEntry mandatory = StoryTestFixtures.Pooled("evt-mandatory-00");
+            mandatory.LastDraftedMonth = March1994.TotalMonths - 1;
+
+            catalog.Add(StoryTestFixtures.Mandatory("evt-mandatory-00"));
+            catalog.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            pool.Add(mandatory);
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            bool delivered = false;
+            foreach (Story story in result.DraftedStories)
+            {
+                foreach (StorySlot slot in story.Slots)
+                {
+                    if (slot.EventId == "evt-mandatory-00") delivered = true;
+                }
+            }
+
+            Assert.True(delivered,
+                "A mandatory event was suppressed by the re-use cooldown. A mandatory trigger is a " +
+                "statement about the city right now.");
+        }
+
+        /// <summary>
+        /// <b>The cooling set survives the <c>poolMaxSize</c> trim, and this is the test that catches
+        /// the trap.</b>
+        /// </summary>
+        /// <remarks>
+        /// A cooling entry has <c>MissStreak == 0</c> by construction, so it sits in the
+        /// minimum-weight class and is the <i>first</i> thing a weight-ordered trim discards — which
+        /// destroys exactly the stamps that make the cooldown work, re-admits those events at -1, and
+        /// silently reduces the cooldown to nothing. Relying on <c>poolMaxSize</c> being set above the
+        /// catalog size delegates a correctness property to a dial and a data file, which is how the
+        /// archive coupling this replaced went wrong one level up.
+        /// </remarks>
+        [Fact]
+        public void Draft_KeepsACoolingEntrysStampWhenThePoolOverflows()
+        {
+            EngineTuning tiny = StoryTestFixtures.Tuned("{\"stories\":{\"poolMaxSize\":8}}");
+
+            var events = new List<CivicEvent>();
+            for (int i = 0; i < 3; i++) events.Add(StoryTestFixtures.Major("evt-major-" + i.ToString("00")));
+            for (int i = 0; i < 20; i++) events.Add(StoryTestFixtures.Minor("evt-minor-" + i.ToString("00")));
+
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            Build(events, out catalog, out pool);
+
+            Assert.True(pool.Count > tiny.Stories.PoolMaxSize,
+                        "The pool must overflow for this to test the trim at all.");
+
+            // One cooling entry among many well-aged ones. Every other entry outweighs it, so a naive
+            // weight-ordered trim drops this one first.
+            EventPoolEntry cooling = Find(pool, "evt-minor-00")!;
+            cooling.MissStreak = 0;
+            cooling.LastDraftedMonth = March1994.TotalMonths - 1;
+
+            foreach (EventPoolEntry entry in pool)
+            {
+                if (entry.EventId != "evt-minor-00") entry.MissStreak = Tuning.Stories.MaxMissStreak;
+            }
+
+            StoryDraftResult result = Draft(catalog, pool, tiny);
+
+            EventPoolEntry? after = Find(result.UpdatedPool, "evt-minor-00");
+
+            Assert.True(after != null,
+                "The poolMaxSize trim discarded a cooling entry. It has MissStreak 0 by construction, " +
+                "so it is the lowest-weighted thing in the pool and a weight-ordered trim takes it " +
+                "first — which loses the stamp, re-admits the event at LastDraftedMonth = -1, and " +
+                "reduces the re-use cooldown to nothing.");
+
+            Assert.Equal(March1994.TotalMonths - 1, after!.LastDraftedMonth);
         }
 
         [Fact]

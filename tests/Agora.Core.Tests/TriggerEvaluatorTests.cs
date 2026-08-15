@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Reflection;
 using Agora.Core.Contracts;
 using Agora.Core.Stories;
+using Agora.Core.Tuning;
 using Agora.Mod.Sensors;
 using Xunit;
 
@@ -19,6 +21,105 @@ namespace Agora.Core.Tests
     public class TriggerEvaluatorTests
     {
         private static readonly SimDate March1994 = StoryTestFixtures.March1994;
+        private static readonly EngineTuning Tuning = EngineTuning.Default;
+
+        // --- the seam -----------------------------------------------------------------------------
+
+        /// <summary>
+        /// The published seam, with this file's tuning. Both entry points take an
+        /// <see cref="EngineTuning"/> and there is deliberately no shorter overload — the delta
+        /// window bound reads <c>stories.deltaWindowSlackMonths</c>, so a caller that omitted tuning
+        /// would silently ignore the player's own value and nothing would say so.
+        /// </summary>
+        /// <remarks>
+        /// Wrapped in these two one-liners rather than spelled out at every call site so that the
+        /// next seam change is one edit here instead of fifty. The tests that mean to vary the tuning
+        /// call <see cref="TriggerEvaluator"/> directly and say why.
+        /// </remarks>
+        private static CheckResult Evaluate(TriggerSpec spec, StoryReadContext context) =>
+            TriggerEvaluator.Evaluate(spec, context, Tuning);
+
+        private static CheckResult EvaluateCheck(CheckSpec check, double? baseline,
+                                                 StoryReadContext context) =>
+            TriggerEvaluator.EvaluateCheck(check, baseline, context, Tuning);
+
+        /// <summary>
+        /// <b>Pins the ABSENCE of a shorter overload.</b> <see cref="TriggerEvaluator"/> exposes
+        /// exactly two public methods, and both take an <see cref="EngineTuning"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This has to be a test rather than a comment, because re-adding a two-argument overload for
+        /// convenience breaks nothing that anyone would notice. <b>Every existing call site still
+        /// compiles</b>, the build stays clean, every other test in this file keeps passing — and the
+        /// player's tuned <c>stories.deltaWindowSlackMonths</c> silently stops applying wherever the
+        /// short form is used. The only symptom is a dial that quietly does nothing, which is
+        /// indistinguishable from a dial that is working until somebody measures it.
+        /// </para>
+        /// <para>
+        /// That is the exact regression this round removed: lane 2a's first cut kept the published
+        /// two-argument forms as delegating overloads that fell back to the shipped default. A
+        /// compile error is the better failure, so the short forms are gone and this keeps them gone.
+        /// </para>
+        /// <para>
+        /// Same shape as the <c>CloneState</c> and <c>AgoraSettings.Clone</c> coverage guards: a
+        /// reflective check over a surface a human maintains by hand, which fails loudly when the hand
+        /// slips.
+        /// </para>
+        /// <para>
+        /// <b>It earned its place on its first run.</b> What it actually caught was not a re-added
+        /// overload but a <i>stale merge</i>: this branch had taken an older 2a that still carried the
+        /// two-argument forms, so the suite was quietly testing a superseded seam. The build was
+        /// clean, every other test in this file passed, and nothing else in 1,698 tests noticed —
+        /// which is the whole argument for asserting on a public surface rather than only on
+        /// behaviour. A shape test fails on the code that is present; a behaviour test only fails on
+        /// the code that is wrong.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void TriggerEvaluator_ExposesNoOverloadThatOmitsTuning()
+        {
+            var offenders = new List<string>();
+            var names = new List<string>();
+
+            foreach (MethodInfo method in typeof(TriggerEvaluator)
+                         .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            {
+                names.Add(method.Name);
+
+                bool takesTuning = false;
+                foreach (ParameterInfo parameter in method.GetParameters())
+                {
+                    if (parameter.ParameterType == typeof(EngineTuning)) takesTuning = true;
+                }
+
+                if (!takesTuning) offenders.Add(Signature(method));
+            }
+
+            Assert.True(offenders.Count == 0,
+                "TriggerEvaluator exposes an entry point that does not take an EngineTuning:" +
+                System.Environment.NewLine + string.Join(System.Environment.NewLine, offenders) +
+                System.Environment.NewLine +
+                "This is not pedantry about arity. The delta window bound reads " +
+                "stories.deltaWindowSlackMonths, so an overload without tuning has to fall back to " +
+                "the shipped default — and every existing call site still compiles when one is " +
+                "added, so the player's own value silently stops applying and nothing fails. Delete " +
+                "the overload, not this test.");
+
+            names.Sort(System.StringComparer.Ordinal);
+            Assert.Equal(new List<string> { "Evaluate", "EvaluateCheck" }, names);
+        }
+
+        private static string Signature(MethodInfo method)
+        {
+            var parameters = new List<string>();
+            foreach (ParameterInfo parameter in method.GetParameters())
+            {
+                parameters.Add(parameter.ParameterType.Name + " " + parameter.Name);
+            }
+
+            return "  " + method.Name + "(" + string.Join(", ", parameters) + ")";
+        }
 
         // --- Metric -------------------------------------------------------------------------------
 
@@ -37,7 +138,7 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(
                 StoryTestFixtures.City(March1994, happiness: 60.0));
 
-            Assert.Equal(expected, TriggerEvaluator.Evaluate(
+            Assert.Equal(expected, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.Happiness, comparison, threshold), context));
         }
 
@@ -50,7 +151,7 @@ namespace Agora.Core.Tests
         {
             StoryReadContext context = StoryTestFixtures.Context(StoryTestFixtures.City(March1994));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Metric("notAMetric", Comparison.GreaterThan, 0.0), context));
         }
 
@@ -72,10 +173,10 @@ namespace Agora.Core.Tests
             // Happiness rose over the window however the change is expressed — an absolute rise of 20
             // or a fractional one of +0.5 both clear a threshold of zero, so this asserts the
             // direction rather than the arithmetic.
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Met, Evaluate(
                 StoryTestFixtures.Delta(MetricHistory.Happiness, Comparison.GreaterThan, 0.0, 2), context));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.Delta(MetricHistory.Happiness, Comparison.LessThan, 0.0, 2), context));
         }
 
@@ -90,7 +191,7 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(
                 StoryTestFixtures.City(March1994, happiness: 60.0));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Delta(MetricHistory.Happiness, Comparison.GreaterThan, 0.0, 2), context));
         }
 
@@ -102,7 +203,7 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(
                 StoryTestFixtures.City(March1994, happiness: 60.0), earlier);
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Delta(MetricHistory.Happiness, Comparison.GreaterThan, 0.0, 24), context));
         }
 
@@ -120,8 +221,167 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(
                 StoryTestFixtures.City(March1994, unlockedFeatureIds: new[] { "feature-transit" }), earlier);
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Delta(metricId, Comparison.GreaterThan, 0.0, 1), context));
+        }
+
+        // --- null tolerance is a stated contract --------------------------------------------------
+
+        /// <summary>
+        /// <b>Never throws, whatever it is handed.</b> Every malformed input degrades to
+        /// <see cref="CheckResult.Unmeasurable"/>.
+        /// </summary>
+        /// <remarks>
+        /// A stated contract rather than defensive habit, and wave 3 is what makes it reachable: this
+        /// is the entry point a catalog loader feeds authored JSON into, so a malformed entry has to
+        /// become a reading nobody can take — which costs the player nothing — rather than an
+        /// exception on the sim thread, which takes the game down. Unmeasurable rather than NotMet for
+        /// the same reason as everywhere else: an author's typo is not the player's failure.
+        /// </remarks>
+        [Fact]
+        public void Evaluate_DegradesToUnmeasurableRatherThanThrowing()
+        {
+            StoryReadContext good = StoryTestFixtures.Context(StoryTestFixtures.City(March1994));
+            TriggerSpec spec = StoryTestFixtures.Metric(
+                MetricHistory.Happiness, Comparison.GreaterThan, 1.0);
+
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(null!, good));
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(spec, null!));
+            Assert.Equal(CheckResult.Unmeasurable,
+                         Evaluate(spec, new StoryReadContext { Today = null! }));
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
+                StoryTestFixtures.Metric("", Comparison.GreaterThan, 1.0), good));
+        }
+
+        [Fact]
+        public void EvaluateCheck_DegradesToUnmeasurableRatherThanThrowing()
+        {
+            StoryReadContext good = StoryTestFixtures.Context(StoryTestFixtures.City(March1994));
+            CheckSpec check = StoryTestFixtures.Check(StoryTestFixtures.Metric(
+                MetricHistory.Happiness, Comparison.GreaterThan, 1.0));
+
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(null!, null, good));
+
+            // A CheckSpec whose Spec is null is exactly what a malformed catalog entry deserialises
+            // to, and a guard one level up that tested the CheckSpec would sail straight past it.
+            Assert.Equal(CheckResult.Unmeasurable,
+                         EvaluateCheck(new CheckSpec { Spec = null! }, null, good));
+
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(check, null, null!));
+            Assert.Equal(CheckResult.Unmeasurable,
+                         EvaluateCheck(check, null, new StoryReadContext { Today = null! }));
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(StoryTestFixtures.Check(
+                StoryTestFixtures.Metric("", Comparison.GreaterThan, 1.0)), null, good));
+        }
+
+        /// <summary>
+        /// Null <i>tuning</i> is the one case the seam change makes interesting: the parameter is
+        /// required, so a caller cannot omit it, but it can still be handed null. That must fall back
+        /// rather than throw — a save whose tuning failed to load should still evaluate.
+        /// </summary>
+        [Fact]
+        public void Evaluate_ToleratesNullTuning()
+        {
+            StoryReadContext good = StoryTestFixtures.Context(
+                StoryTestFixtures.City(March1994, happiness: 60.0));
+
+            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(StoryTestFixtures.Metric(
+                MetricHistory.Happiness, Comparison.GreaterThan, 50.0), good, null!));
+        }
+
+        // --- the delta window is bounded ----------------------------------------------------------
+
+        /// <summary>
+        /// A delta history holding one earlier sample <paramref name="ageInMonths"/> months back, and
+        /// nothing in between. The gap is the whole fixture: it is what a save played intermittently,
+        /// or a month whose sensor was blind, actually leaves behind.
+        /// </summary>
+        private static StoryReadContext SparseDeltaHistory(int ageInMonths)
+        {
+            return StoryTestFixtures.Context(
+                StoryTestFixtures.City(March1994, happiness: 90.0),
+                StoryTestFixtures.City(March1994.AddMonths(-ageInMonths), happiness: 10.0));
+        }
+
+        /// <summary>
+        /// <b>A delta's earlier sample may be at most <c>WindowMonths + deltaWindowSlackMonths</c>
+        /// old.</b> Both sides of the boundary, with the slack read from tuning rather than written
+        /// as 2.
+        /// </summary>
+        /// <remarks>
+        /// Unbounded, a <c>Delta</c> takes the newest sample <i>at or before</i> its target month
+        /// however far before that is — so a history whose only earlier sample is six months old
+        /// answers a two-month window with the six-month change and reports it as the two-month
+        /// change. That is the same harm as a window outrunning the history, reached by a different
+        /// route: the window outruns nothing, the history is merely sparse. It costs the player power
+        /// in both directions.
+        /// </remarks>
+        [Fact]
+        public void Evaluate_Delta_AcceptsAnEarlierSampleInsideTheSlackAndRefusesOneBeyondIt()
+        {
+            int window = 2;
+            int slack = Tuning.Stories.DeltaWindowSlackMonths;
+
+            Assert.True(slack > 0, "This test is meaningless if the shipped slack is zero.");
+
+            TriggerSpec rising = StoryTestFixtures.Delta(
+                MetricHistory.Happiness, Comparison.GreaterThan, 0.0, window);
+
+            // Exactly at the limit: still the window's answer.
+            Assert.Equal(CheckResult.Met, Evaluate(rising, SparseDeltaHistory(window + slack)));
+
+            // One month past it: a genuinely stale reading, refused rather than passed off as the
+            // window's own. Unmeasurable and never NotMet — happiness did rise, we simply cannot say
+            // whether it rose over THIS window.
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(rising, SparseDeltaHistory(window + slack + 1)));
+        }
+
+        /// <summary>
+        /// An ordinary monthly history is unaffected. The bound exists to refuse stale evidence, not
+        /// to make the common case unmeasurable.
+        /// </summary>
+        [Fact]
+        public void Evaluate_Delta_IsUnaffectedByTheBoundOnADenseHistory()
+        {
+            var history = new List<CitySnapshot>();
+            for (int back = 6; back >= 1; back--)
+            {
+                history.Add(StoryTestFixtures.City(March1994.AddMonths(-back), happiness: 40.0 + back));
+            }
+
+            StoryReadContext context = new StoryReadContext
+            {
+                Today = StoryTestFixtures.City(March1994, happiness: 90.0),
+                History = history
+            };
+
+            Assert.Equal(CheckResult.Met, Evaluate(StoryTestFixtures.Delta(
+                MetricHistory.Happiness, Comparison.GreaterThan, 0.0, 2), context));
+        }
+
+        /// <summary>
+        /// The bound is read from the tuning handed in, not from the shipped default — which is the
+        /// entire reason both entry points now take an <see cref="EngineTuning"/> and there is no
+        /// shorter overload. A caller that omitted it would silently ignore the player's own value.
+        /// </summary>
+        [Fact]
+        public void Evaluate_Delta_ReadsTheSlackFromTheTuningItIsHanded()
+        {
+            int window = 2;
+            int shipped = Tuning.Stories.DeltaWindowSlackMonths;
+
+            EngineTuning generous = StoryTestFixtures.Tuned(
+                "{\"stories\":{\"deltaWindowSlackMonths\":" + (shipped + 4) + "}}");
+
+            TriggerSpec rising = StoryTestFixtures.Delta(
+                MetricHistory.Happiness, Comparison.GreaterThan, 0.0, window);
+
+            // A sample the shipped slack refuses, which the widened one accepts. Called directly
+            // rather than through this file's wrapper, because varying the tuning IS the test.
+            StoryReadContext stale = SparseDeltaHistory(window + shipped + 1);
+
+            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(rising, stale, Tuning));
+            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(rising, stale, generous));
         }
 
         // --- Unlock and Policy --------------------------------------------------------------------
@@ -136,10 +396,10 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(StoryTestFixtures.City(March1994,
                 unlockedFeatureIds: new[] { "feature-highways", "feature-transit" }));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Met, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Unlock, "feature-transit"), context));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Unlock, "feature-parks"), context));
         }
 
@@ -149,10 +409,10 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(StoryTestFixtures.City(March1994,
                 activePolicyIds: new[] { "policy-heavy-traffic-ban" }));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Met, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Policy, "policy-heavy-traffic-ban"), context));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Policy, "policy-combustion-ban"), context));
         }
 
@@ -175,7 +435,7 @@ namespace Agora.Core.Tests
                 MetricHistory.Happiness, Comparison.GreaterThanOrEqual, threshold);
             spec.Kind = TriggerKind.Absent;
 
-            Assert.Equal(expected, TriggerEvaluator.Evaluate(spec, context));
+            Assert.Equal(expected, Evaluate(spec, context));
         }
 
         /// <summary>
@@ -197,13 +457,13 @@ namespace Agora.Core.Tests
 
             // Present in either set, so "absent" does not hold. Both sets, because the union is the
             // claim: a spec naming a policy must not read as absent merely because it is not a feature.
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Absent, "feature-transit"), context));
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Absent, "policy-heavy-traffic-ban"), context));
 
             // In neither, so it holds.
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Met, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Absent, "feature-parks"), context));
         }
 
@@ -227,7 +487,7 @@ namespace Agora.Core.Tests
                 Comparison.GreaterThan, 500.0, TriggerScope.AnyDistrict);
             spec.Kind = TriggerKind.Absent;
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(spec, context));
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(spec, context));
         }
 
         // --- Manual -------------------------------------------------------------------------------
@@ -251,9 +511,9 @@ namespace Agora.Core.Tests
                 activePolicyIds: new[] { "policy-heavy-traffic-ban" }));
 
             Assert.Equal(CheckResult.Unmeasurable,
-                         TriggerEvaluator.Evaluate(StoryTestFixtures.OfKind(TriggerKind.Manual, ""), rich));
+                         Evaluate(StoryTestFixtures.OfKind(TriggerKind.Manual, ""), rich));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.OfKind(TriggerKind.Manual, MetricHistory.Happiness), rich));
         }
 
@@ -269,7 +529,7 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.District("d00000001", uncollectedGarbage: 10.0),
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 900.0));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Met, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AnyDistrict), context));
         }
@@ -281,7 +541,7 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.District("d00000001", uncollectedGarbage: 10.0),
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 20.0));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AnyDistrict), context));
         }
@@ -300,8 +560,8 @@ namespace Agora.Core.Tests
             TriggerSpec spec = StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage,
                 Comparison.GreaterThan, 500.0, TriggerScope.AllDistricts);
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(spec, all));
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(spec, one));
+            Assert.Equal(CheckResult.Met, Evaluate(spec, all));
+            Assert.Equal(CheckResult.NotMet, Evaluate(spec, one));
         }
 
         /// <summary>
@@ -316,7 +576,7 @@ namespace Agora.Core.Tests
                     fellBackOn: new[] { SnapshotAssembly.FieldUncollectedGarbage }),
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 900.0));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Met, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AnyDistrict), context));
         }
@@ -335,7 +595,7 @@ namespace Agora.Core.Tests
                     fellBackOn: new[] { SnapshotAssembly.FieldUncollectedGarbage }),
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 10.0));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.NotMet, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AllDistricts), context));
         }
@@ -353,7 +613,7 @@ namespace Agora.Core.Tests
                     fellBackOn: new[] { SnapshotAssembly.FieldUncollectedGarbage }),
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 10.0));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AnyDistrict), context));
         }
@@ -371,11 +631,11 @@ namespace Agora.Core.Tests
                     fellBackOn: new[] { SnapshotAssembly.FieldUncollectedGarbage }),
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 10.0));
 
-            CheckResult any = TriggerEvaluator.Evaluate(
+            CheckResult any = Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AnyDistrict), context);
 
-            CheckResult all = TriggerEvaluator.Evaluate(
+            CheckResult all = Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          TriggerScope.AllDistricts), context);
 
@@ -398,7 +658,7 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.District("d00000002", uncollectedGarbage: 10.0,
                     fellBackOn: new[] { SnapshotAssembly.FieldUncollectedGarbage }));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          scope), context));
         }
@@ -417,9 +677,121 @@ namespace Agora.Core.Tests
             StoryReadContext context = StoryTestFixtures.Context(
                 StoryTestFixtures.City(March1994, districts: new List<DistrictSnapshot>()));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(
+            Assert.Equal(CheckResult.Unmeasurable, Evaluate(
                 StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0,
                                          scope), context));
+        }
+
+        // --- malformed specs must answer the same at every scope ----------------------------------
+
+        /// <summary>
+        /// <b>A malformed spec must read the same at city scope and at both quantified scopes.</b>
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the framing that catches the defect rather than the four rows that had it. An
+        /// <c>else</c> in the district loop was swallowing a three-valued result, so the <i>same</i>
+        /// catalog entry scored <see cref="CheckResult.Unmeasurable"/> at <c>City</c> and
+        /// <see cref="CheckResult.NotMet"/> at both quantified scopes — costing the player a tier
+        /// penalty at one scope and nothing at the other, for identical input. Three rounds of review
+        /// missed it; only running every branch of the table found it.
+        /// </para>
+        /// <para>
+        /// Asserting agreement rather than asserting each scope's value separately is what makes this
+        /// catch the <i>next</i> instance: a new scope, or a new malformed-input class, is covered the
+        /// day it is added without anyone remembering to widen a list of expected values.
+        /// </para>
+        /// <para>
+        /// An out-of-range <see cref="Comparison"/> is genuinely reachable from authored JSON:
+        /// <c>AgoraJson</c> uses <c>StringEnumConverter</c>, which accepts an out-of-range integer
+        /// without range-checking it.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void Evaluate_AComparisonOutsideTheEnumReadsTheSameAtEveryScope()
+        {
+            AssertEveryScopeAgrees(
+                city => StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage,
+                                                 (Comparison)999, 500.0, city),
+                new[]
+                {
+                    StoryTestFixtures.District("d00000001", uncollectedGarbage: 900.0),
+                    StoryTestFixtures.District("d00000002", uncollectedGarbage: 10.0)
+                },
+                uncollectedGarbage: 900.0);
+        }
+
+        /// <summary>
+        /// The same agreement for a reading that is not a finite number. A NaN compares false against
+        /// every threshold in both directions, so a scope that let the comparison decide would report
+        /// not-met — a confident verdict reached from a number that is not one.
+        /// </summary>
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        public void Evaluate_ANonFiniteReadingReadsTheSameAtEveryScope(double reading)
+        {
+            AssertEveryScopeAgrees(
+                city => StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage,
+                                                 Comparison.GreaterThan, 500.0, city),
+                new[]
+                {
+                    StoryTestFixtures.District("d00000001", uncollectedGarbage: reading),
+                    StoryTestFixtures.District("d00000002", uncollectedGarbage: reading)
+                },
+                uncollectedGarbage: reading);
+        }
+
+        /// <summary>
+        /// Evaluates one spec at all three scopes and asserts the three answers are identical — and
+        /// that the answer is <see cref="CheckResult.Unmeasurable"/>, because a spec nobody can read
+        /// must cost the player nothing wherever it is read.
+        /// </summary>
+        private static void AssertEveryScopeAgrees(System.Func<TriggerScope, TriggerSpec> spec,
+                                                   DistrictSnapshot[] districts,
+                                                   double uncollectedGarbage)
+        {
+            var city = StoryTestFixtures.City(March1994, districts: districts);
+            city.UncollectedGarbage = uncollectedGarbage;
+
+            StoryReadContext context = StoryTestFixtures.Context(city);
+
+            CheckResult atCity = Evaluate(spec(TriggerScope.City), context);
+            CheckResult atAny = Evaluate(spec(TriggerScope.AnyDistrict), context);
+            CheckResult atAll = Evaluate(spec(TriggerScope.AllDistricts), context);
+
+            Assert.True(atCity == atAny && atCity == atAll,
+                "One malformed spec read three different ways: City=" + atCity + ", AnyDistrict=" +
+                atAny + ", AllDistricts=" + atAll + ". The same catalog entry must not cost the " +
+                "player a tier penalty at one scope and nothing at another.");
+
+            Assert.Equal(CheckResult.Unmeasurable, atCity);
+        }
+
+        /// <summary>
+        /// The agreement rule also has to hold for a spec that <i>is</i> readable, or a degenerate
+        /// evaluator returning Unmeasurable everywhere would pass the two tests above. Here the city
+        /// and every district carry the same figure, so all three scopes genuinely agree on Met.
+        /// </summary>
+        [Fact]
+        public void Evaluate_AWellFormedSpecAlsoReadsTheSameAtEveryScopeWhenTheFiguresAgree()
+        {
+            var city = StoryTestFixtures.City(March1994, districts: new[]
+            {
+                StoryTestFixtures.District("d00000001", uncollectedGarbage: 900.0),
+                StoryTestFixtures.District("d00000002", uncollectedGarbage: 900.0)
+            });
+            city.UncollectedGarbage = 900.0;
+
+            StoryReadContext context = StoryTestFixtures.Context(city);
+
+            foreach (TriggerScope scope in new[]
+                     { TriggerScope.City, TriggerScope.AnyDistrict, TriggerScope.AllDistricts })
+            {
+                Assert.Equal(CheckResult.Met, Evaluate(StoryTestFixtures.Metric(
+                    MetricHistory.UncollectedGarbage, Comparison.GreaterThan, 500.0, scope), context));
+            }
         }
 
         /// <summary>
@@ -440,11 +812,11 @@ namespace Agora.Core.Tests
             TriggerSpec all = StoryTestFixtures.Metric(MetricHistory.UncollectedGarbage,
                 Comparison.GreaterThan, 500.0, TriggerScope.AllDistricts);
 
-            Assert.Equal(TriggerEvaluator.Evaluate(any, WithDistricts(a, b, c)),
-                         TriggerEvaluator.Evaluate(any, WithDistricts(c, b, a)));
+            Assert.Equal(Evaluate(any, WithDistricts(a, b, c)),
+                         Evaluate(any, WithDistricts(c, b, a)));
 
-            Assert.Equal(TriggerEvaluator.Evaluate(all, WithDistricts(a, b, c)),
-                         TriggerEvaluator.Evaluate(all, WithDistricts(c, b, a)));
+            Assert.Equal(Evaluate(all, WithDistricts(a, b, c)),
+                         Evaluate(all, WithDistricts(c, b, a)));
         }
 
         // --- EvaluateCheck ------------------------------------------------------------------------
@@ -459,9 +831,9 @@ namespace Agora.Core.Tests
             CheckSpec check = StoryTestFixtures.Check(
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, 55.0));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.EvaluateCheck(check, null, context));
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.EvaluateCheck(check, 10.0, context));
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.EvaluateCheck(check, 999.0, context));
+            Assert.Equal(CheckResult.Met, EvaluateCheck(check, null, context));
+            Assert.Equal(CheckResult.Met, EvaluateCheck(check, 10.0, context));
+            Assert.Equal(CheckResult.Met, EvaluateCheck(check, 999.0, context));
         }
 
         /// <summary>
@@ -497,7 +869,7 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, 1.0),
                 relativeToBaseline: true);
 
-            Assert.Equal(expected, TriggerEvaluator.EvaluateCheck(check, baseline, context));
+            Assert.Equal(expected, EvaluateCheck(check, baseline, context));
         }
 
         /// <summary>
@@ -517,7 +889,7 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, -5.0),
                 relativeToBaseline: true);
 
-            Assert.Equal(expected, TriggerEvaluator.EvaluateCheck(check, baseline, context));
+            Assert.Equal(expected, EvaluateCheck(check, baseline, context));
         }
 
         /// <summary>
@@ -535,7 +907,7 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, 1.0),
                 relativeToBaseline: true);
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.EvaluateCheck(check, null, context));
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(check, null, context));
         }
 
         /// <summary>
@@ -556,8 +928,8 @@ namespace Agora.Core.Tests
             CheckSpec check = StoryTestFixtures.Check(
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, 80.0));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.EvaluateCheck(check, null, live));
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.EvaluateCheck(check, null, recorded));
+            Assert.Equal(CheckResult.NotMet, EvaluateCheck(check, null, live));
+            Assert.Equal(CheckResult.Met, EvaluateCheck(check, null, recorded));
         }
 
         /// <summary>
@@ -575,7 +947,7 @@ namespace Agora.Core.Tests
             CheckSpec check = StoryTestFixtures.Check(
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, 80.0));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.EvaluateCheck(check, null, context));
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(check, null, context));
         }
 
         // --- recorded evidence is keyed by metric AND district ------------------------------------
@@ -609,10 +981,10 @@ namespace Agora.Core.Tests
 
             // Only d00000001 clears 500, so "any" holds and "all" does not. A lookup that ignored the
             // district id would have to answer both the same way.
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.EvaluateCheck(
+            Assert.Equal(CheckResult.Met, EvaluateCheck(
                 DistrictGarbageCheck(500.0, TriggerScope.AnyDistrict), null, context));
 
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.EvaluateCheck(
+            Assert.Equal(CheckResult.NotMet, EvaluateCheck(
                 DistrictGarbageCheck(500.0, TriggerScope.AllDistricts), null, context));
         }
 
@@ -630,7 +1002,7 @@ namespace Agora.Core.Tests
 
             // The one district is dark and no reading was recorded FOR it, so there is nothing to
             // score against — the city's 900 is not a measurement of this district.
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.EvaluateCheck(
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(
                 DistrictGarbageCheck(500.0, TriggerScope.AnyDistrict), null, context));
         }
 
@@ -663,7 +1035,7 @@ namespace Agora.Core.Tests
             CheckSpec check = StoryTestFixtures.Check(
                 StoryTestFixtures.Metric(MetricHistory.Happiness, Comparison.GreaterThanOrEqual, 80.0));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.EvaluateCheck(check, null, context));
+            Assert.Equal(CheckResult.Met, EvaluateCheck(check, null, context));
         }
 
         /// <summary>
@@ -683,7 +1055,7 @@ namespace Agora.Core.Tests
 
             // No city reading was recorded, so the live snapshot's 10 decides it — the district's 90
             // is a different measurement and must not stand in.
-            Assert.Equal(CheckResult.NotMet, TriggerEvaluator.EvaluateCheck(check, null, context));
+            Assert.Equal(CheckResult.NotMet, EvaluateCheck(check, null, context));
         }
 
         /// <summary>
@@ -698,7 +1070,7 @@ namespace Agora.Core.Tests
                 WithDistricts(StoryTestFixtures.District("d00000001", uncollectedGarbage: 900.0)),
                 StoryTestFixtures.Reading(MetricHistory.UncollectedGarbage, null, "d00000001"));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.EvaluateCheck(
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(
                 DistrictGarbageCheck(500.0, TriggerScope.AnyDistrict), null, context));
         }
 
@@ -727,7 +1099,7 @@ namespace Agora.Core.Tests
             StoryReadContext recorded = StoryTestFixtures.WithEvidence(today,
                 StoryTestFixtures.Reading(MetricHistory.UncollectedGarbage, null, "d00000001"));
 
-            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.EvaluateCheck(delta, null, recorded));
+            Assert.Equal(CheckResult.Unmeasurable, EvaluateCheck(delta, null, recorded));
         }
     }
 }
