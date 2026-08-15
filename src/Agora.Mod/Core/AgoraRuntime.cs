@@ -825,6 +825,10 @@ namespace Agora.Mod.Core
                 // doubles as a live assertion that generation and repair still agree.
                 RepairLoadedState();
 
+                // Same placement and the same reason: one call site for both branches, and before
+                // anything below acts on the state.
+                ClampWatermarkToClock();
+
                 // Raised HERE, the moment there is a state to serve, and deliberately before the
                 // flavor and replay work below.
                 //
@@ -907,6 +911,57 @@ namespace Agora.Mod.Core
                 _saveActive = false;
                 AgoraMod.Log.Error(ex, "Agora could not apply per-save settings; continuing with defaults.");
             }
+        }
+
+        /// <summary>
+        /// Enforces the one invariant the tick gate rests on: a watermark may never stand ahead of
+        /// the month the city is actually in. A state that arrives dated into the future has its
+        /// <see cref="PoliticalState.LastCompletedTickMonth"/> pulled down to the month before now, so
+        /// that the current month is the next one to run.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The load this exists for.</b> <c>LoadReconciliation</c> returns
+        /// <c>RewindBeforeHistory</c> when every political snapshot on disk is later than the city's
+        /// date — the player rolled the city save back further than any state Agora has written, which
+        /// <c>TickPlanner.SnapshotsToPrune</c> makes ordinarily reachable by keeping only the newest
+        /// few. It hands back the <i>earliest</i> snapshot with nothing to replay, so <see cref="Replay"/>
+        /// never runs and the watermark stays years ahead of the clock. Without this the gate would
+        /// then suppress every month until the sim caught up, and the suppression would outlive the
+        /// session because the watermark is on disk: no polls, no elections, no event ticks, one Info
+        /// line a month. A month run twice is wrong once; a month never run does not come back.
+        /// </para>
+        /// <para>
+        /// This is not a policy decision taken here. That outcome's own contract is that "the earliest
+        /// snapshot supplies identity and settings, the engine rebuilds current state from city
+        /// metrics" — which is ticking, from the city's date forward. The clamp restores the behaviour
+        /// that reconciliation already documents and that the runtime had before the gate existed.
+        /// </para>
+        /// <para>
+        /// Written as an invariant on the watermark rather than as a branch on
+        /// <c>RewindBeforeHistory</c>, because the property is what the gate depends on and the
+        /// outcome that violates it is not guaranteed to stay the only one. Skipped entirely when the
+        /// clock is not readable: a comparison against a main-menu date would be a comparison against
+        /// nothing (non-negotiable #8).
+        /// </para>
+        /// </remarks>
+        private static void ClampWatermarkToClock()
+        {
+            if (_state == null || _time == null) return;
+
+            SimDate today;
+            if (!_time.TryGetToday(out today)) return;
+
+            if (today.TotalMonths > _state.LastCompletedTickMonth) return;
+
+            int was = _state.LastCompletedTickMonth;
+            _state.LastCompletedTickMonth = today.TotalMonths - 1;
+
+            AgoraMod.Log.Info("Agora: the political state is dated ahead of the city (watermark month " +
+                              was + ", city is at " + today + "). Reconciling the watermark to " +
+                              _state.LastCompletedTickMonth + " so this month ticks — the " +
+                              "RewindBeforeHistory path keeps the party system and settings and " +
+                              "rebuilds current state from city metrics.");
         }
 
         private static void ConfigureClock()
@@ -2901,11 +2956,15 @@ namespace Agora.Mod.Core
         /// middle did not. That is a desync in the sense of non-negotiable #6, not a cosmetic gap.
         /// </para>
         /// <para>
-        /// The ring is rebuilt here rather than borrowed from <see cref="AgoraSnapshotSystem"/>: that
-        /// system keeps its <c>MetricHistory</c> private, and both restores read the same document
-        /// against the same date, so the two agree by construction. <c>asOf</c> comes from the clock
-        /// and only when the clock is readable — a restore against <c>default(SimDate)</c> would trim
-        /// away everything, and the same guard is why <c>RestoreHistory</c> skips that case.
+        /// The ring is rebuilt here rather than borrowed from <see cref="AgoraSnapshotSystem"/>,
+        /// which keeps its <c>MetricHistory</c> private. The two restores read the same document
+        /// against the same date, so they agree on <i>which</i> samples survive the trim — but not on
+        /// how many are kept per series, which is the ring's constructor argument and is the sensor
+        /// system's own literal over there. This one therefore states its depth rather than inheriting
+        /// a default from a file another lane owns, and states it as
+        /// <see cref="SnapshotHistoryMonths"/>: exactly the window asked for below. <c>asOf</c> comes from
+        /// the clock and only when the clock is readable — a restore against <c>default(SimDate)</c>
+        /// would trim away everything, and the same guard is why <c>RestoreHistory</c> skips it.
         /// </para>
         /// <para>
         /// Warn and continue, never rethrow: a history that will not rebuild costs the trend legs
@@ -2923,7 +2982,11 @@ namespace Agora.Mod.Core
                 SimDate asOf;
                 if (!_time.TryGetToday(out asOf)) return;
 
-                var history = new MetricHistory();
+                // The depth is stated rather than defaulted: what this ring has to hold is exactly the
+                // window asked for below, and RestoreFrom trims oldest-first, so the newest
+                // SnapshotHistoryMonths months per series are what survive. Taking the constructor's
+                // default would make the answer depend on a number in a file this one does not own.
+                var history = new MetricHistory(SnapshotHistoryMonths);
                 history.RestoreFrom(result.MetricHistory, asOf);
 
                 List<CitySnapshot> restored =
