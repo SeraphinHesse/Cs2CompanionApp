@@ -40,7 +40,7 @@ on its own merits.
 
 ## PR
 
-**PR:** *(link added on creation — see the wave-0 PR into `EventSystemRefresh`)*
+**PR:** https://github.com/SeraphinHesse/Cs2CompanionApp/pull/3
 **Merge status: NOT merged.** The owner reviews. Wave 1 must not open its umbrella until it is in.
 
 ## What actually shipped
