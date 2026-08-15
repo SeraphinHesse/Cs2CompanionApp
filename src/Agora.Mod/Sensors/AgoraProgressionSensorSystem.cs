@@ -22,10 +22,10 @@ namespace Agora.Mod.Sensors
     /// </para>
     ///
     /// <para>
-    /// <b>Read-only, and deliberately so.</b> Every system this file resolves has a matching writer —
-    /// <c>TaxSystem.Set…</c>, <c>MilestoneSystem.UnlockAllMilestones</c>, <c>DevTreeSystem.Purchase</c>.
-    /// Calling one would be "targeting the player's authority" under <c>politicsmodplan.md</c> §7's
-    /// FORBIDDEN list. A sensor reads.
+    /// <b>Read-only, and deliberately so.</b> Every system this file resolves has a matching writer
+    /// sitting next to the reader it calls — <c>TaxSystem.Set…</c> and
+    /// <c>MilestoneSystem.UnlockAllMilestones</c>. Calling one would be "targeting the player's
+    /// authority" under <c>politicsmodplan.md</c> §7's FORBIDDEN list. A sensor reads.
     /// </para>
     /// </summary>
     public sealed partial class AgoraProgressionSensorSystem : AgoraSensorSystemBase
@@ -116,12 +116,39 @@ namespace Agora.Mod.Sensors
 
         /// <summary>
         /// Sanitises <c>MilestoneSystem.progress</c>, which is <c>currentXP / requiredXP</c> with no
-        /// guard of its own: at the top of the milestone track <c>requiredXP</c> can reach zero, and
-        /// the division then yields infinity or NaN rather than a share.
+        /// guard of its own: <c>requiredXP</c> reaches zero at the top of the milestone track, and the
+        /// division then yields infinity or NaN rather than a share. A non-finite value here would
+        /// serialise into <c>snapshot.json</c> as invalid JSON, taking the LLM path down with it.
         /// </summary>
+        /// <remarks>
+        /// The three non-finite branches are three different facts and must not be collapsed back
+        /// into one.
+        /// <para>
+        /// <b>+∞ means the track is complete, and that is the non-obvious half.</b>
+        /// <c>MilestoneSystem.OnUpdate</c> refreshes <c>m_LastRequired</c> from the achieved milestone
+        /// every tick, but assigns <c>m_NextRequired</c> only inside
+        /// <c>if (TryGetMilestone(achieved + 1, …))</c> (<c>MilestoneSystem.cs:79-84</c>). Once the
+        /// final milestone is achieved that lookup fails, <c>m_NextRequired</c> is left stale at the
+        /// final milestone's own requirement, and <c>requiredXP</c> (<c>:43</c>) becomes exactly zero
+        /// — the game's way of saying there is no next milestone. Meanwhile <c>m_Progress</c>
+        /// (<c>:90</c>) stays positive and keeps growing, so the division is positive-over-zero and
+        /// the result is <c>+∞</c> permanently, from that day on. Reporting <c>0.0</c> for it would
+        /// claim a city that has finished the entire track has made no progress at all, and would
+        /// hand <c>MetricHistory</c> a one-day fall of ~1.0 — the largest negative delta a
+        /// <c>[0,1]</c> metric can carry — at the instant of the city's biggest success. Complete is
+        /// <c>1.0</c>.
+        /// </para>
+        /// <para>
+        /// <b>NaN genuinely is unknown.</b> Before the tutorial flag clears, <c>OnUpdate</c> returns
+        /// early and both operands are still zero, so the division is 0/0. Nothing has been measured
+        /// yet and <c>0.0</c> is the honest answer.
+        /// </para>
+        /// </remarks>
         private static double Fraction(float progress)
         {
-            if (float.IsNaN(progress) || float.IsInfinity(progress)) return 0.0;
+            if (float.IsNaN(progress)) return 0.0;              // 0/0: nothing measured yet
+            if (float.IsPositiveInfinity(progress)) return 1.0; // requiredXP == 0: track complete
+            if (float.IsNegativeInfinity(progress)) return 0.0;
             if (progress < 0f) return 0.0;
             if (progress > 1f) return 1.0;
             return progress;
