@@ -1498,7 +1498,7 @@ namespace Agora.Core.Tuning
         /// contradicted its own worked example by exactly one month. The example is the authority and
         /// always was: the cycle is the *period*, and a resolution lands one month after the draft.
         /// </para>
-        /// <remarks>
+        /// <para>
         /// <b>Not a day count, and there is no day-15 alternative.</b> CS2 ships
         /// <c>m_DaysPerYear = 12</c>, so one in-game day is one calendar month and
         /// <c>SimClockMath.ToSimDate</c> returns a literal <c>Day = 1</c>. A mid-month read would
@@ -1506,11 +1506,40 @@ namespace Agora.Core.Tuning
         /// check provably unmeasurable; forcing a fresh sample instead would make the reading depend
         /// on which 128-frame tick crossed the threshold, which is a non-deterministic input and so
         /// forbidden by non-negotiable #3. The full argument is in the rework plan.
+        /// </para>
         /// </remarks>
         public int CycleMonths { get; internal set; } = 2;
 
         /// <summary>Slots that must be met for a full story to succeed — the "2 of 3" rule.</summary>
         public int SuccessThreshold { get; internal set; } = 2;
+
+        /// <summary>
+        /// How much older than <c>today - WindowMonths</c> a delta's earlier sample may be before the
+        /// reading is refused as <c>Unmeasurable</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Without a bound, a <c>Delta</c> spec takes the newest sample <i>at or before</i> its target
+        /// month however far before that is — so a history holding one sample six months old answers
+        /// a two-month window with the six-month change, and reports it as the two-month change. That
+        /// is the same harm as a window outrunning the history, reached by a different route: the
+        /// window does not outrun anything, the history is merely sparse. It costs the player power in
+        /// both directions, which is what makes it worth a dial rather than a comment.
+        /// </para>
+        /// <para>
+        /// Samples are monthly, so a slack of 2 tolerates an ordinary gap — a month the save was not
+        /// played, a capture that fell to a blind sensor — while refusing an answer built on a
+        /// genuinely stale reading.
+        /// </para>
+        /// <para>
+        /// <b>This deliberately does not change <c>MetricHistory.TrendOver</c></b>, which widens
+        /// without bound and should keep doing so. The two have different consumers and the
+        /// difference is the point: a trend line wants the best available evidence and is drawn for a
+        /// human to read, whereas a threshold here decides whether the player is charged. Evidence
+        /// good enough to sketch a direction is not evidence good enough to take somebody's money.
+        /// </para>
+        /// </remarks>
+        public int DeltaWindowSlackMonths { get; internal set; } = 2;
 
         /// <summary>
         /// Severity at or above which an event is Mandatory. Inclusive lower bound.
@@ -1538,6 +1567,58 @@ namespace Agora.Core.Tuning
 
         /// <summary>Entries the pool may hold. Beyond this the lowest-weighted are dropped.</summary>
         public int PoolMaxSize { get; internal set; } = 60;
+
+        /// <summary>
+        /// Months an event must wait after being told before it may be drawn again.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A duration, deliberately — not "everything the archive remembers".</b> The archive
+        /// rule looks equivalent and is not: it couples re-use to
+        /// <c>archiveRetention × eventsPerStory</c>, which at the shipped 40 and 3 names 120 slots
+        /// over a live catalog of roughly 40, so every event is excluded several times over and the
+        /// pool empties for good. A duration cannot exhaust a finite catalog however long the save
+        /// runs. See <see cref="EventPoolEntry.LastDraftedMonth"/> for the full arithmetic.
+        /// </para>
+        /// <para>
+        /// Keep it well under
+        /// <c>liveCatalogSize ÷ (storiesPerCycle × eventsPerStory) × cycleMonths</c> — about 13
+        /// months at shipped values. At 6 the cooling set is
+        /// <c>perCycle × ceil(cooldown ÷ cycleMonths) - perCycle</c> = 12 of a 40-event catalog, so 28
+        /// stay drawable at every draft, flat forever. (The <c>-perCycle</c> term is the easy thing to
+        /// get wrong: the cohort stamped exactly <c>cooldown</c> months ago has already been released
+        /// when the next draft runs, because the test is <c>elapsed &lt; cooldown</c>.) Raising it
+        /// toward the ceiling starves the pool gradually rather than suddenly, which is the harder
+        /// failure to notice.
+        /// </para>
+        /// <para>
+        /// <b>The cooling set must be protected from the <c>poolMaxSize</c> trim.</b> A cooling entry
+        /// has <c>MissStreak == 0</c> by construction, so it sits in the minimum-weight class and is
+        /// the <i>first</i> thing a weight-ordered trim discards — which destroys its
+        /// <see cref="EventPoolEntry.LastDraftedMonth"/>, re-admits it from the catalog at -1, and
+        /// silently reduces the cooldown to nothing. Do not rely on <c>poolMaxSize</c> being set
+        /// comfortably above the catalog: that is a correctness property delegated to a dial and a
+        /// data file, which is how the archive coupling this replaced went wrong.
+        /// </para>
+        /// <para>
+        /// <b>Mandatory events ignore this entirely.</b> A mandatory trigger is a statement about the
+        /// city right now; suppressing it because the same event was told two years ago would drop a
+        /// genuine crisis silently, with no story, no power movement and no prose.
+        /// </para>
+        /// </remarks>
+        public int ReuseCooldownMonths { get; internal set; } = 6;
+
+        /// <summary>
+        /// Most mandatory stories one cycle may open, over and above <see cref="StoriesPerCycle"/>.
+        /// </summary>
+        /// <remarks>
+        /// Mandatory stories are delivered rather than drawn, so without a cap a citywide crisis
+        /// firing five severity-5 triggers in one month hands the player five unavoidable stories on
+        /// top of the ordinary two — at 50 power each on success and 25 on failure, which is a swing
+        /// no other single month can produce. Excess mandatory events stay in the pool and age
+        /// normally, so they arrive next cycle rather than being dropped.
+        /// </remarks>
+        public int MaxMandatoryPerCycle { get; internal set; } = 2;
 
         /// <summary>Resolved stories kept in <c>PoliticalState.StoryArchive</c>.</summary>
         public int ArchiveRetention { get; internal set; } = 40;
@@ -1587,11 +1668,14 @@ namespace Agora.Core.Tuning
             EventsPerStory = r.Int("eventsPerStory", d.EventsPerStory),
             CycleMonths = r.Int("cycleMonths", d.CycleMonths),
             SuccessThreshold = r.Int("successThreshold", d.SuccessThreshold),
+            DeltaWindowSlackMonths = r.Int("deltaWindowSlackMonths", d.DeltaWindowSlackMonths),
             MandatorySeverityThreshold = r.Int("mandatorySeverityThreshold", d.MandatorySeverityThreshold),
             MajorSeverityThreshold = r.Int("majorSeverityThreshold", d.MajorSeverityThreshold),
             MissStreakWeightStep = r.Num("missStreakWeightStep", d.MissStreakWeightStep),
             MaxMissStreak = r.Int("maxMissStreak", d.MaxMissStreak),
             PoolMaxSize = r.Int("poolMaxSize", d.PoolMaxSize),
+            ReuseCooldownMonths = r.Int("reuseCooldownMonths", d.ReuseCooldownMonths),
+            MaxMandatoryPerCycle = r.Int("maxMandatoryPerCycle", d.MaxMandatoryPerCycle),
             ArchiveRetention = r.Int("archiveRetention", d.ArchiveRetention),
             MinorPromotionEnabled = r.Flag("minorPromotionEnabled", d.MinorPromotionEnabled),
             MaxStoryEffectsPerModifier = r.Int("maxStoryEffectsPerModifier", d.MaxStoryEffectsPerModifier),

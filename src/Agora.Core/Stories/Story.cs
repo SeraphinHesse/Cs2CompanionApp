@@ -282,6 +282,35 @@ namespace Agora.Core.Stories
         public int MissStreak { get; set; }
 
         /// <summary>
+        /// The month this event was last drawn into a story, as <see cref="SimDate.TotalMonths"/>.
+        /// <c>-1</c> means it has never been told.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is the re-use cooldown, and it replaces excluding everything the archive
+        /// remembers.</b> That earlier rule drove the pool into an absorbing state: a live catalog of
+        /// roughly forty events consumed six per cycle, so it emptied around month 14 — and then
+        /// nothing drafted, so nothing resolved, so nothing archived, so the archive never evicted
+        /// and never released an event back. The feature stopped for the rest of the save and logged
+        /// "no stories drafted" politely once per cycle forever.
+        /// </para>
+        /// <para>
+        /// The arithmetic that killed it is worth keeping written down, because it is the constraint
+        /// any future rule has to satisfy: archive-based exclusion is only sound while
+        /// <c>archiveRetention × eventsPerStory &lt; liveCatalogSize</c>. At the shipped 40 and 3 that
+        /// caps retention at 12, whereas it ships at 40 — so the rule was only ever correct for an
+        /// unbounded catalog.
+        /// </para>
+        /// <para>
+        /// A cooldown has no such coupling: it is a duration, so it cannot exhaust a finite catalog
+        /// however long the save runs. <c>stories.reuseCooldownMonths</c> must still be kept well
+        /// under <c>liveCatalogSize ÷ (storiesPerCycle × eventsPerStory) × cycleMonths</c>, which is
+        /// why it ships at 6 rather than at something that feels narratively generous.
+        /// </para>
+        /// </remarks>
+        public int LastDraftedMonth { get; set; } = -1;
+
+        /// <summary>
         /// A copy safe to mutate. <see cref="MissStreak"/> is incremented every cycle the entry is
         /// not drawn, so an alias would let a speculative advance age the caller's own pool.
         /// </summary>
@@ -289,7 +318,8 @@ namespace Agora.Core.Stories
         {
             EventId = EventId,
             FirstTriggeredDate = FirstTriggeredDate,
-            MissStreak = MissStreak
+            MissStreak = MissStreak,
+            LastDraftedMonth = LastDraftedMonth
         };
     }
 }
