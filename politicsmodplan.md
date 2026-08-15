@@ -142,6 +142,35 @@ ModsData/Agora/<saveGuid>/
 - Retention: prune to last N snapshots per save (default 25, setting). (Pending confirmation.)
 - Sim-date-seeded streams guarantee reloaded replays converge (§2.2).
 
+### Amended non-negotiable #3 — player commands are engine state
+
+Ratified with the story system (wave 2 of `docs/plans/0004-event-system-rework.md`). Player choices
+arrive asynchronously through `CallBinding`, which does **not** break determinism — but "add player
+choices to the input tuple" is not a precise enough statement of why, so here is the precise one:
+
+> Engine state at date D is a pure function of *(metrics history, prior state, seeds, catalogs,
+> settings, **and the ordered, dated log of player commands with timestamp ≤ D**)*. The command log
+> **is** engine state: it is persisted in `PoliticalState`, it has a total order, and it is
+> **replayed, never re-solicited**.
+
+What that forces, concretely:
+
+- **A choice is an appended, dated record, not a mutation.** `PoliticalState.PlayerCommands`, sorted
+  by `(DecidedMonth, Sequence, EventId)`. Arrival order is wall-clock and is not engine state.
+- **It is persisted the moment it is recorded**, not at resolution. `AgoraSidecarSystem.PreSerialize`
+  already runs on every `Purpose.SaveGame`, so a choice made in month M survives into M+1's tick.
+- **Free text is prose and is treated as such**: capped at `stories.freeTextMaxLength`, rejected with
+  the existing `CommandOutcome.TooLong`, and **never parsed for a number** — exactly what
+  non-negotiable #1 requires of LLM output, for exactly the same reason.
+- **A recorded reading beats a re-measured one.** Where a player command's firing time is already
+  exogenous (the *Resolve now* button), the snapshot it resolves against is **written into the story
+  record as evidence**, so replay reads the recorded number rather than sampling a different city.
+  This is the same trick that makes the command log itself deterministic.
+
+The desync definition in #3 is unchanged: the SHA-256 of serialized state at date D after a reload
+must equal the hash before it — now including the command log, which is why every list on it carries
+a declared sort key.
+
 ---
 
 ## 6. Data Contracts (schemas live in `data/schemas/`)
