@@ -275,18 +275,42 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// Null <i>tuning</i> is the one case the seam change makes interesting: the parameter is
-        /// required, so a caller cannot omit it, but it can still be handed null. That must fall back
-        /// rather than throw — a save whose tuning failed to load should still evaluate.
+        /// Null <i>tuning</i> is the case the seam change makes interesting: the parameter is
+        /// required, so a caller cannot omit it, but it can still be handed null. That degrades to
+        /// <see cref="CheckResult.Unmeasurable"/> — it does not throw, and it does not quietly fall
+        /// back to the shipped default.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This test originally asserted the fallback, and it was wrong to.</b> A slack that cannot
+        /// be read is not a licence to invent one: falling back would answer a delta against a bound
+        /// nobody chose, which is the same silent-wrong-answer failure the required argument exists to
+        /// refuse. Unmeasurable costs the player nothing and is visibly nothing, which is the correct
+        /// shape for a state that should never occur.
+        /// </para>
+        /// <para>
+        /// It should never occur, and that is why the test matters rather than why it does not:
+        /// <c>EngineTuning.LoadOrDefault</c> returns the defaults with a warning rather than null even
+        /// on a corrupt file, so a null here is a caller defect. The contract is that a caller defect
+        /// costs the player nothing instead of taking the sim thread down.
+        /// </para>
+        /// </remarks>
         [Fact]
-        public void Evaluate_ToleratesNullTuning()
+        public void Evaluate_DegradesToUnmeasurableOnNullTuningRatherThanGuessingTheSlack()
         {
             StoryReadContext good = StoryTestFixtures.Context(
                 StoryTestFixtures.City(March1994, happiness: 60.0));
 
-            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(StoryTestFixtures.Metric(
-                MetricHistory.Happiness, Comparison.GreaterThan, 50.0), good, null!));
+            TriggerSpec readable = StoryTestFixtures.Metric(
+                MetricHistory.Happiness, Comparison.GreaterThan, 50.0);
+
+            // Readable against a real tuning, so the Unmeasurable below is the null tuning's doing and
+            // not the spec's.
+            Assert.Equal(CheckResult.Met, TriggerEvaluator.Evaluate(readable, good, Tuning));
+            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.Evaluate(readable, good, null!));
+
+            Assert.Equal(CheckResult.Unmeasurable, TriggerEvaluator.EvaluateCheck(
+                StoryTestFixtures.Check(readable), null, good, null!));
         }
 
         // --- the delta window is bounded ----------------------------------------------------------
