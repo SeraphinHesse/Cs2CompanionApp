@@ -60,6 +60,19 @@ namespace Agora.Core.Stories
     /// <see cref="PowerLedgerReason.ManualAward"/> is its own reason rather than a
     /// <see cref="PowerLedgerReason.SuccessAward"/> — the cap has to be auditable in the ledger.
     /// </para>
+    /// <para>
+    /// <b>The cap applies to the award only, never to the penalty.</b> A self-declared <i>failure</i>
+    /// is charged at the event's real tier. Capping both sides looks symmetrical and is a trap: it
+    /// would make a truthfully self-declared mandatory failure cost 5 where <c>Ignore</c> costs 25,
+    /// so a player who simply preferred the Manual button would take an 80% discount on every
+    /// mandatory failure in the game — no lying required, and the tier ladder would survive on the
+    /// award side alone. Charging the real tier keeps honest self-reporting exactly as expensive as
+    /// <c>Ignore</c> and never worse, so honesty is never punished relative to silence. The remaining
+    /// gap — that a <i>false</i> declaration of success still beats an honest failure — is not
+    /// closable in arithmetic: the design concedes unverifiable declarations, and a player set on
+    /// cheating can edit the sidecar. If it needs closing it belongs at the response layer, by making
+    /// <c>Manual</c> unavailable when the slot's check is measurable.
+    /// </para>
     /// </remarks>
     public sealed class PoliticalPowerState
     {

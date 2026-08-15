@@ -13,8 +13,34 @@ namespace Agora.Core.Stories
     /// <summary>
     /// How the player chose to tackle one event. <see cref="Unaddressed"/> is the state before they
     /// chose, and is <b>not</b> the same as <see cref="Ignore"/> — one is silence, the other is a
-    /// decision, and only the second is the player's fault.
+    /// decision, and they read completely differently in the prose and in the command log.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>They do, however, score the same at resolution, and that is deliberate.</b> An earlier
+    /// draft of this comment said only the explicit choice was "the player's fault" and let silence
+    /// score as unmeasurable — which made doing nothing strictly cheaper than every response that
+    /// could fail. Under shipped tuning, pressing <see cref="Ignore"/> on a mandatory event cost 25
+    /// power while never opening the story cost nothing, so the rational play on anything you
+    /// expected to lose was to leave it alone. That inverts the premise of a feature whose whole
+    /// point is that the player must tackle each event, and it made the one response with its own
+    /// text box the worst button on the screen.
+    /// </para>
+    /// <para>
+    /// So an unaddressed slot, and a <see cref="Manual"/> slot still undeclared when its story
+    /// resolves, both score as not-met. The story was open for a full cycle; declining to engage is
+    /// a decision the city feels. <b>What it is not is a sensor gap</b> — see
+    /// <see cref="SlotOutcome.Unmeasurable"/>, which keeps exactly one meaning: the engine could not
+    /// read the city. Overloading it with "the player did not click" would make the engine tell a
+    /// player it could not read their city about a story they simply never opened, and nothing
+    /// downstream could separate an outage from disengagement again.
+    /// </para>
+    /// <para>
+    /// The cost is real and was accepted knowingly: a player who never saw the card is charged for
+    /// it. That leans on the story modal actually rendering, which is wave 6's manual gate — if that
+    /// gate fails, this rule is the first thing to revisit.
+    /// </para>
+    /// </remarks>
     public enum SlotResponse
     {
         Unaddressed = 0,
@@ -36,6 +62,12 @@ namespace Agora.Core.Stories
         /// player nothing — see <see cref="CheckResult.Unmeasurable"/> for why this is a state rather
         /// than a failure.
         /// </summary>
+        /// <remarks>
+        /// <b>This means "the engine could not read the city", and nothing else.</b> It is not the
+        /// outcome for a player who did not respond: silence scores <see cref="NotMet"/>, for the
+        /// reasons on <see cref="SlotResponse"/>. Keeping the two apart is what lets a later reader
+        /// tell a broken sensor from a disengaged player, and it is unrecoverable once merged.
+        /// </remarks>
         Unmeasurable = 3
     }
 
@@ -206,10 +238,28 @@ namespace Agora.Core.Stories
         }
     }
 
-    /// <summary>One metric id and the value read for it. Evidence, not state.</summary>
+    /// <summary>One reading at one scope. Evidence, not state.</summary>
+    /// <remarks>
+    /// A reading is identified by <see cref="MetricId"/> <b>and</b> <see cref="DistrictId"/> together.
+    /// Without the second half a district-scoped check resolved early could record nothing — there
+    /// was nowhere to put a per-district value, and two districts' readings of one metric could not
+    /// coexist — so on replay the evaluator found no recorded reading and re-measured a city that had
+    /// since moved. That is a determinism hole rather than a cosmetic gap, and it is closed here
+    /// rather than in wave 4 because wave 4 is what would have built on it.
+    /// </remarks>
     public sealed class MetricReading
     {
         public string MetricId { get; set; } = "";
+
+        /// <summary>
+        /// The district this reading was taken in, or empty for a city-wide reading.
+        /// </summary>
+        /// <remarks>
+        /// Part of the identity, not a decoration: a lookup must match on both fields. Matching on
+        /// <see cref="MetricId"/> alone would let one district's recorded reading answer for another's,
+        /// which is worse than having no record at all — it is a confident wrong answer.
+        /// </remarks>
+        public string DistrictId { get; set; } = "";
 
         /// <summary>Null means the metric was unreadable, which is a distinct claim from zero.</summary>
         public double? Value { get; set; }
@@ -232,6 +282,35 @@ namespace Agora.Core.Stories
         public int MissStreak { get; set; }
 
         /// <summary>
+        /// The month this event was last drawn into a story, as <see cref="SimDate.TotalMonths"/>.
+        /// <c>-1</c> means it has never been told.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is the re-use cooldown, and it replaces excluding everything the archive
+        /// remembers.</b> That earlier rule drove the pool into an absorbing state: a live catalog of
+        /// roughly forty events consumed six per cycle, so it emptied around month 14 — and then
+        /// nothing drafted, so nothing resolved, so nothing archived, so the archive never evicted
+        /// and never released an event back. The feature stopped for the rest of the save and logged
+        /// "no stories drafted" politely once per cycle forever.
+        /// </para>
+        /// <para>
+        /// The arithmetic that killed it is worth keeping written down, because it is the constraint
+        /// any future rule has to satisfy: archive-based exclusion is only sound while
+        /// <c>archiveRetention × eventsPerStory &lt; liveCatalogSize</c>. At the shipped 40 and 3 that
+        /// caps retention at 12, whereas it ships at 40 — so the rule was only ever correct for an
+        /// unbounded catalog.
+        /// </para>
+        /// <para>
+        /// A cooldown has no such coupling: it is a duration, so it cannot exhaust a finite catalog
+        /// however long the save runs. <c>stories.reuseCooldownMonths</c> must still be kept well
+        /// under <c>liveCatalogSize ÷ (storiesPerCycle × eventsPerStory) × cycleMonths</c>, which is
+        /// why it ships at 6 rather than at something that feels narratively generous.
+        /// </para>
+        /// </remarks>
+        public int LastDraftedMonth { get; set; } = -1;
+
+        /// <summary>
         /// A copy safe to mutate. <see cref="MissStreak"/> is incremented every cycle the entry is
         /// not drawn, so an alias would let a speculative advance age the caller's own pool.
         /// </summary>
@@ -239,7 +318,8 @@ namespace Agora.Core.Stories
         {
             EventId = EventId,
             FirstTriggeredDate = FirstTriggeredDate,
-            MissStreak = MissStreak
+            MissStreak = MissStreak,
+            LastDraftedMonth = LastDraftedMonth
         };
     }
 }

@@ -670,6 +670,7 @@
         "enabled", "storiesPerCycle", "eventsPerStory", "cycleMonths", "successThreshold",
         "mandatorySeverityThreshold", "majorSeverityThreshold", "missStreakWeightStep",
         "maxMissStreak", "poolMaxSize", "archiveRetention", "minorPromotionEnabled",
+        "reuseCooldownMonths", "maxMandatoryPerCycle",
         "maxStoryEffectsPerModifier", "activeEffectScale", "successEffectScale",
         "failureEffectScale", "alienationWeight", "enfranchisementWeight", "freeTextMaxLength"
       ],
@@ -686,6 +687,8 @@
         "poolMaxSize": { "$ref": "#/$defs/positiveInt" },
         "archiveRetention": { "$ref": "#/$defs/positiveInt" },
         "minorPromotionEnabled": { "type": "boolean" },
+        "reuseCooldownMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "maxMandatoryPerCycle": { "$ref": "#/$defs/nonNegativeInt" },
         "maxStoryEffectsPerModifier": { "$ref": "#/$defs/positiveInt" },
         "activeEffectScale": { "type": "number", "minimum": 0 },
         "successEffectScale": { "type": "number", "minimum": 0 },
