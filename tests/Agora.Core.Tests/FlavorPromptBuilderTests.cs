@@ -318,6 +318,168 @@ namespace Agora.Core.Tests
             return prompt.Substring(start, end + 1 - start);
         }
 
+        // ---- the v4 city-statistics block ---------------------------------------------------------
+        //
+        // /schema-change step 3: a snapshot field the model cannot see is a contract break, because
+        // the model then writes prose about a city it has no view of. These pin the four lines the
+        // v4 fields arrive as, the two fields that deliberately do not arrive at all, and - the one
+        // that would fail invisibly - that none of them arrives as a figure.
+
+        [Fact]
+        public void TheCityBlock_CarriesHomelessnessMigrationVisitorsAndStanding()
+        {
+            var request = Request(districts: 3, districtIdLength: 12);
+            request.Snapshot.Statistics = new CityStatistics(
+                homeless: 900, homelessShare: 0.06, citizensMovedIn: 200, citizensMovedAway: 1_400,
+                movedAwayUnhappy: 900, births: 300, deaths: 250, garbageProductionRate: 4_000.0);
+            request.Snapshot.Tourism = new TourismLevels(
+                tourists: 36_000, attractiveness: 120, lodgingUsed: 950, lodgingTotal: 1_000);
+            request.Snapshot.Progression = new ProgressionState(
+                milestoneLevel: 12, experience: 40_000, milestoneProgress: 0.4);
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.Contains("- homelessness: homelessness is a serious problem\n", prompt);
+            Assert.Contains("- migration: people are leaving in numbers, and most of those leaving " +
+                            "go because they are unhappy here\n", prompt);
+            // 36,000 visitors against the fixture's 180,000 residents - banded against the resident
+            // population, because a thousand tourists is a curiosity in a metropolis and an
+            // occupation in a village.
+            Assert.Contains("- visitors: visitors are a presence everywhere; the hotels are full\n", prompt);
+            Assert.Contains("- city standing: well established, with most of its options open\n", prompt);
+        }
+
+        [Fact]
+        public void TheCityBlock_SaysTheNewLinesAreCityWideAndNotADistrictFact()
+        {
+            // Every one of the four is city-only at source: CityStatisticsSystem is keyed by
+            // (StatisticType, parameter) with no district dimension, Tourism lives on the city entity
+            // and a district has no milestone. The district block carries no equivalent, so the only
+            // route by which one becomes a local claim is the model putting it there. This is the
+            // section that fails invisibly if it is cut - the prose still reads fine, it is just
+            // about a district that was never measured.
+            string prompt = FlavorPromptBuilder.Build(Request(districts: 3, districtIdLength: 12));
+
+            Assert.Contains("- note: homelessness, migration, visitors and city standing are " +
+                            "city-wide measures; do not attribute any of them to a named district\n",
+                            prompt);
+        }
+
+        [Theory]
+        [InlineData(0.0, "no visible homelessness")]
+        [InlineData(0.004, "no visible homelessness")]
+        [InlineData(0.01, "a few households with nowhere to live")]
+        [InlineData(0.03, "homelessness is a visible problem")]
+        [InlineData(0.07, "homelessness is a serious problem")]
+        [InlineData(0.30, "a homelessness crisis")]
+        public void Homelessness_ReadsFromInvisibleToCrisis(double share, string expected)
+        {
+            // The share arrives 0-1, and the bands are packed into the bottom of that range on
+            // purpose: a city at 6% homeless is in serious trouble, not "a fifth of the way up the
+            // scale". A sensor that forgot to divide the game's 0-100 percentage down would land
+            // every one of these fixtures in the top band, which is the failure the contract's own
+            // remarks on HomelessShare warn about.
+            var request = Request(districts: 1, districtIdLength: 12);
+            request.Snapshot.Statistics = new CityStatistics(0, share, 0, 0, 0, 0, 0, 0.0);
+
+            Assert.Contains("- homelessness: " + expected + "\n", FlavorPromptBuilder.Build(request));
+        }
+
+        [Fact]
+        public void Migration_MentionsUnhappinessOnlyWhenItIsWhyPeopleAreGoing()
+        {
+            // MovedAwayUnhappy is carried apart from CitizensMovedAway because the two mean opposite
+            // things politically. A city losing people to a housing shortage must not be described to
+            // the model as a city losing people to its government.
+            var housing = Request(districts: 1, districtIdLength: 12);
+            housing.Snapshot.Statistics = new CityStatistics(0, 0.0, 100, 900, 0, 0, 0, 0.0);
+
+            string prompt = FlavorPromptBuilder.Build(housing);
+            Assert.Contains("- migration: people are leaving in numbers\n", prompt);
+            Assert.DoesNotContain("unhappy here", prompt);
+
+            // And the same outflow, most of it walking out on the council.
+            var government = Request(districts: 1, districtIdLength: 12);
+            government.Snapshot.Statistics = new CityStatistics(0, 0.0, 100, 900, 700, 0, 0, 0.0);
+
+            Assert.Contains("- migration: people are leaving in numbers, and most of those leaving " +
+                            "go because they are unhappy here\n",
+                            FlavorPromptBuilder.Build(government));
+        }
+
+        [Fact]
+        public void Migration_OnAnUnmeasuredCity_ClaimsNothingEitherWay()
+        {
+            // Zero in and zero out is what a capture taken before the statistics sensor ran looks
+            // like, and it is indistinguishable on the contract from a genuinely settled city. The
+            // phrase has to be true of both; "arrivals and departures roughly balance" would be a
+            // claim, and a ratio of 0/0 is not one the band scale can answer.
+            string prompt = FlavorPromptBuilder.Build(Request(districts: 1, districtIdLength: 12));
+
+            Assert.Contains("- migration: few people are moving either way\n", prompt);
+        }
+
+        [Fact]
+        public void Visitors_ReportLodgingOnlyAtTheTwoEnds()
+        {
+            var request = Request(districts: 1, districtIdLength: 12);
+
+            // No hotels at all: no lodging clause, and certainly no claim that the beds are empty.
+            request.Snapshot.Tourism = new TourismLevels(2_000, 40, 0, 0);
+            Assert.Contains("- visitors: a few visitors about\n", FlavorPromptBuilder.Build(request));
+
+            // Hotels, running about half full: still nothing worth a clause.
+            request.Snapshot.Tourism = new TourismLevels(2_000, 40, 500, 1_000);
+            Assert.Contains("- visitors: a few visitors about\n", FlavorPromptBuilder.Build(request));
+
+            // Hotels standing empty, which is a story.
+            request.Snapshot.Tourism = new TourismLevels(2_000, 40, 100, 1_000);
+            Assert.Contains("- visitors: a few visitors about; hotel beds are going empty\n",
+                            FlavorPromptBuilder.Build(request));
+        }
+
+        [Fact]
+        public void TaxRatesAndUnlockedFeatures_NeverReachTheModel()
+        {
+            // Both are lists of ids rather than a state of the city, and leaving them out is a
+            // decision recorded in the builder's own comment. Pinned so that a later pass adding
+            // them has to delete this test on purpose rather than discover the omission and "fix" it:
+            // forty resource names would outweigh every other line in the city block put together.
+            var request = Request(districts: 3, districtIdLength: 12);
+            request.Snapshot.UnlockedFeatureIds.Add("Feature_Zoning_Signature");
+            request.Snapshot.IndustryTaxRates.Add(
+                new ResourceTaxRate(TaxArea.Office, 21, "Software", 0.11));
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.DoesNotContain("Feature_Zoning_Signature", prompt);
+            Assert.DoesNotContain("Software", prompt);
+        }
+
+        [Fact]
+        public void TheCityBlock_CarriesNoFigureAtAll()
+        {
+            // The other direction of non-negotiable #1, and the reason every line above is a band: a
+            // model never shown a figure cannot quote one back slightly wrong. Swept over the whole
+            // city block rather than the four new lines, because the cheapest way for a future field
+            // to arrive as a number is for it to be appended next to them.
+            var request = Request(districts: 0, districtIdLength: 12);
+            request.Snapshot.Statistics = new CityStatistics(900, 0.06, 200, 1_400, 900, 300, 250, 4_000.0);
+            request.Snapshot.Tourism = new TourismLevels(36_000, 120, 950, 1_000);
+            request.Snapshot.Progression = new ProgressionState(12, 40_000, 0.4);
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            // Districts are excluded from the fixture rather than from the slice: their ids and names
+            // are engine-authored and are the one thing in this block that is allowed to carry digits.
+            int start = prompt.IndexOf("THE CITY (qualitative only", System.StringComparison.Ordinal);
+            Assert.True(start >= 0);
+            int end = prompt.IndexOf("PARTIES (partyId", System.StringComparison.Ordinal);
+            Assert.True(end > start);
+
+            Assert.Equal(new List<string>(), DigitRuns(prompt.Substring(start, end - start)));
+        }
+
         // ---- the numeric sweep ------------------------------------------------------------------
 
         [Theory]
