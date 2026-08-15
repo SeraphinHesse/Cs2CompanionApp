@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Agora.Core.Contracts;
 using Agora.Core.Tuning;
 
 namespace Agora.Core.Stories
@@ -17,13 +18,21 @@ namespace Agora.Core.Stories
     /// is wave 4's.
     /// </para>
     /// <para>
-    /// Determinism: the only loops walk the story's own slot list, the catalog list and the recorded
-    /// evidence list, all in the order they were given. No dictionary or hash set is enumerated, and
-    /// the one collection this file builds is sorted by ordinal string comparison before it leaves.
+    /// Determinism: the loops walk the story's own slot list, the catalog list and the recorded
+    /// evidence list in the order they were given, and the district list in a copy this file sorts
+    /// by ordinal id rather than trusting the producer's ordering. No dictionary or hash set is
+    /// enumerated, and the one collection built here is sorted by ordinal string comparison over its
+    /// full composite key before it leaves.
     /// </para>
     /// </remarks>
     public static class StoryResolution
     {
+        /// <summary>
+        /// The <see cref="MetricReading.DistrictId"/> of a city-wide reading. Empty by the contract's
+        /// own definition, named here so the composite key never reads as a bare <c>""</c>.
+        /// </summary>
+        private const string CityWide = "";
+
         /// <summary>
         /// Scores every slot, then the story.
         /// </summary>
@@ -32,9 +41,10 @@ namespace Agora.Core.Stories
         /// <b>Per-slot verdict by response mode.</b> <c>Goal</c> runs the <see cref="CheckSpec"/>
         /// through <see cref="TriggerEvaluator"/>. <c>PowerOverride</c> is an automatic success that
         /// was already paid for. <c>Ignore</c> is an automatic failure — the player decided.
-        /// <c>Manual</c> reads the player's own declaration and is <b>neutral until declared</b>,
-        /// which is to say <see cref="SlotOutcome.Unmeasurable"/> rather than failed.
-        /// <c>Unaddressed</c> is silence, not a decision, and is likewise not scored as failure.
+        /// <c>Manual</c> reads the player's own declaration, and an undeclared one at resolution
+        /// scores as failure, as does <c>Unaddressed</c>: the story was open for a full cycle and
+        /// declining to engage is a decision the city feels. See <see cref="SlotResponse"/> for why
+        /// that is not the same claim as <see cref="SlotOutcome.Unmeasurable"/>.
         /// </para>
         /// <para>
         /// <b>The story threshold is a ratio over SCORED slots, not over all of them.</b> A full
@@ -42,7 +52,8 @@ namespace Agora.Core.Stories
         /// a degraded draft, or one whose slots went unmeasurable — needs <b>all</b> its scored slots
         /// met. A story with no scored slots at all resolves <see cref="StoryOutcome.Abandoned"/>:
         /// there is nothing to have a verdict about, and calling that a failure would charge the
-        /// player for a sensor gap.
+        /// player for a sensor gap. <b>Only a reading that could not be taken reaches that state</b>
+        /// — a story the player never opened scores three not-mets and fails.
         /// </para>
         /// </remarks>
         /// <param name="story">The story to score. Not mutated — the verdict is returned, not applied.</param>
@@ -132,7 +143,8 @@ namespace Agora.Core.Stories
         /// matter <i>more</i>, not less. That is the deliberate reading of the rule — an unreadable
         /// slot leaves both halves of the ratio, so what is left is the whole of what we can honestly
         /// ask about, and the alternative (scaling the numerator down as well) would let a story with
-        /// one readable slot succeed on zero met slots.
+        /// one readable slot succeed on zero met slots. Only a genuine sensor gap shrinks a story
+        /// this way: silence scores not-met and keeps its slot in the denominator.
         /// </para>
         /// <para>
         /// <c>successThreshold</c> is clamped into <c>[1, scoredCount]</c> before use, so a
@@ -145,7 +157,9 @@ namespace Agora.Core.Stories
         private static StoryOutcome Verdict(int metCount, int scoredCount, StoriesTuning tuning)
         {
             // Nothing was readable, so there is nothing to have a verdict about. Abandoned pays out
-            // in neither direction; Failure here would charge the player for a sensor gap.
+            // in neither direction; Failure here would charge the player for a sensor gap. This is
+            // now reachable only through unreadable checks and slots the catalog no longer explains
+            // — an unanswered story fills its slots with not-mets and fails like any other.
             if (scoredCount <= 0) return StoryOutcome.Abandoned;
 
             int fullStory = tuning.EventsPerStory;
@@ -161,21 +175,24 @@ namespace Agora.Core.Stories
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <c>Unaddressed</c> is <see cref="SlotOutcome.Unmeasurable"/> and that is a considered
-        /// answer rather than a fallback. <see cref="SlotResponse"/> separates it from
-        /// <c>Ignore</c> precisely because one is silence and the other is a decision, and its doc
-        /// comment says only the second is the player's fault; scoring silence as
-        /// <see cref="SlotOutcome.NotMet"/> would collapse that distinction and make the two
-        /// responses identical in every way that reaches the numbers. It cannot be
-        /// <see cref="SlotOutcome.Met"/> either — nothing was done. So it leaves both halves of the
-        /// ratio, and a story the player never opened resolves <see cref="StoryOutcome.Abandoned"/>
-        /// and costs nothing, which is the same treatment a sensor gap gets and for the same reason.
+        /// <b><c>Unaddressed</c> scores <see cref="SlotOutcome.NotMet"/>, and so does a
+        /// <c>Manual</c> slot still undeclared when its story resolves.</b> The story was open for a
+        /// full cycle; declining to engage with it is a decision the city feels, and the remarks on
+        /// <see cref="SlotResponse"/> hold the argument — scoring silence as neutral made doing
+        /// nothing strictly cheaper than every response that could fail, which inverts the premise
+        /// of a feature about tackling each event.
         /// </para>
         /// <para>
-        /// A <c>Manual</c> slot is the same shape: neutral until <c>ManualDeclared</c>, then met.
-        /// <c>PlayerText</c> is prose and is never read for a verdict (non-negotiable #1); the
-        /// exploit that buys is closed on the award side, where a manual-declared slot pays the minor
-        /// rate whatever the tier.
+        /// What silence is <i>not</i> is a sensor gap. <see cref="SlotOutcome.Unmeasurable"/> keeps
+        /// exactly one meaning here — the engine could not read the city — and nothing in this
+        /// function routes a player state through it. That is what lets a later reader tell an
+        /// outage from a disengaged player, and it is unrecoverable once the two are merged.
+        /// </para>
+        /// <para>
+        /// A declared <c>Manual</c> slot is met; <c>PlayerText</c> is prose and is never read for a
+        /// verdict (non-negotiable #1). The exploit that buys is closed on the award side, where a
+        /// manual-declared slot's <i>award</i> is capped at the minor rate whatever the tier while
+        /// its penalty is not.
         /// </para>
         /// </remarks>
         private static SlotOutcome ScoreSlot(StorySlot slot, CivicEvent? civicEvent,
@@ -188,17 +205,22 @@ namespace Agora.Core.Stories
                     return SlotOutcome.Met;
 
                 case SlotResponse.Ignore:
+                case SlotResponse.Unaddressed:
                     return SlotOutcome.NotMet;
 
                 case SlotResponse.Manual:
-                    return slot.ManualDeclared ? SlotOutcome.Met : SlotOutcome.Unmeasurable;
+                    return slot.ManualDeclared ? SlotOutcome.Met : SlotOutcome.NotMet;
 
                 case SlotResponse.Goal:
+                    // A catalog that no longer explains this slot is a gap on our side, so it degrades
+                    // to unreadable rather than throwing or failing the player.
                     if (civicEvent == null || civicEvent.Check == null) return SlotOutcome.Unmeasurable;
                     return FromCheck(
                         TriggerEvaluator.EvaluateCheck(civicEvent.Check, slot.BaselineMetric, context));
 
                 default:
+                    // A value no member of the enum has — corrupt state on our side, not a player
+                    // state, so it costs nothing. Every real response is handled above.
                     return SlotOutcome.Unmeasurable;
             }
         }
@@ -231,47 +253,94 @@ namespace Agora.Core.Stories
         /// would replay the same save to a different verdict.
         /// </para>
         /// <para>
-        /// With no recorded reading, only a <see cref="TriggerScope.City"/> check contributes: no
-        /// single number stands behind an <c>AnyDistrict</c> or <c>AllDistricts</c> verdict, so
-        /// writing one down would be a fiction, and writing down a null would say "unreadable" of a
-        /// check that was read perfectly well — and then be believed on replay.
+        /// <b>A district-scoped check records one reading per district</b>, because a reading is
+        /// identified by metric <i>and</i> district together. Recording only the metric would let one
+        /// district's number answer for another's on replay, which is worse than no record at all —
+        /// it is a confident wrong answer — and recording nothing at all sent the replay back to a
+        /// city that had since moved.
+        /// </para>
+        /// <para>
+        /// A null <see cref="CheckSpec"/> is not an error to throw on. A catalog entry that authored
+        /// no check cannot be scored, and this file's posture on a catalog gap is to degrade: the
+        /// slot is already <see cref="SlotOutcome.Unmeasurable"/> by then, and killing the whole
+        /// month's resolution over one malformed entry would cost the player every other story in it.
         /// </para>
         /// </remarks>
-        private static void RecordEvidence(List<MetricReading> evidence, CheckSpec check,
+        private static void RecordEvidence(List<MetricReading> evidence, CheckSpec? check,
                                            StoryReadContext context)
         {
+            if (check == null) return;
+
             TriggerSpec spec = check.Spec;
             if (spec == null) return;
 
             string metricId = spec.MetricId ?? "";
             if (metricId.Length == 0) return;   // a Manual-kind check reads no metric at all
-            if (Contains(evidence, metricId)) return;
 
-            double? recorded;
-            if (TryRecorded(context, metricId, out recorded))
+            if (spec.Scope == TriggerScope.City)
             {
-                evidence.Add(new MetricReading { MetricId = metricId, Value = recorded });
+                double? recorded;
+                Add(evidence, metricId, CityWide,
+                    TryRecorded(context, metricId, CityWide, out recorded)
+                        ? recorded
+                        : MetricRegistry.ReadCity(context.Today, metricId));
                 return;
             }
 
-            if (spec.Scope != TriggerScope.City) return;
+            if (CopyRecordedDistricts(evidence, context, metricId)) return;
 
-            evidence.Add(new MetricReading
+            List<DistrictSnapshot> districts = SortedDistricts(context.Today);
+            for (int i = 0; i < districts.Count; i++)
             {
-                MetricId = metricId,
-                Value = MetricRegistry.ReadCity(context.Today, metricId)
-            });
+                DistrictSnapshot district = districts[i];
+                Add(evidence, metricId, district.Id, MetricRegistry.ReadDistrict(district, metricId));
+            }
         }
 
         /// <summary>
-        /// The recorded reading for <paramref name="metricId"/>, if the context carries one.
+        /// Replays every recorded district reading of <paramref name="metricId"/>, and says whether
+        /// there was one.
         /// </summary>
         /// <remarks>
-        /// True with a null <paramref name="value"/> is a meaningful answer and not a miss: it is a
-        /// recorded "this could not be read", and it has to replay as unmeasurable rather than send
-        /// us back to the city for a second opinion.
+        /// All of them, not the first: an <c>AllDistricts</c> verdict was reached over the whole set,
+        /// so replaying part of it would replay a different question. False means the context holds
+        /// no district reading for this metric and the districts must be measured.
         /// </remarks>
-        private static bool TryRecorded(StoryReadContext context, string metricId, out double? value)
+        private static bool CopyRecordedDistricts(List<MetricReading> evidence,
+                                                  StoryReadContext context, string metricId)
+        {
+            IReadOnlyList<MetricReading> recorded = context.RecordedEvidence;
+            if (recorded == null) return false;
+
+            bool any = false;
+            for (int i = 0; i < recorded.Count; i++)
+            {
+                MetricReading reading = recorded[i];
+                if (reading == null) continue;
+                if (!string.Equals(reading.MetricId, metricId, StringComparison.Ordinal)) continue;
+
+                string districtId = reading.DistrictId ?? CityWide;
+                if (districtId.Length == 0) continue;   // a city-wide reading answers a city-wide check
+
+                Add(evidence, metricId, districtId, reading.Value);
+                any = true;
+            }
+
+            return any;
+        }
+
+        /// <summary>
+        /// The recorded reading for one metric in one district, if the context carries one.
+        /// </summary>
+        /// <remarks>
+        /// <b>Both halves of the key are matched.</b> Matching on <paramref name="metricId"/> alone
+        /// would let one district's recorded reading answer for another's. True with a null
+        /// <paramref name="value"/> is a meaningful answer and not a miss: it is a recorded "this
+        /// could not be read", and it has to replay as unmeasurable rather than send us back to the
+        /// city for a second opinion.
+        /// </remarks>
+        private static bool TryRecorded(StoryReadContext context, string metricId, string districtId,
+                                        out double? value)
         {
             IReadOnlyList<MetricReading> recorded = context.RecordedEvidence;
             if (recorded != null)
@@ -279,7 +348,7 @@ namespace Agora.Core.Stories
                 for (int i = 0; i < recorded.Count; i++)
                 {
                     MetricReading reading = recorded[i];
-                    if (reading != null && string.Equals(reading.MetricId, metricId, StringComparison.Ordinal))
+                    if (reading != null && SameReading(reading, metricId, districtId))
                     {
                         value = reading.Value;
                         return true;
@@ -289,6 +358,30 @@ namespace Agora.Core.Stories
 
             value = null;
             return false;
+        }
+
+        /// <summary>
+        /// The districts of a snapshot, sorted by ordinal id.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="CitySnapshot.Districts"/> is documented as already ordered, but sorting a copy
+        /// costs nothing and keeps the verdict independent of whether the producer honoured that.
+        /// A district with an empty id is dropped: an empty <see cref="MetricReading.DistrictId"/> is
+        /// what marks a city-wide reading, so such a district's reading could not be told from one.
+        /// </remarks>
+        private static List<DistrictSnapshot> SortedDistricts(CitySnapshot snapshot)
+        {
+            var sorted = new List<DistrictSnapshot>();
+            List<DistrictSnapshot> source = snapshot.Districts ?? new List<DistrictSnapshot>();
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                DistrictSnapshot district = source[i];
+                if (district != null && !string.IsNullOrEmpty(district.Id)) sorted.Add(district);
+            }
+
+            sorted.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            return sorted;
         }
 
         /// <summary>The catalog entry with this id, or null when the catalog no longer holds it.</summary>
@@ -305,20 +398,44 @@ namespace Agora.Core.Stories
             return null;
         }
 
-        private static bool Contains(List<MetricReading> evidence, string metricId)
+        /// <summary>
+        /// Adds one reading unless the list already holds that metric in that district. Two slots of
+        /// one story may name the same metric, and they read the same city, so the second reading
+        /// would be the first one again.
+        /// </summary>
+        private static void Add(List<MetricReading> evidence, string metricId, string districtId,
+                                double? value)
         {
             for (int i = 0; i < evidence.Count; i++)
             {
-                if (string.Equals(evidence[i].MetricId, metricId, StringComparison.Ordinal)) return true;
+                if (SameReading(evidence[i], metricId, districtId)) return;
             }
 
-            return false;
+            evidence.Add(new MetricReading
+            {
+                MetricId = metricId,
+                DistrictId = districtId,
+                Value = value
+            });
         }
 
-        /// <summary>Ordinal by metric id. Ids are unique in the list, so the sort is total.</summary>
+        /// <summary>Identity over the composite key — metric and district together, never one alone.</summary>
+        private static bool SameReading(MetricReading reading, string metricId, string districtId)
+        {
+            return string.Equals(reading.MetricId, metricId, StringComparison.Ordinal)
+                && string.Equals(reading.DistrictId ?? CityWide, districtId, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Ordinal by metric id, then by district id. The whole key is compared because only the
+        /// whole key is unique — sorting on the metric alone would leave one metric's districts in
+        /// whatever order they were added, which is the ordering bug this file exists to avoid.
+        /// </summary>
         private static int CompareByMetricId(MetricReading a, MetricReading b)
         {
-            return string.CompareOrdinal(a.MetricId, b.MetricId);
+            int byMetric = string.CompareOrdinal(a.MetricId, b.MetricId);
+            if (byMetric != 0) return byMetric;
+            return string.CompareOrdinal(a.DistrictId ?? CityWide, b.DistrictId ?? CityWide);
         }
 
         /// <summary>netstandard2.0 has no <c>Math.Clamp</c> — see the note in <c>Agora.Core.csproj</c>.</summary>
