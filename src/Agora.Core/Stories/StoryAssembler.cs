@@ -24,8 +24,11 @@ namespace Agora.Core.Stories
         /// and above <c>stories.storiesPerCycle</c> — a mandatory event is not drawn, it is delivered.
         /// </para>
         /// <para>
-        /// After the draw, every entry left in the pool has its <c>MissStreak</c> incremented and the
-        /// drawn entries are removed. That aging is what the pity weighting reads.
+        /// After the draw, every entry that was passed over has its <c>MissStreak</c> incremented.
+        /// That aging is what the pity weighting reads. A drawn entry leaves the drawable set but
+        /// <b>stays in the pool as its own cooldown record</b> — streak reset, <c>LastDraftedMonth</c>
+        /// stamped — because the stamp is the only thing that remembers when the event was told, and
+        /// dropping the entry would hand it straight back next cycle with a clean slate.
         /// </para>
         /// <para>
         /// <b>Seeded from <c>StreamNames.StoryDraft</c> and <c>StoryPool</c>, tie-broken through
@@ -43,13 +46,31 @@ namespace Agora.Core.Stories
         /// never be scored, while the entry keeping its streak costs them nothing.
         /// </para>
         /// <para>
-        /// <b>"Already used" means: named by a slot of any story in <c>LiveStories</c> or
-        /// <c>StoryArchive</c>.</b> Live is obvious — the same event cannot run in two stories at
-        /// once. Including the archive makes re-use a cooldown rather than a permanent exhaustion:
-        /// the archive is bounded by <c>stories.archiveRetention</c>, so an event comes round again
-        /// only once the story that told it has aged out of the record. A fifty-event catalog needs
-        /// events to return eventually; a player being handed the same crisis twice running is what
-        /// this rule is for.
+        /// <b>An evicted entry's <c>MissStreak</c> is discarded, and that is a decision.</b> A
+        /// trigger that stopped holding means the event stopped being pending; when the city brings
+        /// it back it is a new occurrence rather than a resumed one, and it queues from the back like
+        /// any other. Carrying the streak across the gap would let an event that lapsed for a decade
+        /// return already at the top of the order.
+        /// </para>
+        /// <para>
+        /// <b>"Already used" means named by a slot of a story in <c>LiveStories</c> — the archive is
+        /// not consulted.</b> Live is forced: one event cannot run in two stories at once. Re-use is
+        /// then gated on a <i>duration</i>, <c>stories.reuseCooldownMonths</c> measured against
+        /// <c>EventPoolEntry.LastDraftedMonth</c>, and not on what the archive still remembers.
+        /// Archive exclusion is only sound while
+        /// <c>archiveRetention × eventsPerStory &lt; liveCatalogSize</c>; at the shipped 40 and 3 it
+        /// names 120 slots over a live catalog of roughly 40, so it excludes every event several
+        /// times over and the pool empties for good around month 14 — and once nothing drafts,
+        /// nothing resolves, nothing archives, and the archive never releases an event back. A
+        /// duration has no such coupling and cannot exhaust a finite catalog however long the save
+        /// runs. The full arithmetic is on <see cref="EventPoolEntry.LastDraftedMonth"/>.
+        /// </para>
+        /// <para>
+        /// <b>Mandatory events ignore the cooldown entirely, and are bounded by
+        /// <c>stories.maxMandatoryPerCycle</c> instead.</b> A mandatory trigger is a statement about
+        /// the city right now, so suppressing it because the same event was told two years ago would
+        /// drop a genuine crisis with no story, no power movement and no prose. Excess mandatory
+        /// events are not dropped either: they stay in the pool, age normally, and arrive next cycle.
         /// </para>
         /// </remarks>
         public static StoryDraftResult Draft(PoliticalState prior,
@@ -83,11 +104,12 @@ namespace Agora.Core.Stories
             List<CivicEvent> sortedCatalog = SortedCatalog(catalog, settings.Theme, tuning, eventsById);
 
             var carried = PoolByEventId(prior.EventPool);
-            var used = UsedEventIds(prior);
+            var live = LiveEventIds(prior);
 
             // Drawable candidates are split by the tier the severity projects onto. Tier is derived
             // here and nowhere else: StoryTiers.Of is the single definition of "is this major".
             var pool = new List<EventPoolEntry>();
+            var cooling = new HashSet<string>(StringComparer.Ordinal);
             var mandatory = new List<Candidate>();
             var majors = new List<Candidate>();
             var minors = new List<Candidate>();
@@ -100,11 +122,25 @@ namespace Agora.Core.Stories
                 // those events directly, so the refresh must not adopt them.
                 if (ev.Trigger == null || ev.Trigger.Kind == TriggerKind.Manual) continue;
 
-                // Used events are not "waiting to be drawn", so they do not sit in the pool aging.
-                if (used.Contains(ev.Id)) continue;
-
                 EventPoolEntry existing;
                 bool pooled = carried.TryGetValue(ev.Id, out existing);
+
+                StoryTier tier = ev.TierUnder(stories.MandatorySeverityThreshold,
+                                              stories.MajorSeverityThreshold);
+
+                // The cooldown is held on the entry, so the entry has to survive the months it is
+                // counting — including the cycle its story is live and any month its trigger lapses.
+                // Dropping it would hand the event straight back with a clean LastDraftedMonth, which
+                // is the cooldown doing nothing at all.
+                if (pooled && tier != StoryTier.Mandatory && OnCooldown(existing, today, stories))
+                {
+                    pool.Add(existing.Clone());
+                    cooling.Add(ev.Id);
+                    continue;
+                }
+
+                // A live event is not waiting to be drawn — it is being told.
+                if (live.Contains(ev.Id)) continue;
 
                 CheckResult eligibility = TriggerEvaluator.Evaluate(ev.Trigger, context);
                 if (eligibility == CheckResult.NotMet) continue;
@@ -125,7 +161,7 @@ namespace Agora.Core.Stories
                     Weight = EventPoolWeighting.Weight(entry, ev, tuning)
                 };
 
-                switch (ev.TierUnder(stories.MandatorySeverityThreshold, stories.MajorSeverityThreshold))
+                switch (tier)
                 {
                     case StoryTier.Mandatory: mandatory.Add(candidate); break;
                     case StoryTier.Major: majors.Add(candidate); break;
@@ -136,9 +172,20 @@ namespace Agora.Core.Stories
             var drawn = new HashSet<string>(StringComparer.Ordinal);
             var drafted = new List<Story>();
 
-            // --- 2. Mandatory events are delivered, not drawn: no weight, no seed, no degradation,
-            // and each is its own bare single-slot story over and above storiesPerCycle.
+            // --- 2. Mandatory events are delivered, not drawn: no weight, no seed, and each is its
+            // own bare single-slot story over and above storiesPerCycle. The only thing that holds
+            // one back is the per-cycle cap, and a held one waits rather than disappearing.
+            int maxMandatory = stories.MaxMandatoryPerCycle < 0 ? 0 : stories.MaxMandatoryPerCycle;
+
             mandatory.Sort(CompareCandidates);
+            if (mandatory.Count > maxMandatory)
+            {
+                result.Degradations.Add("mandatory-deferred: delivered " + Index(maxMandatory)
+                                        + " of " + Index(mandatory.Count)
+                                        + " mandatory events, the rest wait a cycle");
+                mandatory.RemoveRange(maxMandatory, mandatory.Count - maxMandatory);
+            }
+
             for (int i = 0; i < mandatory.Count; i++)
             {
                 Candidate m = mandatory[i];
@@ -153,8 +200,18 @@ namespace Agora.Core.Stories
             // --- 3. The drawn stories. Majors first, in story order; the minors are then filled in
             // a StoryDraft-seeded order, because which story gets the heaviest remaining minor is a
             // real choice and leaving it to loop order would decide it by accident.
-            int storiesPerCycle = stories.StoriesPerCycle < 0 ? 0 : stories.StoriesPerCycle;
-            int eventsPerStory = stories.EventsPerStory < 1 ? 1 : stories.EventsPerStory;
+            // Per-save settings win over the tuning key of the same name when set — story shape is a
+            // per-save setting, not global config (non-negotiable #10). Same shape and same reason as
+            // TickPlanner.SnapshotsToPrune. The clamps come after the resolution, not before it.
+            int storiesPerCycle = settings.StoriesPerCycle > 0
+                ? settings.StoriesPerCycle
+                : stories.StoriesPerCycle;
+            if (storiesPerCycle < 0) storiesPerCycle = 0;
+
+            int eventsPerStory = settings.EventsPerStory > 0
+                ? settings.EventsPerStory
+                : stories.EventsPerStory;
+            if (eventsPerStory < 1) eventsPerStory = 1;
 
             var open = new List<Story>();
             for (int i = 0; i < storiesPerCycle; i++)
@@ -234,22 +291,35 @@ namespace Agora.Core.Stories
 
             if (drafted.Count == 0) result.Degradations.Add("empty-pool: no stories drafted");
 
-            // --- 4. Age what was left behind. Every surviving entry's MissStreak goes up by one —
-            // that aging is the whole of the pity weighting, read on the next cycle.
-            var survivors = new List<EventPoolEntry>();
-            for (int i = 0; i < pool.Count; i++)
-            {
-                EventPoolEntry entry = pool[i];
-                if (drawn.Contains(entry.EventId)) continue;
+            // --- 4. Age what was passed over. Every entry that was drawable and not taken has its
+            // MissStreak go up by one — that aging is the whole of the pity weighting, read on the
+            // next cycle. A drawn entry is stamped and reset instead; an entry sitting out its
+            // cooldown is neither, because it was never offered and so was never passed over.
+            int cap = stories.MaxMissStreak < 0 ? 0 : stories.MaxMissStreak;
 
-                int cap = stories.MaxMissStreak < 0 ? 0 : stories.MaxMissStreak;
+            var survivors = new List<EventPoolEntry>(pool);
+            for (int i = 0; i < survivors.Count; i++)
+            {
+                EventPoolEntry entry = survivors[i];
+
+                if (drawn.Contains(entry.EventId))
+                {
+                    entry.LastDraftedMonth = today.TotalMonths;
+                    entry.MissStreak = 0;
+                    continue;
+                }
+
+                if (cooling.Contains(entry.EventId)) continue;
+
                 int streak = entry.MissStreak < 0 ? 0 : entry.MissStreak;
                 entry.MissStreak = streak >= cap ? cap : streak + 1;
-                survivors.Add(entry);
             }
 
             // Over capacity, the lowest-weighted go — decided by the same total order as every other
             // choice here, so the entry that gets dropped is never the one that happened to be last.
+            // Note that a poolMaxSize set below the live catalog size would start evicting cooldown
+            // records, which shortens a re-use gap; it ships at 60 against a live catalog of roughly
+            // 40 precisely so that it never binds.
             if (stories.PoolMaxSize > 0 && survivors.Count > stories.PoolMaxSize)
             {
                 EventPoolWeighting.SortByOrder(survivors, eventsById, tuning);
@@ -495,13 +565,31 @@ namespace Agora.Core.Stories
         }
 
         /// <summary>
-        /// Event ids spoken for by a story, live or archived. Membership only — never iterated.
+        /// Whether an entry is still inside its re-use cooldown. Never true for a mandatory event —
+        /// the caller checks the tier first, because a mandatory trigger describes the city now.
         /// </summary>
-        private static HashSet<string> UsedEventIds(PoliticalState prior)
+        private static bool OnCooldown(EventPoolEntry entry, SimDate today, StoriesTuning stories)
+        {
+            if (stories.ReuseCooldownMonths <= 0) return false;
+            if (entry.LastDraftedMonth < 0) return false;
+
+            // A save loaded backwards — an entry stamped in the future — reads as still cooling
+            // rather than as a negative gap that silently satisfies the comparison.
+            int elapsed = today.TotalMonths - entry.LastDraftedMonth;
+            return elapsed < stories.ReuseCooldownMonths;
+        }
+
+        /// <summary>
+        /// Event ids currently being told by an open story. Membership only — never iterated.
+        /// </summary>
+        /// <remarks>
+        /// <c>StoryArchive</c> is deliberately not consulted: re-use is gated on a duration, for the
+        /// reasons set out on <see cref="Draft"/>.
+        /// </remarks>
+        private static HashSet<string> LiveEventIds(PoliticalState prior)
         {
             var used = new HashSet<string>(StringComparer.Ordinal);
             AddSlotIds(used, prior.LiveStories);
-            AddSlotIds(used, prior.StoryArchive);
             return used;
         }
 
