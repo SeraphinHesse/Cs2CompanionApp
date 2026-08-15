@@ -76,6 +76,110 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
+        /// The six story settings, out and back — the v4 half of the round trip above.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Separate from <see cref="SaveSettings_RoundTripsEveryField"/> rather than folded into it,
+        /// because the two enum-valued ones fail differently from every boolean beside them: they are
+        /// written as member <i>names</i>, and a name the reader does not recognise throws out of
+        /// <c>ToObject</c> rather than coming back wrong. Non-default values throughout, so a
+        /// property that never reached the file at all comes back as the default and fails here
+        /// instead of agreeing with itself.
+        /// </para>
+        /// <para>
+        /// Non-negotiable #10 is the reason it matters that these are per-save at all: story cadence
+        /// and power intensity are choices about one city's politics, and a global setting would apply
+        /// one save's answer to every other.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void SaveSettings_RoundTripsTheStoryAndPowerFields()
+        {
+            string root = TempRoot("roundtrip-stories");
+
+            try
+            {
+                var store = new SidecarStore(root, NullSidecarLog.Instance);
+
+                var written = new AgoraSettings
+                {
+                    StoriesEnabled = false,
+                    StoriesPerCycle = 4,
+                    EventsPerStory = 5,
+                    PoliticalPowerEnabled = false,
+                    PowerIntensity = PowerIntensity.Harsh,
+                    StoryDifficulty = StoryDifficulty.Forgiving
+                };
+
+                Assert.True(store.SaveSettings(Save, written));
+
+                AgoraSettings read = store.LoadSettings(Save);
+
+                Assert.False(read.StoriesEnabled);
+                Assert.Equal(4, read.StoriesPerCycle);
+                Assert.Equal(5, read.EventsPerStory);
+                Assert.False(read.PoliticalPowerEnabled);
+                Assert.Equal(PowerIntensity.Harsh, read.PowerIntensity);
+                Assert.Equal(StoryDifficulty.Forgiving, read.StoryDifficulty);
+            }
+            finally
+            {
+                Delete(root);
+            }
+        }
+
+        /// <summary>
+        /// A settings file written by a build that had never heard of the story layer loads into the
+        /// documented defaults rather than into zeroes. <c>storiesPerCycle</c> is the one that would
+        /// hurt: a zero there is a save that drafts nothing forever, which reads to a player as the
+        /// feature being broken rather than as a migration having quietly not run.
+        /// </summary>
+        [Fact]
+        public void LoadSettings_FillsTheStoryFieldsOnAFileThatPredatesThem()
+        {
+            string root = TempRoot("prestory-settings");
+
+            try
+            {
+                string directory = Path.Combine(root, SidecarPaths.FormatGuid(Save));
+                Directory.CreateDirectory(directory);
+
+                File.WriteAllText(SidecarPaths.SettingsPath(directory), "{" +
+                    "\"schemaVersion\": 3," +
+                    "\"startYear\": 1990," +
+                    "\"theme\": \"Eu\"," +
+                    "\"system\": \"Proportional\"," +
+                    "\"wakeCadence\": \"Yearly, Election, Manual\"," +
+                    "\"snapshotRetention\": 25," +
+                    "\"enabled\": true," +
+                    "\"effectsEnabled\": true," +
+                    "\"themeLocked\": true," +
+                    "\"pauseOnMajorNews\": false," +
+                    "\"showAllReports\": false," +
+                    "\"voteSharpness\": \"Default\"," +
+                    "\"newsInfluence\": \"Default\"," +
+                    "\"brandDiscipline\": \"Default\"" +
+                "}");
+
+                AgoraSettings read = new SidecarStore(root, NullSidecarLog.Instance).LoadSettings(Save);
+                var expected = new AgoraSettings();
+
+                Assert.Equal(SidecarSchema.CurrentSettingsVersion, read.SchemaVersion);
+                Assert.Equal(expected.StoriesEnabled, read.StoriesEnabled);
+                Assert.Equal(expected.StoriesPerCycle, read.StoriesPerCycle);
+                Assert.Equal(expected.EventsPerStory, read.EventsPerStory);
+                Assert.Equal(expected.PoliticalPowerEnabled, read.PoliticalPowerEnabled);
+                Assert.Equal(expected.PowerIntensity, read.PowerIntensity);
+                Assert.Equal(expected.StoryDifficulty, read.StoryDifficulty);
+            }
+            finally
+            {
+                Delete(root);
+            }
+        }
+
+        /// <summary>
         /// The write is what W3 relies on to survive a crash, so it has to be a file rather than a
         /// promise, and writing it twice must not accumulate anything.
         /// </summary>

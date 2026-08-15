@@ -927,6 +927,278 @@ namespace Agora.Core.Tests
             Assert.Empty(Arr(power, "ledger"));
         }
 
+        // --- 5d. v5 → v6: the story layer, from a real v5 fixture ---------------------------------
+
+        /// <summary>
+        /// A v5 state document with a v3 settings block: exactly the shape the v4 → v5 step leaves
+        /// behind, and the last shape a shipped build ever wrote. What it does not carry is a single
+        /// story field, because no build that wrote a v5 file had heard of one.
+        /// </summary>
+        /// <param name="storyState">
+        /// Extra root properties, so a caller can present a document that already carries story state
+        /// — the branch that must be left alone rather than reseeded.
+        /// </param>
+        private static string StateV5(string storyState = "", string settingsExtra = "")
+        {
+            return "{" +
+                "\"schemaVersion\": 5," +
+                "\"saveGuid\": \"11112222-3333-4444-5555-666677778888\"," +
+                "\"date\": \"1994-03-01\"," +
+                "\"lastCompletedTickMonth\": " +
+                    new SimDate(1994, 3, 1).TotalMonths.ToString(CultureInfo.InvariantCulture) + "," +
+                storyState +
+                "\"settings\": {" +
+                    "\"schemaVersion\": 3," +
+                    "\"startYear\": 1990," +
+                    "\"theme\": \"Eu\"," +
+                    "\"system\": \"Proportional\"," +
+                    "\"wakeCadence\": \"Yearly, Election, Manual\"," +
+                    "\"snapshotRetention\": 25," +
+                    "\"enabled\": true," +
+                    "\"effectsEnabled\": true," +
+                    "\"themeLocked\": true," +
+                    "\"pauseOnMajorNews\": false," +
+                    "\"showAllReports\": false," +
+                    "\"voteSharpness\": \"Default\"," +
+                    "\"newsInfluence\": \"Default\"," +
+                    "\"brandDiscipline\": \"Default\"" +
+                    settingsExtra +
+                "}," +
+                "\"parties\": [{" +
+                    "\"id\": \"party-01\"," +
+                    "\"name\": \"Green Alliance\"," +
+                    "\"shortName\": \"party-01\"," +
+                    "\"colorHex\": \"#3366aa\"," +
+                    "\"status\": \"Active\"," +
+                    "\"foundedDate\": \"1990-01-01\"," +
+                    "\"revivalCount\": 0," +
+                    "\"playerOverrides\": \"None\"," +
+                    "\"isMajor\": false" +
+                "}]," +
+                "\"factions\": []," +
+                "\"electionHistory\": []," +
+                "\"firedEventIds\": []," +
+                "\"fringe\": {" +
+                    "\"consecutiveFailureTerms\": 0," +
+                    "\"lastClosedTermNumber\": 0," +
+                    "\"lastTermFailureScore\": 0.0," +
+                    "\"termNumber\": 0," +
+                    "\"monthsObserved\": 0," +
+                    "\"discontentSum\": 0.0," +
+                    "\"defianceSurgeSum\": 0.0," +
+                    "\"governmentChanges\": 0," +
+                    "\"mayorChanges\": 0" +
+                "}," +
+                "\"termNumber\": 2," +
+                "\"isCampaignSeason\": false" +
+            "}";
+        }
+
+        /// <summary>
+        /// The step reaches both current versions from a genuine v5 file — the root's and the nested
+        /// settings block's, which move together because <c>MigrateStateV5ToV6</c> calls the settings
+        /// upgrade itself. Asserted against the constants rather than against 6 and 4, so this stays
+        /// a test of the step rather than of the version number.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_ReachesTheCurrentStateAndSettingsVersions()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV5(), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(SidecarSchema.CurrentStateVersion, Int(root, SidecarSchema.VersionProperty));
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion,
+                         Int(Obj(root, "settings"), SidecarSchema.VersionProperty));
+        }
+
+        /// <summary>
+        /// <b>The story collections arrive empty and nothing is backfilled.</b> An existing save has
+        /// never had a story, so it has no story history — inventing one would invent a month of
+        /// politics the player never played and would move the state hash for something that is not a
+        /// real difference in the city.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_AddsTheStoryCollectionsEmpty()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV5(), out result);
+
+            Assert.Empty(Arr(root, "liveStories"));
+            Assert.Empty(Arr(root, "storyArchive"));
+            Assert.Empty(Arr(root, "eventPool"));
+            Assert.Empty(Arr(root, "playerCommands"));
+            Assert.Empty(Arr(Obj(root, "power"), "ledger"));
+        }
+
+        /// <summary>
+        /// Both watermarks and <c>power.lastAccrualMonth</c> seed to -1, which is true rather than
+        /// merely safe: the first cycle boundary after the upgrade genuinely is this save's first
+        /// draft. That is the opposite of <c>lastCompletedTickMonth</c>, which had to come from the
+        /// document's own date because a state file is by definition the record of a month that
+        /// finished — there is no equivalent evidence here, because nothing finished.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_SeedsEveryStoryWatermarkToNever()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV5(), out result);
+
+            Assert.Equal(-1, Int(root, "lastStoryDraftMonth"));
+            Assert.Equal(-1, Int(root, "lastStoryResolveMonth"));
+            Assert.Equal(-1, Int(Obj(root, "power"), "lastAccrualMonth"));
+
+            // And the tick watermark the v4 → v5 step already seeded is untouched: this step has no
+            // business rewinding a month that really did run.
+            Assert.Equal(new SimDate(1994, 3, 1).TotalMonths, Int(root, "lastCompletedTickMonth"));
+        }
+
+        /// <summary>
+        /// The power state starts at zero on every axis. A balance conjured here would be power the
+        /// player never earned, and a non-zero lifetime total would make the ledger a lie on its first
+        /// reading.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_StartsThePowerBalanceAtZero()
+        {
+            MigrationResult result;
+            JObject power = Obj(Migrate(StateV5(), out result), "power");
+
+            Assert.Equal(0, Int(power, "balance"));
+            Assert.Equal(0, Int(power, "lifetimeEarned"));
+            Assert.Equal(0, Int(power, "lifetimeSpent"));
+        }
+
+        /// <summary>
+        /// The six settings the v3 → v4 step adds, checked after materialisation rather than on the
+        /// DOM.
+        /// </summary>
+        /// <remarks>
+        /// The two enum-valued ones are the reason this goes through <c>ToObject</c>: they are written
+        /// as member <i>names</i>, and a wrong name is not a wrong value but a thrown
+        /// <c>JsonSerializationException</c> that quarantines the player's whole political history in
+        /// <c>SidecarStore</c>. An assertion on the DOM would agree with the typo.
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV5_AddsTheStorySettingsAndTheyMaterialise()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV5(), out result);
+
+            AgoraSettings actual = AgoraJson.ToObject<PoliticalState>(root).Settings;
+            var expected = new AgoraSettings();
+
+            Assert.Equal(expected.StoriesEnabled, actual.StoriesEnabled);
+            Assert.Equal(expected.StoriesPerCycle, actual.StoriesPerCycle);
+            Assert.Equal(expected.EventsPerStory, actual.EventsPerStory);
+            Assert.Equal(expected.PoliticalPowerEnabled, actual.PoliticalPowerEnabled);
+            Assert.Equal(expected.PowerIntensity, actual.PowerIntensity);
+            Assert.Equal(expected.StoryDifficulty, actual.StoryDifficulty);
+
+            // The story layer arrives switched on, so an existing save starts drafting at the next
+            // cycle boundary rather than needing the player to find a toggle.
+            Assert.True(actual.StoriesEnabled);
+        }
+
+        /// <summary>
+        /// <b>Fill, never overwrite.</b> A document that already carries story state — because the
+        /// runtime has been playing with it, or because the chain has run once already — keeps every
+        /// value it had. A step that reseeded instead would discard the player's own choices on every
+        /// load, which is the failure idempotency exists to prevent.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_LeavesStoryStateTheRuntimeHasAlreadyWritten()
+        {
+            string existing =
+                "\"liveStories\": [{\"id\": \"story-01\", \"slots\": []}]," +
+                "\"eventPool\": [{\"eventId\": \"evt-a\", \"missStreak\": 3}]," +
+                "\"playerCommands\": []," +
+                "\"storyArchive\": []," +
+                "\"power\": {\"balance\": 42, \"lifetimeEarned\": 90, \"lifetimeSpent\": 48," +
+                    "\"lastAccrualMonth\": 23930, \"ledger\": []}," +
+                "\"lastStoryDraftMonth\": 23929," +
+                "\"lastStoryResolveMonth\": 23928,";
+
+            MigrationResult result;
+            JObject root = Migrate(StateV5(storyState: existing), out result);
+
+            Assert.Single(Arr(root, "liveStories"));
+            Assert.Single(Arr(root, "eventPool"));
+            Assert.Equal(42, Int(Obj(root, "power"), "balance"));
+            Assert.Equal(23930, Int(Obj(root, "power"), "lastAccrualMonth"));
+            Assert.Equal(23929, Int(root, "lastStoryDraftMonth"));
+            Assert.Equal(23928, Int(root, "lastStoryResolveMonth"));
+        }
+
+        /// <summary>
+        /// A setting the player has already chosen survives the step. <c>storiesEnabled</c> false is
+        /// the case that matters: a step that reseeded it would switch the story layer back on for a
+        /// player who deliberately turned it off, on every single load.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_LeavesAStorySettingThePlayerHasAlreadyChosen()
+        {
+            MigrationResult result;
+            JObject root = Migrate(
+                StateV5(settingsExtra: ",\"storiesEnabled\": false,\"storyDifficulty\": \"Demanding\""),
+                out result);
+
+            AgoraSettings settings = AgoraJson.ToObject<PoliticalState>(root).Settings;
+
+            Assert.False(settings.StoriesEnabled);
+            Assert.Equal(StoryDifficulty.Demanding, settings.StoryDifficulty);
+        }
+
+        /// <summary>
+        /// <b>The v5 → v6 form of non-negotiable #6.</b> The upgrade moves the serialized fingerprint
+        /// exactly once — that is what a version bump <i>is</i> — and every reload after it must
+        /// produce the same bytes, or the desync check in <c>tests/CLAUDE.md</c> fires on a file that
+        /// is perfectly healthy.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV5_IsIdempotent()
+        {
+            MigrationResult first;
+            JObject root = Migrate(StateV5(), out first);
+            string once = AgoraJson.Serialize(root);
+
+            MigrationResult second = SidecarSchema.Migrate(root, SidecarDocument.State);
+
+            Assert.Equal(MigrationOutcome.Current, second.Outcome);
+            Assert.Equal(once, AgoraJson.Serialize(root));
+
+            // A third pass too: "idempotent" is a property of the chain, not a coincidence of running
+            // it twice.
+            SidecarSchema.Migrate(root, SidecarDocument.State);
+            Assert.Equal(once, AgoraJson.Serialize(root));
+        }
+
+        /// <summary>
+        /// The standalone <c>settings.json</c> path reaches v4 as well. A save that answered the
+        /// first-run prompt and was closed before its first tick has settings and no state file, and
+        /// the story block has to arrive through this route too — <c>MigrateStateV5ToV6</c> never sees
+        /// that document.
+        /// </summary>
+        [Fact]
+        public void Migrate_SettingsFileV3_ReachesVersionFourStandalone()
+        {
+            JObject root = AgoraJson.ParseObject(SettingsV1());
+            MigrationResult result = SidecarSchema.Migrate(root, SidecarDocument.Settings);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, Int(root, SidecarSchema.VersionProperty));
+
+            AgoraSettings settings = AgoraJson.ToObject<AgoraSettings>(root);
+            var expected = new AgoraSettings();
+
+            Assert.Equal(expected.StoriesEnabled, settings.StoriesEnabled);
+            Assert.Equal(expected.StoriesPerCycle, settings.StoriesPerCycle);
+            Assert.Equal(expected.EventsPerStory, settings.EventsPerStory);
+            Assert.Equal(expected.PoliticalPowerEnabled, settings.PoliticalPowerEnabled);
+            Assert.Equal(expected.PowerIntensity, settings.PowerIntensity);
+            Assert.Equal(expected.StoryDifficulty, settings.StoryDifficulty);
+        }
+
         /// <summary>
         /// The weld <c>SidecarSchema.CurrentStateVersion</c>'s own comment claims is here — and was
         /// not. The two drifted once already: the contract default sat at 3 while the constant was 4,
