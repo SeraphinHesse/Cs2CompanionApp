@@ -549,6 +549,42 @@ namespace Agora.Core.Tests
             AssertThresholds(line, new double[] { 0, 4, 9, 14 }, new double[] { 1, 5, 10, 15 });
         }
 
+        [Fact]
+        public void CityStanding_OnAnUnmeasuredCity_ClaimsNothingAboutItsAge()
+        {
+            // A milestone level of 0 means "brand new" or "the progression sensor never read
+            // anything", and the contract cannot tell the two apart: AgoraProgressionSensorSystem
+            // reports nothing for the rest of the session if CreateQueries throws, the milestone
+            // singleton is guarded besides, and Invalidate() empties the reading before the first
+            // sample. All three leave the reading null, which SnapshotAssembly resolves to
+            // ProgressionState(0, 0, 0) - the same zeros a genuinely new city produces.
+            //
+            // So the bottom band may not describe a young city, under the rule stated at the head of
+            // the banding section. This is the loudest place in the block to break it, because the
+            // size line is fed by a different sensor family and stays correct: a prompt reading "a
+            // large city" and "a brand-new settlement" two lines apart writes the contradiction into
+            // a year of articles, from a defect that logs one warning at startup and is silent after.
+            var request = Request(districts: 1, districtIdLength: 12);
+            request.Snapshot.Population = 400_000;
+
+            string size = CityLine(request, "size");
+            string standing = CityLine(request, "city standing");
+
+            // Held as forbidden vocabulary rather than as a sentence, which is the non-brittle
+            // direction for this rule: any rewording that keeps it passes, and only one that puts the
+            // claim back fails.
+            string[] claimsTheCityIsYoung = { "settlement", "village", "brand-new", "brand new", "young", "new " };
+            for (int i = 0; i < claimsTheCityIsYoung.Length; i++)
+            {
+                Assert.DoesNotContain(claimsTheCityIsYoung[i], standing);
+            }
+
+            // The size line beside it is untouched, which is what makes the contradiction visible at
+            // all - this test would have nothing to say if both lines went quiet together.
+            Assert.NotEqual(string.Empty, size);
+            Assert.NotEqual(size, standing);
+        }
+
         /// <summary>
         /// The value of one labelled line in the city block: everything after <c>"- label: "</c> up to
         /// the newline. Asserts the line exists, so a band test cannot silently pass by comparing two
