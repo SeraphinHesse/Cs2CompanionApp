@@ -610,6 +610,99 @@ namespace Agora.Core.Tests
             Assert.True(TickPlanner.Plan(Start, new SimDate(1990, 7, 1), settings, null, false, false, Tuning).IsIndices);
         }
 
+        /// <summary>
+        /// The default cadence, and what every existing save has always had: a poll on every
+        /// political tick.
+        /// </summary>
+        /// <remarks>
+        /// Asserted across two years rather than at one date, because the expression this replaced
+        /// was <c>((date.Day - 1) % pollTickIntervalDays) == 0</c> and <c>SimDate.Day</c> is a literal
+        /// <c>1</c> on every date the clock produces — so it was unconditionally true, and a
+        /// single-date assertion would have passed against it just as happily. What makes this test
+        /// mean something is the pair below, which prove the flag is now capable of being false.
+        /// </remarks>
+        [Fact]
+        public void TickPlan_PollsOnEveryEngineTickByDefault()
+        {
+            var settings = new AgoraSettings();
+            Assert.Equal(1, Tuning.Scheduler.PollTickIntervalMonths);
+
+            for (int i = 0; i < 24; i++)
+            {
+                Assert.True(TickPlanner.Plan(Start, Start.AddMonths(i), settings, null, false, false, Tuning)
+                                       .IsPollTick,
+                            "month " + i + " should poll at the default interval of one month");
+            }
+        }
+
+        /// <summary>
+        /// The dial means something for the first time. Measured in whole months from the save's
+        /// start date like every other cadence here, so a reload or a fast-forward cannot shift its
+        /// phase.
+        /// </summary>
+        [Fact]
+        public void TickPlan_PollFollowsTheConfiguredMonthInterval()
+        {
+            var settings = new AgoraSettings();
+            EngineTuning quarterly = EngineTuning.FromJson("{\"scheduler\":{\"pollTickIntervalMonths\":3}}");
+
+            var polled = new List<int>();
+            for (int i = 0; i < 12; i++)
+            {
+                if (TickPlanner.Plan(Start, Start.AddMonths(i), settings, null, false, false, quarterly).IsPollTick)
+                {
+                    polled.Add(i);
+                }
+            }
+
+            Assert.Equal(new[] { 0, 3, 6, 9 }, polled);
+        }
+
+        /// <summary>
+        /// A poll published on a month the engine did not advance would report shares nothing had
+        /// recomputed, so the flag is gated on <c>IsEngineTick</c> like every other cadence — even
+        /// when the poll interval on its own would say yes.
+        /// </summary>
+        [Fact]
+        public void TickPlan_DoesNotPollOnAMonthTheEngineDidNotTick()
+        {
+            var settings = new AgoraSettings();
+            EngineTuning slow = EngineTuning.FromJson(
+                "{\"scheduler\":{\"tickIntervalMonths\":3,\"pollTickIntervalMonths\":1}}");
+
+            for (int i = 0; i < 9; i++)
+            {
+                TickPlan plan = TickPlanner.Plan(Start, Start.AddMonths(i), settings, null, false, false, slow);
+
+                Assert.Equal(i % 3 == 0, plan.IsEngineTick);
+                Assert.Equal(plan.IsEngineTick, plan.IsPollTick);
+            }
+
+            // And a date before the save started is not a tick of anything. The clock belongs to the
+            // Mod, so the planner answers rather than throws.
+            Assert.False(TickPlanner.Plan(Start, Start.AddMonths(-1), settings, null, false, false, slow).IsPollTick);
+        }
+
+        /// <summary>
+        /// A non-positive interval means never, which is the convention every cadence in this planner
+        /// follows. The one exception is the master tick interval, which is floored at 1 because a
+        /// zero there would freeze the engine rather than configure it.
+        /// </summary>
+        [Fact]
+        public void TickPlan_ANonPositivePollInterval_NeverPolls()
+        {
+            var settings = new AgoraSettings();
+            EngineTuning off = EngineTuning.FromJson("{\"scheduler\":{\"pollTickIntervalMonths\":0}}");
+
+            for (int i = 0; i < 12; i++)
+            {
+                TickPlan plan = TickPlanner.Plan(Start, Start.AddMonths(i), settings, null, false, false, off);
+
+                Assert.True(plan.IsEngineTick);
+                Assert.False(plan.IsPollTick);
+            }
+        }
+
         [Fact]
         public void TickPlan_WarmupCompletesAfterTheConfiguredMonths()
         {

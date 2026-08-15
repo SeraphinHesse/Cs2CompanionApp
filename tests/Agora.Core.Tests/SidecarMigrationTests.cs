@@ -690,6 +690,200 @@ namespace Agora.Core.Tests
             Assert.NotNull(root["fringe"]);
         }
 
+        // --- 5c. v4 → v5: the tick watermark -------------------------------------------------------
+
+        /// <summary>
+        /// A v4 state document, at exactly the shape the v3 → v4 step leaves behind: the nested
+        /// settings block carries the three voter-model levels, every party carries
+        /// <c>playerOverrides</c> and <c>isMajor</c>, and the root carries the fringe watch. What it
+        /// does not carry is <c>lastCompletedTickMonth</c>, because no build that wrote a v4 file had
+        /// heard of one.
+        /// </summary>
+        /// <param name="dateProperty">
+        /// The whole <c>date</c> property including its trailing comma, so a caller can drop it, null
+        /// it, or make it something <c>TryReadTotalMonths</c> has to refuse. Hand-authored for the
+        /// reason given on this class, and this parameter is the sharpest illustration of it: a
+        /// fixture serialized from the current contract could not have an unreadable date at all,
+        /// because <c>SimDateJsonConverter</c> would never write one — so the branch that lands the
+        /// watermark at <c>-1</c> would be untestable and, worse, would look tested.
+        /// </param>
+        private static string StateV4(string dateProperty = "\"date\": \"1994-03-01\",",
+                                      int? lastCompletedTickMonth = null)
+        {
+            return "{" +
+                "\"schemaVersion\": 4," +
+                "\"saveGuid\": \"11112222-3333-4444-5555-666677778888\"," +
+                dateProperty +
+                (lastCompletedTickMonth == null
+                    ? ""
+                    : "\"lastCompletedTickMonth\": " +
+                      lastCompletedTickMonth.Value.ToString(CultureInfo.InvariantCulture) + ",") +
+                "\"settings\": {" +
+                    "\"schemaVersion\": 3," +
+                    "\"startYear\": 1990," +
+                    "\"theme\": \"Eu\"," +
+                    "\"system\": \"Proportional\"," +
+                    "\"wakeCadence\": \"Yearly, Election, Manual\"," +
+                    "\"snapshotRetention\": 25," +
+                    "\"enabled\": true," +
+                    "\"effectsEnabled\": true," +
+                    "\"themeLocked\": true," +
+                    "\"pauseOnMajorNews\": false," +
+                    "\"showAllReports\": false," +
+                    "\"voteSharpness\": \"Default\"," +
+                    "\"newsInfluence\": \"Default\"," +
+                    "\"brandDiscipline\": \"Default\"" +
+                "}," +
+                "\"parties\": [{" +
+                    "\"id\": \"party-01\"," +
+                    "\"name\": \"Green Alliance\"," +
+                    "\"shortName\": \"party-01\"," +
+                    "\"colorHex\": \"#3366aa\"," +
+                    "\"status\": \"Active\"," +
+                    "\"foundedDate\": \"1990-01-01\"," +
+                    "\"revivalCount\": 0," +
+                    "\"playerOverrides\": \"None\"," +
+                    "\"isMajor\": false" +
+                "}]," +
+                "\"factions\": []," +
+                "\"electionHistory\": []," +
+                "\"firedEventIds\": []," +
+                "\"fringe\": {" +
+                    "\"consecutiveFailureTerms\": 0," +
+                    "\"lastClosedTermNumber\": 0," +
+                    "\"lastTermFailureScore\": 0.0," +
+                    "\"termNumber\": 0," +
+                    "\"monthsObserved\": 0," +
+                    "\"discontentSum\": 0.0," +
+                    "\"defianceSurgeSum\": 0.0," +
+                    "\"governmentChanges\": 0," +
+                    "\"mayorChanges\": 0" +
+                "}," +
+                "\"termNumber\": 2," +
+                "\"isCampaignSeason\": false" +
+            "}";
+        }
+
+        /// <summary>
+        /// A state file is by definition the record of a month that finished — it is written after
+        /// the tick, not before — so the month it names is exactly the last completed one. Seeding
+        /// zero would tell the runtime that no month had ever run and hand every existing save one
+        /// free duplicate tick on its first load after upgrading, which is the precise bug the field
+        /// exists to close.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV4_SeedsTheWatermarkFromTheDocumentsOwnDate()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV4(), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(SidecarSchema.CurrentStateVersion, Int(root, SidecarSchema.VersionProperty));
+
+            // Via SimDate rather than a literal 23930: the watermark is a TotalMonths, and spelling
+            // the arithmetic out here would let this agree with a migration that had drifted from it.
+            Assert.Equal(new SimDate(1994, 3, 1).TotalMonths, Int(root, "lastCompletedTickMonth"));
+        }
+
+        /// <summary>
+        /// A file with no readable date lands at the contract default of <c>-1</c>, not at a wrong
+        /// month. That costs at most the one duplicate tick the save was already getting, whereas
+        /// guessing would suppress a real tick — and a suppressed month is unrecoverable where a
+        /// duplicated one is merely wrong once.
+        /// </summary>
+        /// <remarks>
+        /// <c>"0000-00-00"</c> is the case worth naming: it is the round trip of
+        /// <c>default(SimDate)</c> and is reachable on a state whose date was never assigned. Month 0
+        /// is not a month, and parsing it arithmetically would seed a watermark a full year adrift
+        /// rather than obviously wrong.
+        /// </remarks>
+        [Theory]
+        [InlineData("")]                                // no date property at all
+        [InlineData("\"date\": null,")]                 // present, but not a string
+        [InlineData("\"date\": 19940301,")]             // present, but a number
+        [InlineData("\"date\": \"\",")]
+        [InlineData("\"date\": \"not-a-date\",")]
+        [InlineData("\"date\": \"1994-03\",")]          // two parts, not three
+        [InlineData("\"date\": \"0000-00-00\",")]       // default(SimDate)
+        [InlineData("\"date\": \"1994-13-01\",")]       // month out of range
+        public void Migrate_StateV4_LandsAtMinusOneWhenTheDateIsNotReadable(string dateProperty)
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV4(dateProperty: dateProperty), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(-1, Int(root, "lastCompletedTickMonth"));
+        }
+
+        /// <summary>
+        /// A document that already carries the property is left exactly as it is. The value here is
+        /// deliberately not the one the date would produce: re-running the chain must not be able to
+        /// rewind a watermark the runtime has since advanced, and a step that recomputed rather than
+        /// filled would hand the save back the duplicate tick it had already stopped taking.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV4_LeavesAWatermarkTheRuntimeHasAlreadyAdvanced()
+        {
+            int advanced = new SimDate(1997, 11, 1).TotalMonths;
+
+            MigrationResult result;
+            JObject root = Migrate(StateV4(lastCompletedTickMonth: advanced), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(advanced, Int(root, "lastCompletedTickMonth"));
+        }
+
+        /// <summary>
+        /// The v4 → v5 form of non-negotiable #6, asserted on all three branches of the step. The
+        /// upgrade moves the serialized fingerprint exactly once; every reload after it must produce
+        /// the same bytes, or the desync check in <c>tests/CLAUDE.md</c> fires on a file that is in
+        /// fact perfectly healthy.
+        /// </summary>
+        [Theory]
+        [InlineData("\"date\": \"1994-03-01\",")]
+        [InlineData("")]
+        [InlineData("\"date\": \"0000-00-00\",")]
+        public void Migrate_StateV4_IsIdempotent(string dateProperty)
+        {
+            MigrationResult first;
+            JObject root = Migrate(StateV4(dateProperty: dateProperty), out first);
+            string once = AgoraJson.Serialize(root);
+
+            MigrationResult second = SidecarSchema.Migrate(root, SidecarDocument.State);
+
+            Assert.Equal(MigrationOutcome.Current, second.Outcome);
+            Assert.Equal(once, AgoraJson.Serialize(root));
+        }
+
+        /// <summary>
+        /// The whole chain, not just the step it was written for. A v1 document reaches v5 with the
+        /// watermark seeded from its own date — which is only true if the new step runs last and sees
+        /// a <c>date</c> none of the earlier steps disturbed.
+        /// </summary>
+        [Fact]
+        public void Migrate_StateV1_ReachesVersionFiveWithTheWatermarkSeeded()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV1(elections: OneElection()), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.Equal(5, SidecarSchema.CurrentStateVersion);
+            Assert.Equal(new SimDate(1994, 3, 1).TotalMonths, Int(root, "lastCompletedTickMonth"));
+        }
+
+        /// <summary>
+        /// The weld <c>SidecarSchema.CurrentStateVersion</c>'s own comment claims is here — and was
+        /// not. The two drifted once already: the contract default sat at 3 while the constant was 4,
+        /// so a freshly constructed state claimed a version it had never been, and nothing failed.
+        /// Core cannot reference the Mod's constant, so an assertion is the only thing that can hold
+        /// them together.
+        /// </summary>
+        [Fact]
+        public void CurrentStateVersion_MatchesTheContractDefault()
+        {
+            Assert.Equal(SidecarSchema.CurrentStateVersion, new PoliticalState().SchemaVersion);
+        }
+
         // --- 6. Idempotency ---------------------------------------------------------------------------
 
         /// <summary>

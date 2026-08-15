@@ -304,6 +304,108 @@ namespace Agora.Core.Tests
             }
         }
 
+        // --- The widened series ------------------------------------------------------------------
+
+        /// <summary>
+        /// The document no longer holds only rent and land value. It now carries the closed set
+        /// <c>SnapshotRehydration</c> rebuilds a past <c>CitySnapshot</c> from — city population and
+        /// education, and per district education and the low-wealth share — and every one of them has
+        /// to survive the disk round trip, not just the two the file was originally written for.
+        /// </summary>
+        /// <remarks>
+        /// Asserted by fingerprint rather than by naming the series, for the same reason the golden
+        /// rehydration test does not assert a field list: a hand-written list only covers what its
+        /// author thought of, and a series silently dropped on the way through would be invisible to
+        /// it. The count and sample-count assertions are there so the fingerprints cannot agree by
+        /// both being empty.
+        /// </remarks>
+        [Fact]
+        public void EveryRecordedSeries_SurvivesTheDiskRoundTrip()
+        {
+            string root = TempRoot("widened-series");
+
+            try
+            {
+                const int Months = 30;
+                const int Retention = 128;
+
+                SimDate start = Month(1990, 1);
+                SimDate now = start.AddMonths(Months - 1);
+
+                var original = new MetricHistory(Retention);
+                SyntheticCityHistory.RecordAll(original, SyntheticCityHistory.Months(start, Months));
+
+                var store = new SidecarStore(root, NullSidecarLog.Instance);
+                Assert.True(store.SaveMetricHistory(Save, original.ToFile()));
+
+                var reloaded = new MetricHistory(Retention);
+                reloaded.RestoreFrom(store.LoadMetricHistory(Save), now);
+
+                Assert.Equal(AgoraJson.Fingerprint(original.ToFile()),
+                             AgoraJson.Fingerprint(reloaded.ToFile()));
+
+                // Not against a hardcoded series count, which would have to be maintained every time
+                // the recorded vocabulary widens and would be wrong in the interim. One month through
+                // the same recorder produces exactly the set a full history should hold, so the two
+                // counts agreeing is the statement "nothing was dropped on the way through", and the
+                // month counts are what stop both sides from being trivially empty.
+                var oneMonth = new MetricHistory(Retention);
+                oneMonth.RecordSnapshot(SyntheticCityHistory.Snapshot(start, 0));
+
+                MetricHistoryFile file = reloaded.ToFile();
+                Assert.NotEmpty(file.Series);
+                Assert.Equal(oneMonth.ToFile().Series.Count, file.Series.Count);
+                Assert.All(file.Series, s => Assert.Equal(Months, s.Samples.Count));
+            }
+            finally
+            {
+                Delete(root);
+            }
+        }
+
+        /// <summary>
+        /// The values themselves, not only the shape. A double narrowed on the way to disk would
+        /// leave every trend and every rehydrated snapshot subtly wrong in a way no count assertion
+        /// can see — and the rehydration path feeds <c>IndicesEngine</c>, which compares a historical
+        /// education index against a present one and would report a drift the city never had.
+        /// </summary>
+        [Fact]
+        public void EveryRecordedSample_ComesBackBitIdentical()
+        {
+            const int Months = 30;
+            const int Retention = 128;
+
+            SimDate start = Month(1990, 1);
+
+            var original = new MetricHistory(Retention);
+            SyntheticCityHistory.RecordAll(original, SyntheticCityHistory.Months(start, Months));
+
+            // Through the wire form rather than the in-memory object: this is where a formatting
+            // choice would cost precision, and the object copy could not show it.
+            MetricHistoryFile written = AgoraJson.Deserialize<MetricHistoryFile>(
+                AgoraJson.Serialize(original.ToFile()));
+
+            MetricHistoryFile before = original.ToFile();
+
+            Assert.Equal(before.Series.Count, written.Series.Count);
+
+            for (int i = 0; i < before.Series.Count; i++)
+            {
+                Assert.Equal(before.Series[i].Series, written.Series[i].Series);
+                Assert.Equal(before.Series[i].Samples.Count, written.Series[i].Samples.Count);
+
+                for (int s = 0; s < before.Series[i].Samples.Count; s++)
+                {
+                    Assert.Equal(before.Series[i].Samples[s].TotalMonths,
+                                 written.Series[i].Samples[s].TotalMonths);
+
+                    // Exact, not to a tolerance. A tolerance here would accept the narrowing.
+                    Assert.True(before.Series[i].Samples[s].Value == written.Series[i].Samples[s].Value,
+                                "Series " + before.Series[i].Series + " lost precision on the wire.");
+                }
+            }
+        }
+
         // --- Fail soft ---------------------------------------------------------------------------
 
         /// <summary>
