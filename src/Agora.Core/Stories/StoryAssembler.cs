@@ -18,10 +18,17 @@ namespace Agora.Core.Stories
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Every degradation is a valid outcome, not an error.</b> No major left in the pool ⇒
-        /// promote the highest-ordered minor and take three minors; too few events ⇒ a shorter story
+        /// <b>Every degradation is a valid outcome, not an error.</b> No major in the pool <i>at all</i>
+        /// ⇒ promote the highest-ordered minor and take three minors; too few events ⇒ a shorter story
         /// is a story. Each mandatory event additionally gets its own bare single-slot story, over
         /// and above <c>stories.storiesPerCycle</c> — a mandatory event is not drawn, it is delivered.
+        /// </para>
+        /// <para>
+        /// <b>The number of ordinary stories is bounded by the majors the pool actually held</b>,
+        /// capped at <c>stories.storiesPerCycle</c>. Promotion is permitted only when the cycle began
+        /// with no major, in which case it may open the full <c>storiesPerCycle</c> because the
+        /// condition holds throughout. Majors that existed and ran out stop the drafting instead, and
+        /// are logged as exhaustion rather than as a promotion.
         /// </para>
         /// <para>
         /// After the draw, every entry that was passed over has its <c>MissStreak</c> incremented.
@@ -213,6 +220,22 @@ namespace Agora.Core.Stories
                 : stories.EventsPerStory;
             if (eventsPerStory < 1) eventsPerStory = 1;
 
+            // Whether the cycle had a major AT ALL, which is what gates promotion. Promotion is for a
+            // pool with no major in it, not for a pool whose majors an earlier story already took:
+            // leads are allocated one per story across the whole cycle, so `majors` empties mid-loop,
+            // and promoting there manufactures the shortage it then reports. With one major and one
+            // minor that produced two one-slot stories plus a "minor-promoted" line saying something
+            // untrue about the pool — a major was left, it was merely spoken for. It is not cosmetic:
+            // a story of fewer than three needs ALL its scored slots, so splitting one two-slot story
+            // into two one-slot ones doubles the all-or-nothing verdicts the player faces, and a
+            // one-slot ordinary story is the shape reserved for a mandatory event.
+            //
+            // Note the greedy spread itself is right and is deliberately kept. Filling one story
+            // before opening the next would turn two majors and two minors into a full three-slot
+            // story plus a one-slot story, where spreading gives two two-slot ones — better on
+            // exactly those grounds.
+            bool cycleHadAMajor = majors.Count > 0;
+
             var open = new List<Story>();
             for (int i = 0; i < storiesPerCycle; i++)
             {
@@ -221,11 +244,22 @@ namespace Agora.Core.Stories
 
                 if (lead == null)
                 {
+                    if (cycleHadAMajor)
+                    {
+                        // Majors existed and ran out. Stop opening stories, and log the exhaustion as
+                        // exhaustion — the events left are minors, and they belong in the stories
+                        // already open rather than propping up one of their own.
+                        result.Degradations.Add("majors-exhausted: opened " + Index(i) + " of "
+                                                + Index(storiesPerCycle)
+                                                + " stories, one per major the pool held");
+                        break;
+                    }
+
                     if (!stories.MinorPromotionEnabled)
                     {
                         // Fewer stories, deliberately: promotion is switched off, so a story with no
                         // major is not drafted at all rather than quietly becoming three minors.
-                        result.Degradations.Add("minor-promotion-disabled: no major left, drafted "
+                        result.Degradations.Add("minor-promotion-disabled: no major in the pool, drafted "
                                                 + Index(i) + " of " + Index(storiesPerCycle) + " stories");
                         break;
                     }
