@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Core.Tuning;
 
 namespace Agora.Core.Stories
 {
@@ -45,10 +46,35 @@ namespace Agora.Core.Stories
         /// <see cref="CheckResult.Unmeasurable"/> when the reading is unavailable — which is never
         /// the same as not met.
         /// </returns>
+        /// <remarks>
+        /// <b>Never throws, whatever it is handed.</b> A null <see cref="TriggerSpec"/>, a null
+        /// <see cref="StoryReadContext"/>, a null <c>Today</c> and an empty <c>MetricId</c> all
+        /// degrade to <see cref="CheckResult.Unmeasurable"/>. That is a stated contract rather than
+        /// defensive habit: this is the entry point a wave-3 catalog loader will feed authored JSON
+        /// into, so a malformed entry has to become a reading nobody can take — which costs the
+        /// player nothing — rather than an exception on the sim thread, which takes the game down.
+        /// </remarks>
         public static CheckResult Evaluate(TriggerSpec spec, StoryReadContext context)
         {
+            return Evaluate(spec, context, null);
+        }
+
+        /// <summary>
+        /// As <see cref="Evaluate(TriggerSpec, StoryReadContext)"/>, with the tuning that bounds how
+        /// stale a <see cref="TriggerKind.Delta"/>'s earlier sample may be.
+        /// </summary>
+        /// <remarks>
+        /// The two-argument form is the published seam and stays exactly as it was; this overload
+        /// exists because <c>stories.deltaWindowSlackMonths</c> has to reach the evaluator and the
+        /// seam carries no <see cref="EngineTuning"/>. A caller that has tuning in hand — 2b and 2c
+        /// both do — should call this one; the two-argument form falls back to the shipped default
+        /// for the key rather than to a number written into this file.
+        /// </remarks>
+        public static CheckResult Evaluate(TriggerSpec spec, StoryReadContext context,
+                                           EngineTuning? tuning)
+        {
             if (spec == null || context == null || context.Today == null) return CheckResult.Unmeasurable;
-            return EvaluateAgainst(spec, spec.Threshold, context);
+            return EvaluateAgainst(spec, spec.Threshold, context, SlackMonths(tuning));
         }
 
         /// <summary>
@@ -69,11 +95,26 @@ namespace Agora.Core.Stories
         public static CheckResult EvaluateCheck(CheckSpec check, double? baseline,
                                                 StoryReadContext context)
         {
+            return EvaluateCheck(check, baseline, context, null);
+        }
+
+        /// <summary>
+        /// As <see cref="EvaluateCheck(CheckSpec, double?, StoryReadContext)"/>, with the tuning that
+        /// bounds how stale a <see cref="TriggerKind.Delta"/>'s earlier sample may be.
+        /// </summary>
+        public static CheckResult EvaluateCheck(CheckSpec check, double? baseline,
+                                                StoryReadContext context, EngineTuning? tuning)
+        {
+            // A CheckSpec whose Spec is null is exactly what a malformed catalog entry deserialises
+            // to, and the guard one level up in 2c tests the CheckSpec rather than the TriggerSpec
+            // inside it. Both are checked here, so the guarantee lives at the signature rather than
+            // being discovered by the first bad entry.
             if (check == null || check.Spec == null) return CheckResult.Unmeasurable;
             if (context == null || context.Today == null) return CheckResult.Unmeasurable;
 
+            int slack = SlackMonths(tuning);
             TriggerSpec spec = check.Spec;
-            if (!check.RelativeToBaseline) return EvaluateAgainst(spec, spec.Threshold, context);
+            if (!check.RelativeToBaseline) return EvaluateAgainst(spec, spec.Threshold, context, slack);
 
             // No baseline, no honest verdict. The story opened on a month where the metric could not
             // be read, so the question "did it move by this much" has no left-hand side.
@@ -82,13 +123,33 @@ namespace Agora.Core.Stories
             double shifted = baseline.Value + spec.Threshold;
             if (!IsFinite(shifted)) return CheckResult.Unmeasurable;
 
-            return EvaluateAgainst(spec, shifted, context);
+            return EvaluateAgainst(spec, shifted, context, slack);
+        }
+
+        /// <summary>
+        /// The shipped default for <c>stories.deltaWindowSlackMonths</c>, for the seam overloads that
+        /// are handed no tuning. Read off <see cref="StoriesTuning"/>'s own declaration rather than
+        /// written out here, so the fallback cannot drift from the key it stands in for — a tuning
+        /// constant written into C# is what <c>data/CLAUDE.md</c> rule 4 forbids.
+        /// </summary>
+        private static readonly StoriesTuning DefaultStories = new StoriesTuning();
+
+        private static int SlackMonths(EngineTuning? tuning)
+        {
+            StoriesTuning stories = tuning != null && tuning.Stories != null
+                ? tuning.Stories
+                : DefaultStories;
+
+            // A negative slack would put the accepted band after the month asked for and refuse every
+            // sample. Clamped rather than trusted; netstandard2.0 has no Math.Clamp.
+            int slack = stories.DeltaWindowSlackMonths;
+            return slack < 0 ? 0 : slack;
         }
 
         // --------------------------------------------------------------------------- the one path
 
         private static CheckResult EvaluateAgainst(TriggerSpec spec, double threshold,
-                                                   StoryReadContext context)
+                                                   StoryReadContext context, int slackMonths)
         {
             // A non-finite threshold is a broken catalog entry, not a city that failed to clear it.
             // Every comparison against NaN is false, so without this guard an authoring mistake would
@@ -96,13 +157,19 @@ namespace Agora.Core.Stories
             // exists to refuse.
             if (!IsFinite(threshold)) return CheckResult.Unmeasurable;
 
+            // Every kind below needs a MetricId — a metric name, a feature id or a policy id — except
+            // Manual, which answers Unmeasurable regardless. So a missing one is answered once here
+            // rather than in five places, and the null-tolerance contract stated on the two public
+            // methods is discharged in one place.
+            if (string.IsNullOrEmpty(spec.MetricId)) return CheckResult.Unmeasurable;
+
             switch (spec.Kind)
             {
                 case TriggerKind.Metric:
-                    return EvaluateNumeric(spec, threshold, context, false);
+                    return EvaluateNumeric(spec, threshold, context, false, slackMonths);
 
                 case TriggerKind.Delta:
-                    return EvaluateNumeric(spec, threshold, context, true);
+                    return EvaluateNumeric(spec, threshold, context, true, slackMonths);
 
                 case TriggerKind.Unlock:
                     // A progression feature id, not a registry metric. Present tense only: there is no
@@ -115,7 +182,7 @@ namespace Agora.Core.Stories
                                               spec.Scope, false);
 
                 case TriggerKind.Absent:
-                    return Negate(EvaluatePresence(spec, threshold, context));
+                    return Negate(EvaluatePresence(spec, threshold, context, slackMonths));
 
                 case TriggerKind.Manual:
                     // "Never fires from the city" — there is no measurement to take, so there is no
@@ -146,15 +213,14 @@ namespace Agora.Core.Stories
         /// membership of the city's two id sets.
         /// </remarks>
         private static CheckResult EvaluatePresence(TriggerSpec spec, double threshold,
-                                                    StoryReadContext context)
+                                                    StoryReadContext context, int slackMonths)
         {
             if (MetricRegistry.IsKnown(spec.MetricId, spec.Scope))
             {
-                return EvaluateNumeric(spec, threshold, context, false);
+                return EvaluateNumeric(spec, threshold, context, false, slackMonths);
             }
 
             if (spec.Scope != TriggerScope.City) return CheckResult.Unmeasurable;
-            if (string.IsNullOrEmpty(spec.MetricId)) return CheckResult.Unmeasurable;
 
             List<string>? features = context.Today.UnlockedFeatureIds;
             List<string>? policies = context.Today.ActivePolicyIds;
@@ -175,7 +241,8 @@ namespace Agora.Core.Stories
         // ------------------------------------------------------------------- numeric reads
 
         private static CheckResult EvaluateNumeric(TriggerSpec spec, double threshold,
-                                                   StoryReadContext context, bool delta)
+                                                   StoryReadContext context, bool delta,
+                                                   int slackMonths)
         {
             CitySnapshot today = context.Today;
             CitySnapshot? past = null;
@@ -187,11 +254,13 @@ namespace Agora.Core.Stories
                 // held steady.
                 if (spec.WindowMonths <= 0) return CheckResult.Unmeasurable;
 
-                past = BaselineSnapshot(context, spec.WindowMonths);
+                past = BaselineSnapshot(context, spec.WindowMonths, slackMonths);
 
-                // The window reaches further back than the history actually held. A young save, a
-                // truncated catch-up, or a sidecar that lost its history all land here, and none of
-                // them is a city that failed to change: there is no earlier reading to subtract.
+                // No usable earlier month. Either the window reaches further back than the history
+                // held — a young save, a truncated catch-up, a sidecar that lost its history — or the
+                // only sample that old is staler than the window plus its slack. Neither is a city
+                // that failed to change; in both there is no earlier reading this window may be
+                // measured against.
                 if (past == null) return CheckResult.Unmeasurable;
             }
 
@@ -283,7 +352,12 @@ namespace Agora.Core.Stories
             if (TryRecordedEvidence(context, metricId, today.Id, out recorded)) return recorded;
 
             double? now = MetricRegistry.ReadDistrict(today, metricId);
-            if (!now.HasValue) return null;
+
+            // Finite-checked at the source, not only after the subtraction. A registry accessor
+            // reports contract-shaped numbers, but "contract-shaped" is a claim about the sensor and
+            // not a guarantee this file holds — and a non-finite reading has to become "no reading"
+            // here, where it is one district falling out of a quantifier, rather than downstream.
+            if (!now.HasValue || !IsFinite(now.Value)) return null;
             if (!delta) return now;
 
             DistrictSnapshot? before = FindDistrict(past, today.Id);
@@ -344,8 +418,15 @@ namespace Agora.Core.Stories
                     continue;
                 }
 
-                if (Compare(value.Value, spec.Comparison, threshold) == CheckResult.Met) anyMet = true;
-                else anyNotMet = true;
+                // Switched on all three states, not tested for Met with an else. Compare is
+                // three-valued — a non-finite reading and a comparison operator outside the enum both
+                // answer Unmeasurable — and folding that third state into "measured, and it failed"
+                // is precisely the collapse this class exists to refuse. It also made one catalog
+                // entry score Unmeasurable at City and NotMet here, for identical input.
+                CheckResult verdict = Compare(value.Value, spec.Comparison, threshold);
+                if (verdict == CheckResult.Met) anyMet = true;
+                else if (verdict == CheckResult.NotMet) anyNotMet = true;
+                else anyUnreadable = true;
             }
 
             if (spec.Scope == TriggerScope.AllDistricts)
@@ -424,19 +505,39 @@ namespace Agora.Core.Stories
         /// the context's month, or null when the history does not reach that far back.
         /// </summary>
         /// <remarks>
-        /// "No later than" rather than "exactly that month", matching
-        /// <c>MetricHistory.TrendOver</c>'s own rule, so a month with no capture widens the window
-        /// rather than blinding the trigger. The whole list is scanned rather than trusting the
+        /// <para>
+        /// "No later than" rather than "exactly that month", so a month with no capture widens the
+        /// window rather than blinding the trigger. The whole list is scanned rather than trusting the
         /// documented oldest-first order, and ties on the same month resolve to the later entry — so
         /// the choice is a function of the list's contents and not of where the scan happened to
         /// start.
+        /// </para>
+        /// <para>
+        /// <b>But the widening is bounded, by <c>stories.deltaWindowSlackMonths</c>.</b> Unbounded,
+        /// a history holding one sample six months old would answer a two-month window with the
+        /// six-month change and report it as the two-month change — the same harm as a window
+        /// outrunning the history, reached by a different route, and one that costs the player in
+        /// both directions. A sample older than the window plus the slack is refused, and the caller
+        /// turns that into <see cref="CheckResult.Unmeasurable"/>.
+        /// </para>
+        /// <para>
+        /// <b>This deliberately diverges from <c>MetricHistory.TrendOver</c></b>, which widens without
+        /// bound and should keep doing so. The two have different consumers: a trend line wants the
+        /// best available evidence and is drawn for a human to read, whereas a threshold here decides
+        /// whether the player is charged. Evidence good enough to sketch a direction is not evidence
+        /// good enough to take somebody's money. The earlier version of this method followed
+        /// <c>TrendOver</c> exactly, which is why the divergence is written down rather than left to
+        /// look like an oversight.
+        /// </para>
         /// </remarks>
-        private static CitySnapshot? BaselineSnapshot(StoryReadContext context, int windowMonths)
+        private static CitySnapshot? BaselineSnapshot(StoryReadContext context, int windowMonths,
+                                                      int slackMonths)
         {
             IReadOnlyList<CitySnapshot>? history = context.History;
             if (history == null || history.Count == 0) return null;
 
             int cutoff = context.Today.Date.TotalMonths - windowMonths;
+            int oldestAccepted = cutoff - slackMonths;
 
             CitySnapshot? best = null;
             int bestMonths = 0;
@@ -448,6 +549,12 @@ namespace Agora.Core.Stories
 
                 int months = candidate.Date.TotalMonths;
                 if (months > cutoff) continue;
+
+                // Too stale to answer this window. Skipped rather than accepted as the best available
+                // — "the best we have" is not the same claim as "what was asked for", and only the
+                // second may score a slot.
+                if (months < oldestAccepted) continue;
+
                 if (best != null && months < bestMonths) continue;
 
                 best = candidate;
@@ -501,9 +608,12 @@ namespace Agora.Core.Stories
                 if (reading == null) continue;
                 if (!string.Equals(reading.MetricId, metricId, StringComparison.Ordinal)) continue;
 
-                // Null and empty are the same claim here — "no district" — because a reading
-                // deserialised from a sidecar written before this field existed carries null where a
-                // freshly built one carries "".
+                // Null and empty are the same claim here: "no district". Not because an older sidecar
+                // could hold one — MetricReading is new in this wave's spine, so no such document
+                // exists — but because the contract default is a string, and a JSON null, an
+                // explicit assignment or a hand-built reading can all put null in it. Without this,
+                // such a reading would match nothing at all and the city path would silently
+                // re-measure the very thing it recorded to avoid re-measuring.
                 string recordedDistrict = reading.DistrictId ?? CityDistrictId;
                 if (!string.Equals(recordedDistrict, districtId, StringComparison.Ordinal)) continue;
 
