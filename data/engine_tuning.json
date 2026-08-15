@@ -474,6 +474,9 @@
     "cycleMonths": 2,
     "successThreshold": 2,
 
+    "_deltaSlackComment": "A Delta spec takes the newest sample at or before today - windowMonths, with no lower bound on how far before. On a sparse history that answers a two-month window with a six-month change and calls it the two-month change — the same harm as a window outrunning the history, by a different route. Samples are monthly, so 2 tolerates an ordinary gap while refusing a stale answer. Deliberately does NOT change MetricHistory.TrendOver, which widens without bound: a trend line is drawn for a human to read, a threshold here decides whether the player is charged.",
+    "deltaWindowSlackMonths": 2,
+
     "_severityComment": "Mandatory/Major/Minor is a PROJECTION of the existing 1-5 severity integer, never a stored enum. majorSeverityThreshold is deliberately equal to catalog.majorSeverityThreshold: 'major' already has exactly one definition, shared by EventScheduler.IsMajor, CoalitionStability and the alert lane, and a second number for one concept would drift on the next tuning pass.",
     "mandatorySeverityThreshold": 5,
     "majorSeverityThreshold": 4,
