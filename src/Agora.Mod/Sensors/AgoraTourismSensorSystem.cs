@@ -70,16 +70,21 @@ namespace Agora.Mod.Sensors
             _citySystem = World.GetOrCreateSystemManaged<CitySystem>();
             _districtSensor = World.GetOrCreateSystemManaged<AgoraDistrictSensorSystem>();
 
-            // Both exclusions, copying the game's own AttractionSystem query. Without them the count
-            // includes buildings the player is still dragging around before placing (Temp) and
-            // buildings already demolished (Deleted) — so it would move for reasons that are not
-            // events, and a trigger written against it would fire on the player opening a build menu.
+            // All three exclusions, copying the game's own AttractionSystem query
+            // (AttractionSystem.cs:216-230). Each one keeps out a building that would otherwise move
+            // the count for a reason that is not an event: Temp is a placement preview the player is
+            // still dragging around, Deleted is already bulldozed, and Destroyed is burnt out or
+            // collapsed — the game's own attractiveness job never visits it, so counting it here
+            // would make Agora's figure disagree with the one the player sees in the tourism
+            // infoview. Without Temp in particular, a trigger would fire on the player opening a
+            // build menu.
             _attractionQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<Game.Buildings.AttractivenessProvider>() },
                 None = new[]
                 {
                     ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Destroyed>(),
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
@@ -90,6 +95,7 @@ namespace Agora.Mod.Sensors
                 None = new[]
                 {
                     ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Destroyed>(),
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
