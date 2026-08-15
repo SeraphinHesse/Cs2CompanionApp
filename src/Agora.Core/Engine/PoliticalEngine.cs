@@ -1038,6 +1038,13 @@ namespace Agora.Core.Engine
                 SchemaVersion = source.SchemaVersion,
                 SaveGuid = source.SaveGuid,
                 Date = date,
+                // Carried, not defaulted. This is a hand-maintained field list, and a scalar left
+                // out of it does not fail to compile — it silently arrives at the property default.
+                // For this field that default is -1, meaning "no month has ever completed", so
+                // omitting it here would tell the tick gate that every month is fresh and hand the
+                // caller back a state that re-runs the month it just finished. Retheme is the live
+                // caller that would have hit it: it clones at the current date, mid-month.
+                LastCompletedTickMonth = source.LastCompletedTickMonth,
                 Settings = source.Settings ?? new AgoraSettings(),
                 Parties = PartyRegistry.CloneAll(source.Parties ?? new List<Party>()),
                 Factions = new List<Faction>(source.Factions ?? new List<Faction>()),
