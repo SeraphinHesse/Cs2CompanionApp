@@ -940,19 +940,48 @@ namespace Agora.Mod.Core
         /// <para>
         /// Written as an invariant on the watermark rather than as a branch on
         /// <c>RewindBeforeHistory</c>, because the property is what the gate depends on and the
-        /// outcome that violates it is not guaranteed to stay the only one. Skipped entirely when the
-        /// clock is not readable: a comparison against a main-menu date would be a comparison against
-        /// nothing (non-negotiable #8).
+        /// outcome that violates it is not guaranteed to stay the only one.
+        /// </para>
+        /// <para>
+        /// <b>Asserted at load and again on every heartbeat.</b> The load call is where the offending
+        /// state actually arrives, but it can only run when the clock is readable — and a session in
+        /// which it is not at that one moment would stay frozen for the whole session, which is the
+        /// direction that does not recover. <see cref="Tick"/> holds a date that is readable by
+        /// construction, so it asserts the same invariant a second time for the cost of one
+        /// comparison a day. One helper for both, so the two cannot drift apart.
         /// </para>
         /// </remarks>
         private static void ClampWatermarkToClock()
         {
-            if (_state == null || _time == null) return;
+            if (_time == null) return;
 
+            // Only from the clock, and only when it is readable: a comparison against a main-menu
+            // date would be a comparison against nothing (non-negotiable #8). The next load repeats
+            // it, and Tick asserts it again from a date that cannot be unreadable.
             SimDate today;
             if (!_time.TryGetToday(out today)) return;
 
-            if (today.TotalMonths > _state.LastCompletedTickMonth) return;
+            ClampWatermarkToClock(today);
+        }
+
+        /// <summary>
+        /// The invariant itself, against a date the caller already has. See the overload above for
+        /// why it exists and why it is asserted from two places.
+        /// </summary>
+        private static void ClampWatermarkToClock(SimDate today)
+        {
+            if (_state == null) return;
+
+            // Ahead means strictly ahead. Level is the ordinary case, not a violation: OnMonth writes
+            // the watermark to today's month on the first heartbeat of month M, so from that moment to
+            // the end of M the watermark equals M — which is where almost every save, quit and reload
+            // happens. Clamping on equality would pull it to M-1 and hand the next heartbeat the very
+            // duplicate month, duplicated poll and double-counted FringeWatch.MonthsObserved that the
+            // gate exists to remove, then persist the wrong watermark. RewindBeforeHistory is still
+            // fully covered: it is reached only after the exact-match and nearest-earlier branches
+            // have both failed, so every snapshot on disk — and the watermark inside the earliest of
+            // them — is strictly later than the city's date.
+            if (today.TotalMonths >= _state.LastCompletedTickMonth) return;
 
             int was = _state.LastCompletedTickMonth;
             _state.LastCompletedTickMonth = today.TotalMonths - 1;
@@ -1928,6 +1957,11 @@ namespace Agora.Mod.Core
             var settings = AgoraMod.Settings;
             if (settings == null || !settings.Enabled) return false;
             if (!_saveSettings.Enabled) return false;
+
+            // Before the gate reads it, because the gate is only as good as the invariant beneath it,
+            // and this date is readable by construction where the load-time assertion's is not. A
+            // no-op on every heartbeat but the one after a state arrived dated ahead of the city.
+            ClampWatermarkToClock(today);
 
             // The gate, and it is read off persisted state rather than off anything this session
             // remembers: a month may run only when it is strictly newer than the watermark the last
