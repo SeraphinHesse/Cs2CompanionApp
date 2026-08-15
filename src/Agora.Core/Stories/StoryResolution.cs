@@ -47,10 +47,13 @@ namespace Agora.Core.Stories
         /// that is not the same claim as <see cref="SlotOutcome.Unmeasurable"/>.
         /// </para>
         /// <para>
-        /// <b>The story threshold is a ratio over SCORED slots, not over all of them.</b> A full
-        /// story of three needs <c>stories.successThreshold</c> met; a story of fewer than three —
-        /// a degraded draft, or one whose slots went unmeasurable — needs <b>all</b> its scored slots
-        /// met. A story with no scored slots at all resolves <see cref="StoryOutcome.Abandoned"/>:
+        /// <b>The story threshold is a ratio over SCORED slots, not over all of them.</b> A story
+        /// every one of whose slots scored needs <c>stories.successThreshold</c> met; a story with
+        /// fewer scored slots than it was drafted with — because some went unmeasurable — needs
+        /// <b>all</b> its scored slots met. The complement is the story's own slot count rather than
+        /// <c>stories.eventsPerStory</c>, so a deliberately short draft is judged as the whole story
+        /// it is; see <see cref="Verdict"/>. A story with no scored slots at all resolves
+        /// <see cref="StoryOutcome.Abandoned"/>:
         /// there is nothing to have a verdict about, and calling that a failure would charge the
         /// player for a sensor gap. <b>Only a reading that could not be taken reaches that state</b>
         /// — a story the player never opened scores three not-mets and fails.
@@ -112,20 +115,38 @@ namespace Agora.Core.Stories
 
             evidence.Sort(CompareByMetricId);
             result.Evidence = evidence;
-            result.Outcome = Verdict(result.MetCount, result.ScoredCount, t);
+
+            // The full complement is what the drafter built, holes included: a null slot inflates the
+            // count and so pushes the story onto the stricter "all of them" branch, which is the safe
+            // side of a defect on our own side rather than a licence granted by one.
+            result.Outcome = Verdict(result.MetCount, result.ScoredCount, slots.Count, t);
             return result;
         }
 
         /// <summary>
         /// The verdict on a story that scored <paramref name="metCount"/> of
-        /// <paramref name="scoredCount"/> slots.
+        /// <paramref name="scoredCount"/> slots, out of <paramref name="slotCount"/> it was drafted
+        /// with.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>Two rules and a floor, and the boundary between them is the whole point of this
-        /// function.</b> A story with a full complement of scored slots — <c>eventsPerStory</c> of
-        /// them — needs <c>successThreshold</c> met, which is the 2-of-3 the design is written
-        /// around. A story with <i>fewer</i> scored slots than that needs <b>all</b> of them.
+        /// function.</b> A story every one of whose slots scored needs <c>successThreshold</c> met,
+        /// which is the 2-of-3 the design is written around. A story with <i>fewer</i> scored slots
+        /// than it was drafted with needs <b>all</b> of them.
+        /// </para>
+        /// <para>
+        /// <b>The full complement is the story's own slot count, not <c>stories.eventsPerStory</c>,
+        /// and this phrasing replaces an earlier one that said otherwise.</b> The rule did not
+        /// regress — at shipped values the two readings agree on every story size — but the dial can
+        /// be overridden per save, and the drafter is the authority on how large this story was
+        /// meant to be. Reading the dial here would let a save whose <c>eventsPerStory</c> is 2 draft
+        /// a full two-slot story and then have it judged as a degraded three-slot one, so a
+        /// deliberately short story would be held to the stricter "all of them" rule for no reason a
+        /// player could see. The count in hand cannot desynchronise from the draft, because it never
+        /// consults a dial at all. That matters most during a retune — the exposure is inert at every
+        /// shipped value and would first appear the moment someone lowered
+        /// <c>successThreshold</c>, which is the one moment nobody is looking for it.
         /// </para>
         /// <para>
         /// The comparison is <c>met &gt;= required</c>, and the strictness of each half is chosen so
@@ -147,14 +168,17 @@ namespace Agora.Core.Stories
         /// this way: silence scores not-met and keeps its slot in the denominator.
         /// </para>
         /// <para>
-        /// <c>successThreshold</c> is clamped into <c>[1, scoredCount]</c> before use, so a
-        /// misconfigured tuning file degrades rather than producing an unwinnable story (a threshold
-        /// above the slot count) or a free one (a threshold of zero, which would make every story a
-        /// success without a single met slot). The clamp is only ever reached by misconfiguration:
-        /// under shipped tuning the threshold is 2 and a full story has 3 scored slots.
+        /// <c>successThreshold</c> is clamped into <c>[1, scoredCount]</c> before use, and the clamp
+        /// stays load-bearing now that the complement is the story's own size: it is what makes a
+        /// hand-edited threshold larger than the slots actually present degrade instead of producing
+        /// an unwinnable story, and a threshold of zero degrade instead of producing a free one that
+        /// succeeds without a single met slot. It is only ever reached by misconfiguration — under
+        /// shipped tuning the threshold is 2 and a full story has 3 scored slots — and it is the
+        /// reason every shipped row of the size table stays where it is.
         /// </para>
         /// </remarks>
-        private static StoryOutcome Verdict(int metCount, int scoredCount, StoriesTuning tuning)
+        private static StoryOutcome Verdict(int metCount, int scoredCount, int slotCount,
+                                            StoriesTuning tuning)
         {
             // Nothing was readable, so there is nothing to have a verdict about. Abandoned pays out
             // in neither direction; Failure here would charge the player for a sensor gap. This is
@@ -162,8 +186,7 @@ namespace Agora.Core.Stories
             // — an unanswered story fills its slots with not-mets and fails like any other.
             if (scoredCount <= 0) return StoryOutcome.Abandoned;
 
-            int fullStory = tuning.EventsPerStory;
-            int required = scoredCount < fullStory
+            int required = scoredCount < slotCount
                 ? scoredCount
                 : Clamp(tuning.SuccessThreshold, 1, scoredCount);
 
