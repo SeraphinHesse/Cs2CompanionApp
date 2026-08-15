@@ -334,6 +334,104 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
+        /// A district that fell back on one of the three counts records <b>no sample</b> for it that
+        /// month — an honest absence rather than a fabricated zero.
+        ///
+        /// <para>
+        /// The same argument that keeps rent and land value out of <c>RecordSnapshot</c> entirely: a
+        /// fabricated value written into a series poisons every window computed against it afterwards,
+        /// and the fallback ruling only changed which fabrication it would be. An absent sample is
+        /// what <c>TryValueAt</c> already reports as "not measured", so wave 2's <c>Unmeasurable</c>
+        /// can be answered off a rehydrated month and not only off the live snapshot.
+        /// </para>
+        ///
+        /// <para>
+        /// <b>The regression guard is the last two assertions.</b> Skipping a field must cost that
+        /// district the field, never the month — <c>SnapshotRehydration</c> decides whether a district
+        /// existed in a month by probing its <c>population</c> series, so a change that made a
+        /// fallback district skip more than the three counts would delete it from history altogether
+        /// and hand the gentrification leg a hole instead of a baseline.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ADistrictThatFellBackOnACount_RecordsNoSampleForIt_ButStillJoinsTheMonth()
+        {
+            var city = new CityReading
+            {
+                Population = 90_000,
+                Happiness = 55.0,
+                UncollectedGarbage = 5_000.0,
+                AttractionCount = 40,
+                SignatureBuildingCount = 7,
+            };
+
+            var measured = new DistrictReading
+            {
+                Id = "d00000001",
+                Population = 50_000,
+                Happiness = 56.0,
+                UncollectedGarbage = 120.0,
+                AttractionCount = 3,
+                SignatureBuildingCount = 1,
+            };
+
+            // Population and happiness measured, the three counts not — the shape a blind tourism or
+            // statistics sensor actually produces, rather than a wholly unmeasured district.
+            var blind = new DistrictReading
+            {
+                Id = "d00000002",
+                Population = 40_000,
+                Happiness = 54.0,
+            };
+
+            CitySnapshot snapshot = SnapshotAssembly.Build(
+                Start, city, new List<DistrictReading> { measured, blind });
+
+            var history = new MetricHistory(Retention);
+            history.RecordSnapshot(snapshot);
+
+            string[] counts =
+            {
+                MetricHistory.UncollectedGarbage,
+                MetricHistory.AttractionCount,
+                MetricHistory.SignatureBuildingCount,
+            };
+
+            for (int i = 0; i < counts.Length; i++)
+            {
+                Assert.Equal(1, history.SampleCount(MetricHistory.DistrictKey("d00000001", counts[i])));
+                Assert.Equal(0, history.SampleCount(MetricHistory.DistrictKey("d00000002", counts[i])));
+
+                // City scope is unaffected: the city has nowhere to fall back to and so is never
+                // fallback-marked.
+                Assert.Equal(1, history.SampleCount(MetricHistory.CityKey(counts[i])));
+            }
+
+            // The fallback costs that district those three fields and nothing else.
+            Assert.Equal(1, history.SampleCount(
+                MetricHistory.DistrictKey("d00000002", MetricHistory.Population)));
+            Assert.Equal(1, history.SampleCount(
+                MetricHistory.DistrictKey("d00000002", MetricHistory.Happiness)));
+
+            List<CitySnapshot> restored = SnapshotRehydration.Restore(history, Start, 1);
+            Assert.Single(restored);
+
+            // Still two districts in the rebuilt month: the probe is population, which is recorded
+            // unconditionally, so a district that lost a count did not lose its place in history.
+            Assert.Equal(2, restored[0].Districts.Count);
+
+            DistrictSnapshot rebuilt = restored[0].Districts[1];
+            Assert.Equal("d00000002", rebuilt.Id);
+            Assert.Equal(40_000, rebuilt.Population);
+
+            // ...and the three it never measured come back at the contract default rather than
+            // carrying a zero that was filed as though it had been measured.
+            Assert.Equal(0.0, rebuilt.UncollectedGarbage, 12);
+            Assert.Equal(0, rebuilt.AttractionCount);
+            Assert.Equal(0, rebuilt.SignatureBuildingCount);
+        }
+
+        /// <summary>
         /// Both new lists come out of assembly in the contract's order however the sensor happened to
         /// collect them — feature names ordinal ascending, tax rates by <c>(Area, ResourceIndex)</c>.
         /// The sensor sorts too, but a consumer relying on a sort it cannot see is relying on ECS

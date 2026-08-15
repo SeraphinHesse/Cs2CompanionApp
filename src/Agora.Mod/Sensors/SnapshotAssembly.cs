@@ -53,9 +53,15 @@ namespace Agora.Mod.Sensors
         // The three v4 fields that are genuinely per-district. Nothing else from the city-statistics
         // pass gets a constant here, because nothing else is mirrored onto DistrictSnapshot at all —
         // a district cannot fall back on a figure it has no property for.
-        private const string FieldUncollectedGarbage = "UncollectedGarbage";
-        private const string FieldAttractionCount = "AttractionCount";
-        private const string FieldSignatureBuildingCount = "SignatureBuildingCount";
+        //
+        // Internal rather than private, unlike the twenty-three above, because these three now have a
+        // second reader: MetricHistory skips recording a district figure this file marked as a
+        // fallback, and it has to test the marker against the same string this file wrote. Sharing the
+        // constant is the point — two copies of "AttractionCount" that drifted would leave the
+        // recorder silently filing fabricated zeros it believed it was skipping.
+        internal const string FieldUncollectedGarbage = "UncollectedGarbage";
+        internal const string FieldAttractionCount = "AttractionCount";
+        internal const string FieldSignatureBuildingCount = "SignatureBuildingCount";
 
         /// <summary>
         /// Builds the snapshot. <paramref name="city"/> and <paramref name="districts"/> may be
