@@ -270,10 +270,21 @@ namespace Agora.Core.Tests
 
         /// <summary>
         /// The three per-district counts go through the same best-effort path as every other district
-        /// field: measured stands, unmeasured falls back to the city figure and says so. A district
-        /// silently carrying the city's attraction count as a local fact is exactly what
-        /// <c>CityFallbackFields</c> exists to stop — the city figure is a total, so an unflagged
-        /// fallback would report one district as holding every attraction in the city.
+        /// field — measured stands, unmeasured is named in <c>CityFallbackFields</c> — but they are
+        /// the only three that fall back to <b>zero</b> rather than to the city figure.
+        ///
+        /// <para>
+        /// They are sums, not averages, and a city sum is not an estimate of a district's share of it.
+        /// The path only fires when a sensor has gone blind — both sensors seed every known district
+        /// at zero first, so an empty district reports a measured zero — and in exactly that case the
+        /// city total would hand every district a large, entirely credible number at once. Zero is
+        /// also wrong, but it cannot manufacture a citywide garbage crisis out of a sensor gap.
+        /// </para>
+        ///
+        /// <para>
+        /// The marker is the load-bearing half either way: it is what tells a consumer the figure was
+        /// never measured, and wave 2's <c>CheckResult.Unmeasurable</c> reads it.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheNewPerDistrictCounts_AreMarkedAsFallbacksOnlyWhenUnmeasured()
@@ -307,10 +318,15 @@ namespace Agora.Core.Tests
             Assert.DoesNotContain("AttractionCount", first.CityFallbackFields);
             Assert.DoesNotContain("SignatureBuildingCount", first.CityFallbackFields);
 
+            // Zero, and emphatically not the city's 5,000 / 40 / 7 — a total is not an estimate of a
+            // part, and this district measured nothing at all.
             DistrictSnapshot second = snapshot.Districts[1];
-            Assert.Equal(5_000.0, second.UncollectedGarbage, 12);
-            Assert.Equal(40, second.AttractionCount);
-            Assert.Equal(7, second.SignatureBuildingCount);
+            Assert.Equal(0.0, second.UncollectedGarbage, 12);
+            Assert.Equal(0, second.AttractionCount);
+            Assert.Equal(0, second.SignatureBuildingCount);
+
+            // The zero on its own is indistinguishable from a district that genuinely holds nothing.
+            // These three assertions are what carries the difference.
             Assert.True(second.HasCityFallbacks);
             Assert.Contains("UncollectedGarbage", second.CityFallbackFields);
             Assert.Contains("AttractionCount", second.CityFallbackFields);

@@ -202,13 +202,21 @@ namespace Agora.Mod.Sensors
             district.AverageCommuteMinutes = Resolve(reading.AverageCommuteMinutes, city.AverageCommuteMinutes, FieldAverageCommuteMinutes, fallbacks);
             district.TrafficCongestion = Resolve(reading.TrafficCongestion, city.TrafficCongestion, FieldTrafficCongestion, fallbacks);
 
-            // The city figure these fall back on is a city-wide total, not an average, so a district
-            // that fell back reads as if it held every attraction in the city. That is deliberately
-            // loud rather than plausible: the fallback is recorded alongside it, and a total is the
-            // only city value there is to fall back on.
-            district.UncollectedGarbage = Resolve(reading.UncollectedGarbage, city.UncollectedGarbage, FieldUncollectedGarbage, fallbacks);
-            district.AttractionCount = Resolve(reading.AttractionCount, city.AttractionCount, FieldAttractionCount, fallbacks);
-            district.SignatureBuildingCount = Resolve(reading.SignatureBuildingCount, city.SignatureBuildingCount, FieldSignatureBuildingCount, fallbacks);
+            // The only three that fall back to zero rather than to the city figure, and the reason is
+            // that they are sums where everything above is an average or a share. A city happiness is
+            // a genuine estimate of a district's happiness; a city attraction count is not an estimate
+            // of a district's, it is an upper bound that is wrong for every district at once. Zero is
+            // wrong too, but it is wrong in the direction that cannot fire a "too much garbage here"
+            // trigger in every district simultaneously out of one blind sensor — and the city total
+            // would not read as loud, it would read as an ordinary district.
+            //
+            // The fallback name is still appended, and that is the half that carries the meaning: it
+            // is the marker, not the magnitude, that tells a consumer this was never measured. Wave
+            // 2's CheckResult.Unmeasurable reads CityFallbackFields for exactly that. Do not "fix"
+            // these back to city.X to match the twenty-three calls above.
+            district.UncollectedGarbage = Resolve(reading.UncollectedGarbage, 0.0, FieldUncollectedGarbage, fallbacks);
+            district.AttractionCount = Resolve(reading.AttractionCount, 0, FieldAttractionCount, fallbacks);
+            district.SignatureBuildingCount = Resolve(reading.SignatureBuildingCount, 0, FieldSignatureBuildingCount, fallbacks);
 
             fallbacks.Sort(StringComparer.Ordinal);
             district.CityFallbackFields = fallbacks;
