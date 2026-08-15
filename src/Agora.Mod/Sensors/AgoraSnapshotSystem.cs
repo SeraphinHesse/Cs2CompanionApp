@@ -27,13 +27,16 @@ namespace Agora.Mod.Sensors
         private AgoraMobilitySensorSystem _mobility;
 
         /// <summary>
-        /// Rent and land-value history, the only state a snapshot needs beyond the current frame.
-        /// Sized well past the widest trend window the calibration allows.
+        /// The metric history: the only state a snapshot needs beyond the current frame. Sized well
+        /// past both the widest trend window the calibration allows and the snapshot retention
+        /// <c>AgoraRuntime</c> asks to have rebuilt.
         /// </summary>
         /// <remarks>
         /// Persisted, via <see cref="ExportHistory"/> and <see cref="RestoreHistory"/>, to
         /// <c>metric_history.json</c>. It used to be session-scoped, which quietly made both trend
-        /// fields unmeasurable for anyone who ever quit the game.
+        /// fields unmeasurable for anyone who ever quit the game. It now also carries the fields
+        /// <see cref="SnapshotRehydration"/> rebuilds past snapshots from, so the engine's own trend
+        /// window survives the same reload.
         /// </remarks>
         private readonly MetricHistory _history = new MetricHistory(64);
 
@@ -177,6 +180,14 @@ namespace Agora.Mod.Sensors
             ApplyTrends(date, city, districts);
 
             _latest = SnapshotAssembly.Build(date, city, districts);
+
+            // Files the whole assembled snapshot into the history, so a reload can rebuild it. It
+            // runs on the built snapshot rather than on the readings above because the city fallback
+            // for an unmeasured district field is applied during Build: recording the readings would
+            // rebuild a past month that disagrees with the one the engine was actually handed. Rent
+            // and land value stay out of it — ApplyTrends already recorded those, and only where they
+            // were genuinely measured.
+            _history.RecordSnapshot(_latest);
         }
 
         /// <summary>
