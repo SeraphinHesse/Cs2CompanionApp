@@ -108,6 +108,17 @@ namespace Agora.Mod.Sensors
                 // same reason every scalar above resolves to 0: the city snapshot has nowhere further
                 // to fall back to. The struct is what the LLM prompt and the dashboard read, and a
                 // null one would make every consumer branch on a state only this file can see.
+                //
+                // The trap this leaves, named here because there is nowhere better to name it:
+                // TourismLevels.Attractiveness is the one field where a resolved 0 is genuinely
+                // indistinguishable from a measurement AND has a consumer that cares, because it is
+                // the exact quantity the shipped city-attractiveness effect moves. A blind tourism
+                // sensor therefore reports "attractiveness 0" rather than "attractiveness unknown",
+                // and unlike a district there is no CityFallbackFields to say which it was. Nothing
+                // reads it as an engine input today — the effect side only ever writes
+                // CityModifierType.Attractiveness — so there is no wrong number now. Whoever writes
+                // the first trigger against it inherits this and should read the sensor's own
+                // remarks before deciding what an attractiveness of zero is allowed to mean.
                 Statistics = city.Statistics ?? new CityStatistics(0, 0.0, 0, 0, 0, 0, 0, 0.0),
                 Tourism = city.Tourism ?? new TourismLevels(0, 0, 0, 0),
                 Progression = city.Progression ?? new ProgressionState(0, 0, 0.0),

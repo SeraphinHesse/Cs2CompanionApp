@@ -612,6 +612,15 @@ namespace Agora.Mod.Sensors
         // Skipping leaves an absence, which TryValueAt reports honestly as "not measured" — so wave
         // 2's Unmeasurable is answerable off a rehydrated month and not only off the live snapshot.
         //
+        // But it is answerable only by PROBING THE HISTORY, never by reading the marker off a
+        // rehydrated snapshot. SnapshotRehydration reconstructs a DistrictSnapshot from recorded
+        // samples alone, so its CityFallbackFields comes back empty and HasCityFallbacks false —
+        // the contract defaults — whatever the original month looked like. A wave-2 consumer that
+        // asks a rehydrated district "did you fall back on this?" is therefore told "no, and the
+        // value is 0", which is the one wrong answer this whole arrangement exists to prevent. The
+        // marker answers the question on the live snapshot; TryValueAt answers it on a historical
+        // one. Two surfaces, two mechanisms, and a consumer must not reach for the wrong one.
+        //
         // Only these three, and only at district scope. Population, happiness, unemployment, crime,
         // education and wealth are recorded unconditionally at both scopes, exactly as they were
         // before this pass — and population in particular must stay unconditional, because
