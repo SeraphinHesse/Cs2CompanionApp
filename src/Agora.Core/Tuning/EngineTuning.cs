@@ -22,7 +22,13 @@ namespace Agora.Core.Tuning
     public sealed class EngineTuning
     {
         /// <summary>Bumped whenever a key is added, removed or renamed. Runs through <c>/schema-change</c>.</summary>
-        public int SchemaVersion { get; internal set; } = 3;
+        /// <summary>
+        /// Must equal <c>data/engine_tuning.json</c>'s own <c>schemaVersion</c>.
+        /// <c>ShippedTuningTests.ShippedTuningFile_MatchesBuiltInDefaults</c> pins them together,
+        /// because every other test in the suite runs against <see cref="Default"/> rather than the
+        /// file — so a value that differs here is a value the shipped engine never verified.
+        /// </summary>
+        public int SchemaVersion { get; internal set; } = 5;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -1005,7 +1011,19 @@ namespace Agora.Core.Tuning
         public int IndicesTickMonths { get; internal set; } = 1;
         public int MandateMonitorIntervalMonths { get; internal set; } = 1;
 
-        public int PollTickIntervalDays { get; internal set; } = 7;
+        /// <summary>
+        /// Months between poll publications. <c>1</c> means every political tick.
+        /// </summary>
+        /// <remarks>
+        /// Was <c>pollTickIntervalDays</c>, defaulting to 7, and it never did anything: the planner
+        /// computed <c>((date.Day - 1) % 7) == 0</c> and <c>SimDate.Day</c> is a literal <c>1</c> on
+        /// every date the clock produces, so the expression was unconditionally true. There was no
+        /// arithmetic slip to correct — a sim "day" IS a calendar month
+        /// (<c>TimeSettingsData.m_DaysPerYear = 12</c>), so a day cadence had nothing to count. The
+        /// default of <c>1</c> reproduces the behaviour every existing save has always had while
+        /// making the dial mean something for the first time.
+        /// </remarks>
+        public int PollTickIntervalMonths { get; internal set; } = 1;
         public int CampaignStartMonthsBeforeElection { get; internal set; } = 2;
 
         public bool LlmWakeYearly { get; internal set; } = true;
@@ -1034,7 +1052,7 @@ namespace Agora.Core.Tuning
             LifecycleTickMonths = r.Int("lifecycleTickMonths", d.LifecycleTickMonths),
             IndicesTickMonths = r.Int("indicesTickMonths", d.IndicesTickMonths),
             MandateMonitorIntervalMonths = r.Int("mandateMonitorIntervalMonths", d.MandateMonitorIntervalMonths),
-            PollTickIntervalDays = r.Int("pollTickIntervalDays", d.PollTickIntervalDays),
+            PollTickIntervalMonths = r.Int("pollTickIntervalMonths", d.PollTickIntervalMonths),
             CampaignStartMonthsBeforeElection = r.Int("campaignStartMonthsBeforeElection", d.CampaignStartMonthsBeforeElection),
             LlmWakeYearly = r.Flag("llmWakeYearly", d.LlmWakeYearly),
             LlmWakeOnElection = r.Flag("llmWakeOnElection", d.LlmWakeOnElection),

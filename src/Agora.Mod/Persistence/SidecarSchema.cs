@@ -96,8 +96,9 @@ namespace Agora.Mod.Persistence
     /// </para>
     ///
     /// <para>
-    /// State is at version 3; settings and the flavor cache are at 2; timeline progress is still at 1,
-    /// so its table is empty. So is the flavor cache's, which is not an omission: nothing routes
+    /// State is at version 5; settings and the flavor cache are at 3 and 2; timeline progress and the
+    /// metric history are still at 1, so their tables are empty. So is the flavor cache's, which is
+    /// not an omission: nothing routes
     /// <c>flavor_cache.json</c> through <see cref="Migrate"/> at all — <c>Agora.Mod/Llm</c> upgrades
     /// it in <c>FlavorCacheMigration</c> and validates it against
     /// <c>FlavorSchema.SupportedSchemaVersion</c>, and <see cref="CurrentFlavorCacheVersion"/> says
@@ -119,7 +120,14 @@ namespace Agora.Mod.Persistence
     {
         public const string VersionProperty = "schemaVersion";
 
-        public const int CurrentStateVersion = 4;
+        /// <summary>
+        /// Kept in step with <c>Agora.Core.Contracts.PoliticalState.SchemaVersion</c>'s own default,
+        /// which cannot reference this constant because Core may not see Mod. The two drifted once —
+        /// the default sat at 3 while this was 4 — and a freshly constructed state consequently
+        /// claimed a version it had never been. <c>SidecarMigrationTests</c> pins them together.
+        /// </summary>
+        public const int CurrentStateVersion = 5;
+
         public const int CurrentSettingsVersion = 3;
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
@@ -326,6 +334,69 @@ namespace Agora.Mod.Persistence
             if (settings != null) UpgradeSettingsObjectToV3(settings);
         }
 
+        /// <summary>
+        /// State v4 to v5: <c>lastCompletedTickMonth</c>, the persisted watermark that stops a reload
+        /// re-running a month it already advanced through.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Seeded from the document's <i>own</i> <c>date</c>, not from zero and not from the live
+        /// clock. A state file is by definition the record of a month that finished — it is written
+        /// after the tick, not before — so the month it names is exactly the last completed one.
+        /// Seeding zero would tell the runtime that no month had ever run and hand every existing
+        /// save one free duplicate tick on its first load after upgrading, which is the precise bug
+        /// this field exists to close.
+        /// </para>
+        /// <para>
+        /// A file with no readable <c>date</c> is left at the contract default of <c>-1</c>. That
+        /// costs at most the one duplicate tick the save was already getting, whereas guessing a
+        /// month would suppress a real tick — and a suppressed month is unrecoverable where a
+        /// duplicated one is merely wrong once.
+        /// </para>
+        /// <para>
+        /// Idempotent, as every step in this table must be: a document that already carries the
+        /// property is left alone, so re-running the chain cannot rewind a watermark the runtime has
+        /// since advanced.
+        /// </para>
+        /// </remarks>
+        private static void MigrateStateV4ToV5(JObject root)
+        {
+            if (root["lastCompletedTickMonth"] != null) return;
+
+            int totalMonths;
+            root["lastCompletedTickMonth"] =
+                TryReadTotalMonths(root["date"], out totalMonths) ? totalMonths : -1;
+        }
+
+        /// <summary>
+        /// Reads the <c>"YYYY-MM-DD"</c> form <c>SimDateJsonConverter</c> writes into
+        /// <see cref="SimDate.TotalMonths"/>. Deliberately does not deserialize through the converter:
+        /// a migration step runs on the raw DOM, before the document is allowed to become a contract
+        /// object, and reaching for the materialised type here would invert that order.
+        /// </summary>
+        private static bool TryReadTotalMonths(JToken date, out int totalMonths)
+        {
+            totalMonths = 0;
+
+            string text = date == null || date.Type != JTokenType.String ? null : date.Value<string>();
+            if (string.IsNullOrEmpty(text)) return false;
+
+            string[] parts = text.Split('-');
+            if (parts.Length != 3) return false;
+
+            int year, month;
+            if (!int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out year)) return false;
+            if (!int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out month)) return false;
+
+            // "0000-00-00" is the round-trip of default(SimDate) and is reachable on a state whose
+            // date was never assigned. Month 0 is not a month, and treating it as one would seed a
+            // watermark a year adrift.
+            if (month < 1 || month > 12) return false;
+
+            totalMonths = year * 12 + (month - 1);
+            return true;
+        }
+
         private static void MigrateStateV2ToV3(JObject root)
         {
             bool isNa = string.Equals((string)root["settings"]?["theme"], "Na", StringComparison.OrdinalIgnoreCase);
@@ -497,7 +568,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(2, "added party isMajor and the fringe watch",
                 MigrateStateV2ToV3),
             new MigrationStep(3, "added the three voter-model levels to the nested settings block",
-                MigrateStateV3ToV4)
+                MigrateStateV3ToV4),
+            new MigrationStep(4, "added lastCompletedTickMonth, seeded from the state's own date",
+                MigrateStateV4ToV5)
         };
 
         private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>

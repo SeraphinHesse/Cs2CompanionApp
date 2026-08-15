@@ -234,8 +234,31 @@ namespace Agora.Mod.Core
         private static readonly HashSet<string> _provisionalNamePartyIds =
             new HashSet<string>(StringComparer.Ordinal);
 
+        /// <summary>
+        /// The last date <see cref="Tick"/> saw, and whether it has seen one at all, <b>this session</b>.
+        /// A logging latch and nothing more.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// These two used to decide whether a month ran, and that is precisely why every reload ran a
+        /// month twice. They are session-local and <see cref="ResetForNewSave"/> clears them at every
+        /// save boundary; the only other writer is <see cref="Replay"/>, which runs solely when
+        /// reconciliation reports months to replay — and a mid-month save, quit and reload reports
+        /// none. So the first heartbeat of every resumed session saw "no tick yet" and re-ran a month
+        /// the save had already advanced through, with <c>PoliticalEngine.Advance</c> carrying no
+        /// same-month guard of its own.
+        /// </para>
+        /// <para>
+        /// The question is now answered by <see cref="PoliticalState.LastCompletedTickMonth"/>, which
+        /// is persisted and therefore survives the session boundary that defeated this pair. What is
+        /// left here is one log line: the first heartbeat after a load reports whether the watermark
+        /// disagreed with what the old latch would have done, which is what the reload gate is read
+        /// off in <c>Agora.log</c>.
+        /// </para>
+        /// </remarks>
         private static SimDate _lastTick;
         private static bool _hasTicked;
+
         private static bool _attached;
         private static bool _saveActive;
         private static bool _isFirstRun;
@@ -663,8 +686,9 @@ namespace Agora.Mod.Core
                 // method exists for.
                 _provisionalNamePartyIds.Clear();
 
-                // Cadence. A city loaded on the month city A last ticked would otherwise be treated as
-                // already ticked for that month.
+                // Cadence. Only the log latch now — the cadence itself is decided by the incoming
+                // save's own LastCompletedTickMonth, which arrives with its state a few lines into
+                // OnSidecarLoaded and cannot be inherited from city A.
                 _lastTick = default(SimDate);
                 _hasTicked = false;
 
@@ -753,6 +777,11 @@ namespace Agora.Mod.Core
                 // cleared it, so this has to sit between the two.
                 RestoreMetricHistory(result);
 
+                // And the engine's own trend window, off the same document. Same ordering constraint
+                // for the same reason: RecordSnapshot appends, so a history rebuilt after the first
+                // capture would sit behind a sample taken this session rather than before it.
+                RestoreSnapshotHistory(result);
+
                 // Per-save kill-switch (#10). False computes all the politics and applies none of it.
                 AgoraEffects.EffectsEnabled = _saveSettings.EffectsEnabled;
 
@@ -795,6 +824,10 @@ namespace Agora.Mod.Core
                 // flags the NaArray prefix, which is exactly what the reconstruction returns — so it
                 // doubles as a live assertion that generation and repair still agree.
                 RepairLoadedState();
+
+                // Same placement and the same reason: one call site for both branches, and before
+                // anything below acts on the state.
+                ClampWatermarkToClock();
 
                 // Raised HERE, the moment there is a state to serve, and deliberately before the
                 // flavor and replay work below.
@@ -878,6 +911,86 @@ namespace Agora.Mod.Core
                 _saveActive = false;
                 AgoraMod.Log.Error(ex, "Agora could not apply per-save settings; continuing with defaults.");
             }
+        }
+
+        /// <summary>
+        /// Enforces the one invariant the tick gate rests on: a watermark may never stand ahead of
+        /// the month the city is actually in. A state that arrives dated into the future has its
+        /// <see cref="PoliticalState.LastCompletedTickMonth"/> pulled down to the month before now, so
+        /// that the current month is the next one to run.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The load this exists for.</b> <c>LoadReconciliation</c> returns
+        /// <c>RewindBeforeHistory</c> when every political snapshot on disk is later than the city's
+        /// date — the player rolled the city save back further than any state Agora has written, which
+        /// <c>TickPlanner.SnapshotsToPrune</c> makes ordinarily reachable by keeping only the newest
+        /// few. It hands back the <i>earliest</i> snapshot with nothing to replay, so <see cref="Replay"/>
+        /// never runs and the watermark stays years ahead of the clock. Without this the gate would
+        /// then suppress every month until the sim caught up, and the suppression would outlive the
+        /// session because the watermark is on disk: no polls, no elections, no event ticks, one Info
+        /// line a month. A month run twice is wrong once; a month never run does not come back.
+        /// </para>
+        /// <para>
+        /// This is not a policy decision taken here. That outcome's own contract is that "the earliest
+        /// snapshot supplies identity and settings, the engine rebuilds current state from city
+        /// metrics" — which is ticking, from the city's date forward. The clamp restores the behaviour
+        /// that reconciliation already documents and that the runtime had before the gate existed.
+        /// </para>
+        /// <para>
+        /// Written as an invariant on the watermark rather than as a branch on
+        /// <c>RewindBeforeHistory</c>, because the property is what the gate depends on and the
+        /// outcome that violates it is not guaranteed to stay the only one.
+        /// </para>
+        /// <para>
+        /// <b>Asserted at load and again on every heartbeat.</b> The load call is where the offending
+        /// state actually arrives, but it can only run when the clock is readable — and a session in
+        /// which it is not at that one moment would stay frozen for the whole session, which is the
+        /// direction that does not recover. <see cref="Tick"/> holds a date that is readable by
+        /// construction, so it asserts the same invariant a second time for the cost of one
+        /// comparison a day. One helper for both, so the two cannot drift apart.
+        /// </para>
+        /// </remarks>
+        private static void ClampWatermarkToClock()
+        {
+            if (_time == null) return;
+
+            // Only from the clock, and only when it is readable: a comparison against a main-menu
+            // date would be a comparison against nothing (non-negotiable #8). The next load repeats
+            // it, and Tick asserts it again from a date that cannot be unreadable.
+            SimDate today;
+            if (!_time.TryGetToday(out today)) return;
+
+            ClampWatermarkToClock(today);
+        }
+
+        /// <summary>
+        /// The invariant itself, against a date the caller already has. See the overload above for
+        /// why it exists and why it is asserted from two places.
+        /// </summary>
+        private static void ClampWatermarkToClock(SimDate today)
+        {
+            if (_state == null) return;
+
+            // Ahead means strictly ahead. Level is the ordinary case, not a violation: OnMonth writes
+            // the watermark to today's month on the first heartbeat of month M, so from that moment to
+            // the end of M the watermark equals M — which is where almost every save, quit and reload
+            // happens. Clamping on equality would pull it to M-1 and hand the next heartbeat the very
+            // duplicate month, duplicated poll and double-counted FringeWatch.MonthsObserved that the
+            // gate exists to remove, then persist the wrong watermark. RewindBeforeHistory is still
+            // fully covered: it is reached only after the exact-match and nearest-earlier branches
+            // have both failed, so every snapshot on disk — and the watermark inside the earliest of
+            // them — is strictly later than the city's date.
+            if (today.TotalMonths >= _state.LastCompletedTickMonth) return;
+
+            int was = _state.LastCompletedTickMonth;
+            _state.LastCompletedTickMonth = today.TotalMonths - 1;
+
+            AgoraMod.Log.Info("Agora: the political state is dated ahead of the city (watermark month " +
+                              was + ", city is at " + today + "). Reconciling the watermark to " +
+                              _state.LastCompletedTickMonth + " so this month ticks — the " +
+                              "RewindBeforeHistory path keeps the party system and settings and " +
+                              "rebuilds current state from city metrics.");
         }
 
         private static void ConfigureClock()
@@ -1845,7 +1958,31 @@ namespace Agora.Mod.Core
             if (settings == null || !settings.Enabled) return false;
             if (!_saveSettings.Enabled) return false;
 
-            bool monthChanged = !_hasTicked || today.TotalMonths != _lastTick.TotalMonths;
+            // Before the gate reads it, because the gate is only as good as the invariant beneath it,
+            // and this date is readable by construction where the load-time assertion's is not. A
+            // no-op on every heartbeat but the one after a state arrived dated ahead of the city.
+            ClampWatermarkToClock(today);
+
+            // The gate, and it is read off persisted state rather than off anything this session
+            // remembers: a month may run only when it is strictly newer than the watermark the last
+            // completed month wrote. Strictly newer, not merely different — a clock that moved
+            // backwards (a §5 reconciliation onto an earlier snapshot) must not re-run months the
+            // state has already lived through either.
+            bool monthChanged = _state != null && today.TotalMonths > _state.LastCompletedTickMonth;
+
+            // What the old session-local test would have answered. Kept only to say so in the log on
+            // the one heartbeat where the two disagree — the first after a load, which is where the
+            // duplicated poll and the double-counted FringeWatch.MonthsObserved used to come from.
+            // See the field declarations for why that test could never be right.
+            bool sessionLatchWouldHaveRun = !_hasTicked || today.TotalMonths != _lastTick.TotalMonths;
+
+            if (sessionLatchWouldHaveRun && !monthChanged)
+            {
+                AgoraMod.Log.Info("Agora: " + today + " has already been ticked (watermark month " +
+                                  (_state != null ? _state.LastCompletedTickMonth : -1) +
+                                  "); not running it again. Last tick this session: " +
+                                  (_hasTicked ? _lastTick.ToString() : "none") + ".");
+            }
 
             _lastTick = today;
             _hasTicked = true;
@@ -1929,6 +2066,14 @@ namespace Agora.Mod.Core
             EngineTickResult tick = PoliticalEngine.Advance(input);
 
             _state = tick.State;
+
+            // Immediately after the assignment and before anything below can throw: the watermark has
+            // to be part of the object the sidecar writes, and GetStateForSave hands out exactly this
+            // reference. Written whether or not the tick did work — the question it answers is "has
+            // this month been run", not "did running it change anything", and a month the engine
+            // declined to act on is still a month that must not come round a second time.
+            _state.LastCompletedTickMonth = today.TotalMonths;
+
             _manualWakeRequested = false;
             _stateVersion++;
 
@@ -2744,6 +2889,13 @@ namespace Agora.Mod.Core
                     });
 
                     _state = tick.State;
+
+                    // Per replayed month, inside the loop rather than once at the end: the catch
+                    // below breaks out on the first failure, and the watermark must then describe the
+                    // months that actually ran, not the ones that were planned. Same rule as OnMonth
+                    // — a replayed month is a completed month and the next heartbeat must not run it.
+                    _state.LastCompletedTickMonth = dates[i].TotalMonths;
+
                     if (tick.DidWork) replayed++;
                 }
                 catch (Exception ex)
@@ -2756,6 +2908,9 @@ namespace Agora.Mod.Core
                 }
             }
 
+            // The log latch, so the first heartbeat after a catch-up does not report a disagreement
+            // there is not one of. The cadence itself is carried by the watermark written per month
+            // in the loop above.
             _lastTick = _state.Date;
             _hasTicked = true;
             _stateVersion++;
@@ -2819,6 +2974,74 @@ namespace Agora.Mod.Core
             {
                 AgoraMod.Log.Warn("Agora could not restore its metric history (" + ex.Message +
                                   "); the rent and land-value trends rebuild from this session.");
+            }
+        }
+
+        /// <summary>
+        /// Refills <see cref="_snapshotHistory"/> from the metric ring the sidecar just read, so the
+        /// engine's trend legs are as long for a player who quit to the menu as for one who did not.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The ring is session-static and <see cref="ResetForNewSave"/> clears it at every save
+        /// boundary, so <c>EngineTickInput.SnapshotHistory</c> was empty on the first tick after every
+        /// load — and every <c>delta</c> and <c>windowMonths</c> read goes through exactly that list.
+        /// Twelve months played straight fired a trend; the same twelve months with a quit in the
+        /// middle did not. That is a desync in the sense of non-negotiable #6, not a cosmetic gap.
+        /// </para>
+        /// <para>
+        /// The ring is rebuilt here rather than borrowed from <see cref="AgoraSnapshotSystem"/>,
+        /// which keeps its <c>MetricHistory</c> private. The two restores read the same document
+        /// against the same date, so they agree on <i>which</i> samples survive the trim — but not on
+        /// how many are kept per series, which is the ring's constructor argument and is the sensor
+        /// system's own literal over there. This one therefore states its depth rather than inheriting
+        /// a default from a file another lane owns, and states it as
+        /// <see cref="SnapshotHistoryMonths"/>: exactly the window asked for below. <c>asOf</c> comes from
+        /// the clock and only when the clock is readable — a restore against <c>default(SimDate)</c>
+        /// would trim away everything, and the same guard is why <c>RestoreHistory</c> skips it.
+        /// </para>
+        /// <para>
+        /// Warn and continue, never rethrow: a history that will not rebuild costs the trend legs
+        /// until they refill, which is the state every save was already in. It must not be able to
+        /// take the load down with it.
+        /// </para>
+        /// </remarks>
+        private static void RestoreSnapshotHistory(SidecarLoadResult result)
+        {
+            try
+            {
+                if (result == null || result.MetricHistory == null) return;
+                if (_time == null) return;
+
+                SimDate asOf;
+                if (!_time.TryGetToday(out asOf)) return;
+
+                // The depth is stated rather than defaulted: what this ring has to hold is exactly the
+                // window asked for below, and RestoreFrom trims oldest-first, so the newest
+                // SnapshotHistoryMonths months per series are what survive. Taking the constructor's
+                // default would make the answer depend on a number in a file this one does not own.
+                var history = new MetricHistory(SnapshotHistoryMonths);
+                history.RestoreFrom(result.MetricHistory, asOf);
+
+                List<CitySnapshot> restored =
+                    SnapshotRehydration.Restore(history, asOf, SnapshotHistoryMonths);
+
+                if (restored == null || restored.Count == 0) return;
+
+                // Oldest first, which is the order the ring is already in and the order the trend legs
+                // read it in. Trimmed anyway: Restore is bounded by its own argument, and one bound
+                // enforced in one place is a bound that stops holding the day the other moves.
+                _snapshotHistory.AddRange(restored);
+                while (_snapshotHistory.Count > SnapshotHistoryMonths) _snapshotHistory.RemoveAt(0);
+
+                AgoraMod.Log.Info("Agora: rebuilt " + _snapshotHistory.Count +
+                                  " month(s) of snapshot history from the metric ring, up to " +
+                                  asOf + ".");
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Warn("Agora could not rebuild its snapshot history (" + ex.Message +
+                                  "); the engine's trend legs refill from this session.");
             }
         }
 

@@ -66,6 +66,42 @@ authority; this is the tracker.
 | **W5** | The press — articles lead with what happened, masthead popup, sim pause, Haiku for cost. | 5 | ✅ **code complete.** Prose + model lane, and the whole popup lane (`docs/plans/0003`): C1 binding surface, C3/C4 the two missing feed rows, C2/C5 severity gate + ring + emission, C6/C7 modal + pause + interlock + masthead, C8 join. `PauseOnMajorNews` and `ShowAllReports` now do something. **C0's in-game spike was deliberately not built** — folded into the manual gate · **needs the walkthrough** |
 | — | Backlog (correctness + affordance) | 6 | ✅ **all items closed, reviewed, merged to `main`** — envelope unwrap fixed, two raw-id leaks fixed, scrollbar item struck as verified-false, contract drift audited (3 prose defects fixed) · **both owner decisions now resolved** (see below), **the drift re-run is done** (2026-08-09, 44 bindings, shapes clean, six prose defects fixed) |
 
+## Event-system rework — `docs/plans/0004-event-system-rework.md`
+
+Eight sequential waves on `EventSystemRefresh`, each one umbrella branch with parallel disjoint
+lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
+
+| Wave | What | Status |
+|---|---|---|
+| **0** | Tick correctness prerequisites — the reload double-tick, and trend memory that died at every save boundary. Not story-specific; stands on its own. | ✅ **code complete**, three lanes reviewed and merged, PR open into `EventSystemRefresh` · **five manual gates outstanding**, see below · 1415 → **1442 tests** |
+| **1–7** | Sensors · story engine · catalog · tick wiring · prose · UI · retirement | not started |
+
+**Wave 0 also repaired a red base.** `EventSystemRefresh` did not build and had five failing tests
+before the wave opened, from three prior commits landing unverified. Fixed as its own commit so the
+inherited breakage stays distinguishable from the wave's own work.
+
+**Three findings that contradict the rework plan** and outrank it for later waves, recorded in full
+in `docs/plans/0004-wave-0-handoff.md`: `metric_ring.json` was never built because `MetricHistory`
+already was one; wave 1's `metric_history` schema bump is probably unnecessary because the file is a
+keyed series bag; and `TickPlanner`'s poll cadence had no arithmetic slip to fix, only an intent to
+decide — it is now `pollTickIntervalMonths`, default 1, behaviour-identical for every existing save.
+
+### Wave 0's manual gates — code built, nothing seen in game
+
+`AgoraRuntime` is not linkable into the headless suite by design, so these are gate rows and no test
+was manufactured for them. Gates 2 and 3 exist because review caught the same boundary wrong twice.
+
+1. **The double-tick.** Save mid-month, quit to menu, reload. `Agora.log` and the sidecar must show
+   the month running **once** — no duplicate poll, no double-counted `FringeWatch.MonthsObserved`.
+   This is the gate the whole political-power economy later rests on.
+2. **The clamp must NOT fire on that ordinary reload** — the reconciliation line must be *absent*.
+3. **The rewound load.** Roll a city save back past the oldest retained Agora snapshot, load it: the
+   reconciliation line appears **once** and the next month boundary actually ticks. A freeze here
+   would not show up in gate 1 at all.
+4. **Retheme.** Change region mid-month in a month that already ticked; the month must not run twice.
+5. **The trend window survives a reload.** Play twelve months, quit to menu, reload, and confirm
+   gentrification and brain-drain indices are non-zero on the first tick after the load.
+
 ### The manual gate — what only the player can verify
 
 Everything below needs the game running. Nothing here has been seen on screen: the code is reviewed,

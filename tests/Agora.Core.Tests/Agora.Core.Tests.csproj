@@ -168,6 +168,7 @@
     <Compile Include="..\..\src\Agora.Mod\Sensors\SensorMath.cs" Link="ModSensors\SensorMath.cs" />
     <Compile Include="..\..\src\Agora.Mod\Sensors\DemographicTally.cs" Link="ModSensors\DemographicTally.cs" />
     <Compile Include="..\..\src\Agora.Mod\Sensors\MetricHistory.cs" Link="ModSensors\MetricHistory.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Sensors\SnapshotRehydration.cs" Link="ModSensors\SnapshotRehydration.cs" />
     <Compile Include="..\..\src\Agora.Mod\Sensors\SensorReadings.cs" Link="ModSensors\SensorReadings.cs" />
     <Compile Include="..\..\src\Agora.Mod\Sensors\SensorMerge.cs" Link="ModSensors\SensorMerge.cs" />
     <Compile Include="..\..\src\Agora.Mod\Sensors\SnapshotAssembly.cs" Link="ModSensors\SnapshotAssembly.cs" />
