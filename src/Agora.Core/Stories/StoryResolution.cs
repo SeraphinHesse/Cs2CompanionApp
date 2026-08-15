@@ -96,7 +96,7 @@ namespace Agora.Core.Stories
                 }
 
                 CivicEvent? civicEvent = FindEvent(catalog, slot.EventId);
-                SlotOutcome outcome = ScoreSlot(slot, civicEvent, context);
+                SlotOutcome outcome = ScoreSlot(slot, civicEvent, context, tuning);
 
                 result.SlotOutcomes.Add(outcome);
                 if (outcome == SlotOutcome.Met) result.MetCount++;
@@ -196,7 +196,7 @@ namespace Agora.Core.Stories
         /// </para>
         /// </remarks>
         private static SlotOutcome ScoreSlot(StorySlot slot, CivicEvent? civicEvent,
-                                             StoryReadContext context)
+                                             StoryReadContext context, EngineTuning tuning)
         {
             switch (slot.Response)
             {
@@ -215,8 +215,11 @@ namespace Agora.Core.Stories
                     // A catalog that no longer explains this slot is a gap on our side, so it degrades
                     // to unreadable rather than throwing or failing the player.
                     if (civicEvent == null || civicEvent.Check == null) return SlotOutcome.Unmeasurable;
-                    return FromCheck(
-                        TriggerEvaluator.EvaluateCheck(civicEvent.Check, slot.BaselineMetric, context));
+                    // Tuning goes to the evaluator because the delta-window bound reads
+                    // stories.deltaWindowSlackMonths. There is deliberately no shorter overload: one
+                    // would silently score against the declared default rather than the player's dial.
+                    return FromCheck(TriggerEvaluator.EvaluateCheck(
+                        civicEvent.Check, slot.BaselineMetric, context, tuning));
 
                 default:
                     // A value no member of the enum has — corrupt state on our side, not a player
