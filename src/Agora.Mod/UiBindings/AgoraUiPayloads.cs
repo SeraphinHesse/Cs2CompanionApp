@@ -177,6 +177,24 @@ namespace Agora.Mod.UiBindings
         public bool ShowAllReports;
         public bool EffectsEnabled = true;
 
+        /// <summary>
+        /// The three voter-model levels, as enum <i>names</i>. The panel renders and writes these
+        /// names verbatim, so the wire carries "Default" rather than 1 and a member inserted into the
+        /// enum cannot silently change what a save means.
+        /// </summary>
+        public string VoteSharpness = "Default";
+        public string NewsInfluence = "Default";
+        public string BrandDiscipline = "Default";
+
+        /// <summary>
+        /// What each chosen level currently resolves to, for display only. Read from the tuning file
+        /// through <c>TuningPresets</c> rather than duplicated here — the panel must never hold its
+        /// own copy of a coefficient, or it will eventually disagree with the engine.
+        /// </summary>
+        public double VoteSharpnessValue;
+        public double NewsInfluenceValue;
+        public double BrandDisciplineValue;
+
         public void Write(IJsonWriter writer)
         {
             writer.TypeBegin("agora.SettingsPayload");
@@ -188,6 +206,12 @@ namespace Agora.Mod.UiBindings
             UiJson.Flag(writer, "pauseOnMajorNews", PauseOnMajorNews);
             UiJson.Flag(writer, "showAllReports", ShowAllReports);
             UiJson.Flag(writer, "effectsEnabled", EffectsEnabled);
+            UiJson.Text(writer, "voteSharpness", VoteSharpness);
+            UiJson.Text(writer, "newsInfluence", NewsInfluence);
+            UiJson.Text(writer, "brandDiscipline", BrandDiscipline);
+            UiJson.Number(writer, "voteSharpnessValue", VoteSharpnessValue);
+            UiJson.Number(writer, "newsInfluenceValue", NewsInfluenceValue);
+            UiJson.Number(writer, "brandDisciplineValue", BrandDisciplineValue);
             writer.TypeEnd();
         }
     }

@@ -121,6 +121,7 @@
       "required": [
         "targetCountEu", "minCountEu", "maxCountEu", "targetCountNa", "minorPartyCountNa",
         "maxPartiesTotal", "archetypeSpreadSigma", "anchoredSpreadSigma",
+        "anchoredSpreadSigmaLoose", "anchoredSpreadSigmaLocked",
         "minPlatformDistance", "platformDriftPerCycle",
         "platformDriftCapPerCycle", "platformGrievanceResponsiveness", "incumbencyBonus",
         "incumbencyDecayPerTerm", "deathVoteShareThreshold", "deathConsecutiveElections",
@@ -138,6 +139,8 @@
         "maxPartiesTotal": { "$ref": "#/$defs/positiveInt" },
         "archetypeSpreadSigma": { "type": "number", "minimum": 0 },
         "anchoredSpreadSigma": { "type": "number", "minimum": 0 },
+        "anchoredSpreadSigmaLoose": { "type": "number", "minimum": 0 },
+        "anchoredSpreadSigmaLocked": { "type": "number", "minimum": 0 },
         "minPlatformDistance": { "$ref": "#/$defs/unitInterval" },
         "platformDriftPerCycle": { "type": "number", "minimum": 0 },
         "platformDriftCapPerCycle": { "type": "number", "minimum": 0 },
@@ -210,9 +213,11 @@
       "required": [
         "distanceKernel", "distanceKernelSigma", "issueWeight", "baseAffinity", "incumbencyBonus",
         "incumbencyDiscontentPenalty", "mandatePerformanceWeight", "mandateFailurePenalty",
-        "eventModifierWeight", "eventModifierDecayHalfLifeMonths", "localGrievanceWeight",
+        "eventModifierWeight", "eventModifierWeightMuted", "eventModifierWeightLoud",
+        "eventModifierDecayHalfLifeMonths", "localGrievanceWeight",
         "nationalMoodWeight", "habitualLoyalty", "loyaltyDecayPerMonth", "noiseSigma", "noiseClamp",
-        "softmaxTemperature", "minPartyShare", "tacticalVotingThresholdFptp"
+        "softmaxTemperature", "softmaxTemperatureBlurred", "softmaxTemperatureSharp",
+        "minPartyShare", "tacticalVotingThresholdFptp"
       ],
       "properties": {
         "distanceKernel": { "type": "string", "enum": ["linear", "quadratic", "gaussian"] },
@@ -224,6 +229,8 @@
         "mandatePerformanceWeight": { "type": "number" },
         "mandateFailurePenalty": { "type": "number" },
         "eventModifierWeight": { "type": "number" },
+        "eventModifierWeightMuted": { "type": "number" },
+        "eventModifierWeightLoud": { "type": "number" },
         "eventModifierDecayHalfLifeMonths": { "$ref": "#/$defs/positiveInt" },
         "localGrievanceWeight": { "type": "number" },
         "nationalMoodWeight": { "type": "number" },
@@ -236,6 +243,8 @@
           "$comment": "Non-negotiable #2 in practice: an unclamped noise term lets one tail draw decide an election, which reads as non-determinism to a player even though it is reproducible."
         },
         "softmaxTemperature": { "type": "number", "exclusiveMinimum": 0 },
+        "softmaxTemperatureBlurred": { "type": "number", "exclusiveMinimum": 0 },
+        "softmaxTemperatureSharp": { "type": "number", "exclusiveMinimum": 0 },
         "minPartyShare": { "$ref": "#/$defs/unitInterval" },
         "tacticalVotingThresholdFptp": { "$ref": "#/$defs/unitInterval" }
       }

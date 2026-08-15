@@ -756,6 +756,14 @@ namespace Agora.Mod.Core
                 // Per-save kill-switch (#10). False computes all the politics and applies none of it.
                 AgoraEffects.EffectsEnabled = _saveSettings.EffectsEnabled;
 
+                // The save's voter-model levels, onto a fresh parse of the tuning file. Both halves
+                // matter: re-reading is what makes a level of Default mean "the shipped coefficient"
+                // rather than "whatever the previously loaded save left in the static", and applying
+                // here — before CreateInitialState below — is what lets BrandDiscipline reach party
+                // generation at all, since that runs once and never again.
+                _tuning = LoadTuning();
+                TuningPresets.Apply(_tuning, _saveSettings);
+
                 // The political start date, and the phase anchor for every engine cadence. January of
                 // the save's start year: the year is a per-save setting, and the day-of-month must not
                 // matter to a month-granular calendar.
@@ -1165,6 +1173,15 @@ namespace Agora.Mod.Core
                                 AgoraEffects.EffectsEnabled = v;
                             });
 
+                        case "voteSharpness":
+                            return SetLevel<VoteSharpness>(value, v => _saveSettings.VoteSharpness = v);
+
+                        case "newsInfluence":
+                            return SetLevel<NewsInfluence>(value, v => _saveSettings.NewsInfluence = v);
+
+                        case "brandDiscipline":
+                            return SetLevel<BrandDiscipline>(value, v => _saveSettings.BrandDiscipline = v);
+
                         case "dismissFirstRun":
                             // Not a setting and not persisted — the player closed the prompt. It is
                             // here because it is a one-shot lifecycle signal on the same object, and
@@ -1198,6 +1215,47 @@ namespace Agora.Mod.Core
             else return CommandOutcome.BadValue;
 
             apply(parsed);
+            PersistSettings();
+            _stateVersion++;
+            return CommandOutcome.Ok;
+        }
+
+        /// <summary>
+        /// Parses one of the voter-model levels by enum name, applies it, re-derives the tuning,
+        /// persists and republishes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The tuning is re-read from disk, not patched in place.</b>
+        /// <c>TuningPresets.Apply</c> is one-way — it overwrites a coefficient and keeps no record of
+        /// what was there before — so moving a level back to <c>Default</c> is only expressible as
+        /// "parse the file again and apply the new levels to that". Patching the live instance
+        /// instead would make Default mean "whatever the last non-default level left behind".
+        /// </para>
+        /// <para>
+        /// Parsed by name and case-sensitively. <c>Enum.TryParse</c> also accepts a bare number, and
+        /// a panel that sent "2" would silently select whichever member happens to sit at 2 today, so
+        /// an all-digit value is rejected before it is parsed.
+        /// </para>
+        /// </remarks>
+        private static CommandOutcome SetLevel<T>(string value, Action<T> apply) where T : struct
+        {
+            if (string.IsNullOrEmpty(value)) return CommandOutcome.BadValue;
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (value[i] >= '0' && value[i] <= '9') return CommandOutcome.BadValue;
+            }
+
+            T parsed;
+            if (!Enum.TryParse(value, /*ignoreCase:*/ false, out parsed)) return CommandOutcome.BadValue;
+            if (!Enum.IsDefined(typeof(T), parsed)) return CommandOutcome.BadValue;
+
+            apply(parsed);
+
+            _tuning = LoadTuning();
+            TuningPresets.Apply(_tuning, _saveSettings);
+
             PersistSettings();
             _stateVersion++;
             return CommandOutcome.Ok;

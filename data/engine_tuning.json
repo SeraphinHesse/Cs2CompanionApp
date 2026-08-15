@@ -67,6 +67,8 @@
 
     "archetypeSpreadSigma": 0.35,
     "anchoredSpreadSigma": 0.08,
+    "anchoredSpreadSigmaLoose": 0.35,
+    "anchoredSpreadSigmaLocked": 0.02,
     "minPlatformDistance": 0.15,
     "platformDriftPerCycle": 0.08,
     "platformDriftCapPerCycle": 0.20,
@@ -138,6 +140,8 @@
     "mandatePerformanceWeight": 0.15,
     "mandateFailurePenalty": 0.20,
     "eventModifierWeight": 0.18,
+    "eventModifierWeightMuted": 0.10,
+    "eventModifierWeightLoud": 0.30,
     "eventModifierDecayHalfLifeMonths": 9,
     "localGrievanceWeight": 0.20,
     "nationalMoodWeight": 0.10,
@@ -147,6 +151,8 @@
     "noiseSigma": 0.03,
     "noiseClamp": 0.10,
     "softmaxTemperature": 0.15,
+    "softmaxTemperatureBlurred": 0.35,
+    "softmaxTemperatureSharp": 0.10,
     "minPartyShare": 0.001,
     "tacticalVotingThresholdFptp": 0.05
   },

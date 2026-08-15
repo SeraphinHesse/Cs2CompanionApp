@@ -75,13 +75,59 @@ namespace Agora.Core.Contracts
     }
 
     /// <summary>
+    /// How decisively a bloc converts its preference into a vote — the player-facing name for
+    /// <c>affinity.softmaxTemperature</c>.
+    /// </summary>
+    /// <remarks>
+    /// A level, not a number. The coefficient each level maps to lives in
+    /// <c>affinity.softmaxTemperaturePresets</c>, because a number that affects behaviour may not
+    /// live in C# (<c>data/CLAUDE.md</c> rule 4). <see cref="Default"/> deliberately carries no
+    /// preset entry: it means "whatever the tuning file's own value is", so retuning the shipped
+    /// coefficient reaches every save that never chose otherwise.
+    /// </remarks>
+    public enum VoteSharpness
+    {
+        Blurred = 0,
+        Default = 1,
+        Sharp = 2
+    }
+
+    /// <summary>
+    /// How far a live event can move a bloc — the player-facing name for
+    /// <c>affinity.eventModifierWeight</c>. Levels map through
+    /// <c>affinity.eventModifierWeightPresets</c>.
+    /// </summary>
+    public enum NewsInfluence
+    {
+        Muted = 0,
+        Default = 1,
+        Loud = 2
+    }
+
+    /// <summary>
+    /// How tightly a fixed brand holds its archetype at generation — the player-facing name for
+    /// <c>parties.anchoredSpreadSigma</c>. Levels map through
+    /// <c>parties.anchoredSpreadSigmaPresets</c>.
+    /// </summary>
+    /// <remarks>
+    /// Read only at party generation, so changing it mid-save does nothing until the registry is
+    /// regenerated — which today happens only on a theme change. The settings surface says so.
+    /// </remarks>
+    public enum BrandDiscipline
+    {
+        Loose = 0,
+        Default = 1,
+        Locked = 2
+    }
+
+    /// <summary>
     /// Per-save settings. Lives in the sidecar, not in global config (non-negotiable #10). The only
     /// exceptions are the master toggle and anything that must work before a save exists — those
     /// stay in the mod's own options page.
     /// </summary>
     public sealed class AgoraSettings
     {
-        public int SchemaVersion { get; set; } = 2;
+        public int SchemaVersion { get; set; } = 3;
 
         /// <summary>Political start year. Default 1990, chosen at save creation, locked afterward (§3).</summary>
         public int StartYear { get; set; } = 1990;
@@ -142,6 +188,18 @@ namespace Agora.Core.Contracts
         public bool ShowAllReports { get; set; } = false;
 
         /// <summary>
+        /// How decisively blocs convert preference into votes. Default means "use the shipped
+        /// coefficient", so a retune reaches saves that never chose otherwise.
+        /// </summary>
+        public VoteSharpness VoteSharpness { get; set; } = VoteSharpness.Default;
+
+        /// <summary>How far live events can move a bloc.</summary>
+        public NewsInfluence NewsInfluence { get; set; } = NewsInfluence.Default;
+
+        /// <summary>How tightly fixed party brands hold their archetype at generation.</summary>
+        public BrandDiscipline BrandDiscipline { get; set; } = BrandDiscipline.Default;
+
+        /// <summary>
         /// A field-by-field copy.
         /// </summary>
         /// <remarks>
@@ -173,7 +231,10 @@ namespace Agora.Core.Contracts
                 EffectsEnabled = EffectsEnabled,
                 ThemeLocked = ThemeLocked,
                 PauseOnMajorNews = PauseOnMajorNews,
-                ShowAllReports = ShowAllReports
+                ShowAllReports = ShowAllReports,
+                VoteSharpness = VoteSharpness,
+                NewsInfluence = NewsInfluence,
+                BrandDiscipline = BrandDiscipline
             };
         }
     }
