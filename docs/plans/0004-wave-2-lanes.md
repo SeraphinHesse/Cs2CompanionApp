@@ -335,6 +335,27 @@ the lane's.
     which is better on exactly the all-or-nothing grounds above. Greedy lead allocation is right; what
     was wrong is manufacturing a lead by promotion when the shortage was self-inflicted.
 
+12a. **Amended, because the first statement of ruling 12 contradicted its own reasoning.** It said
+    promotion "may still open up to `storiesPerCycle` stories", which with three minors and no major
+    produces `[promoted, minor]` + `[promoted]` — a one-slot story, the precise shape the ruling
+    exists to prevent. Lane 2b implemented the text, executed the four cases rather than reasoning
+    about them, and reported the contradiction instead of coding around it. Two corrections:
+
+    - **Promotion opens at most ONE story per cycle.** The plan's own wording is singular — "no major
+      left ⇒ promote a minor and take 3 minors" — and a degraded cycle is better served by one
+      coherent story than by several thin ones. Minors left over age in the pool, which is what the
+      pity weighting is for.
+    - **Minors fill breadth-first across the open stories.** The seeded order decides *which minor is
+      placed next*, not *which story receives it*. Assignment by seeded shuffle was defensible but it
+      can concentrate — measured across six save GUIDs, two of them gave `[major, minor, minor]` plus
+      a bare `[major]` — so the singleton shape was reachable even with real majors and nothing
+      wrong. Breadth-first removes that class entirely while keeping a genuinely seeded choice, and
+      round-robin is no less deterministic than a shuffle.
+
+    Between them these make a one-slot ordinary story reachable only when the pool is genuinely out
+    of events, which is the point: that shape is reserved for mandatory stories and should not arise
+    by accident.
+
 ### Known-unreachable, recorded so it is not mistaken for tested behaviour
 
 `PoliticalPower.AwardFor(NotMet, tier, manualDeclared: true)` cannot be reached from the resolution
