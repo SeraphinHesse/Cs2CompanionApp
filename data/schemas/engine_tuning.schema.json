@@ -67,7 +67,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 4 },
+    "schemaVersion": { "type": "integer", "const": 5 },
 
     "blocs": {
       "type": "object",

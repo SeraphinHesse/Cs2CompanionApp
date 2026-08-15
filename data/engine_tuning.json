@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
