@@ -51,6 +51,48 @@ namespace Agora.Mod.Sensors
         public double? AverageCommuteMinutes;
         public double? TrafficCongestion;
 
+        // --- The city-statistics pass (snapshot v4) --------------------------------------------
+        //
+        // AGORA-SEAM(wave-1): these six fields plus the two lists below are the whole interface
+        // between the three new sensor systems and the merge/assembly half. AgoraStatisticsSensorSystem
+        // writes Statistics and UncollectedGarbage; AgoraTourismSensorSystem writes Tourism,
+        // AttractionCount and SignatureBuildingCount; AgoraProgressionSensorSystem writes Progression,
+        // UnlockedFeatureIds and IndustryTaxRates. No sensor writes a field another sensor owns — the
+        // merge resolves a collision by source order, but a collision here would mean two sensors
+        // disagreed about a measurement, which is a bug rather than something to resolve.
+
+        /// <summary>Homelessness, migration, births, deaths and the garbage production rate.</summary>
+        public CityStatistics? Statistics;
+
+        /// <summary>Tourists, attractiveness and lodging.</summary>
+        public TourismLevels? Tourism;
+
+        /// <summary>Milestone level, experience and progress.</summary>
+        public ProgressionState? Progression;
+
+        /// <summary>Garbage waiting uncollected at producers. Also measured per district.</summary>
+        public double? UncollectedGarbage;
+
+        /// <summary>Buildings contributing attractiveness. Also measured per district.</summary>
+        public int? AttractionCount;
+
+        /// <summary>Signature buildings. Also measured per district.</summary>
+        public int? SignatureBuildingCount;
+
+        /// <summary>
+        /// Unlocked feature prefab names. Assembly sorts them; the sensor need not.
+        /// </summary>
+        /// <remarks>
+        /// Empty and "not measured" are the same value here, unlike every nullable above. That is
+        /// tolerable only because the list is never a fallback source: a district does not have one,
+        /// and a city with no unlocks and a city whose sensor is blind both read as "no features
+        /// unlocked", which for a trigger asking whether a feature is present is the same answer.
+        /// </remarks>
+        public List<string> UnlockedFeatureIds = new List<string>();
+
+        /// <summary>Per-resource tax rates. Assembly sorts them by <c>(Area, ResourceIndex)</c>.</summary>
+        public List<ResourceTaxRate> IndustryTaxRates = new List<ResourceTaxRate>();
+
         /// <summary>Active policy ids. Assembly sorts them; the sensor need not.</summary>
         public List<string> ActivePolicyIds = new List<string>();
 
@@ -93,5 +135,19 @@ namespace Agora.Mod.Sensors
         public double? TransitRidership;
         public double? AverageCommuteMinutes;
         public double? TrafficCongestion;
+
+        // AGORA-SEAM(wave-1): the three v4 fields that are genuinely resolvable per district, because
+        // the buildings behind them carry Game.Areas.CurrentDistrict. Nothing else from the
+        // city-statistics pass appears here — CityStatisticsSystem has no district dimension at all,
+        // so the rest is city-only at source rather than merely unmeasured here.
+
+        /// <summary>Garbage waiting uncollected in this district.</summary>
+        public double? UncollectedGarbage;
+
+        /// <summary>Buildings contributing attractiveness in this district.</summary>
+        public int? AttractionCount;
+
+        /// <summary>Signature buildings in this district.</summary>
+        public int? SignatureBuildingCount;
     }
 }

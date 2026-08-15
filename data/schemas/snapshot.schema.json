@@ -94,6 +94,79 @@
       }
     },
 
+    "cityStatistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "What the game's own city statistics screen shows. CITY-ONLY, and not by omission: Game.Simulation.CityStatisticsSystem is keyed by (StatisticType, int parameter) and has no district dimension at all, so this block is deliberately absent from the district object rather than mirrored there as a permanent fallback. See docs/scout/0004-city-statistics.md §1.4.",
+      "properties": {
+        "homeless": { "type": "integer", "minimum": 0 },
+        "homelessShare": {
+          "$ref": "#/$defs/unitInterval",
+          "$comment": "0-1. The game's CountHouseholdDataSystem.HomelessnessRate is a percentage 0-100; this is that number divided by 100, matching the fraction convention taxRates already uses. A threshold authored against the unconverted figure fires at 100x the intended homelessness."
+        },
+        "citizensMovedIn": { "type": "integer", "minimum": 0 },
+        "citizensMovedAway": { "type": "integer", "minimum": 0 },
+        "movedAwayUnhappy": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "StatisticType.MovedAwayReason keyed by (int)MoveAwayReason.NotHappy. Separate from citizensMovedAway because 'nowhere to live' and 'miserable' are different political stories."
+        },
+        "births": { "type": "integer", "minimum": 0 },
+        "deaths": { "type": "integer", "minimum": 0 },
+        "garbageProductionRate": {
+          "type": "number",
+          "minimum": 0,
+          "$comment": "Garbage PRODUCED per day, from GarbageAccumulationSystem.garbageAccumulation — the value the game's own binding names 'productionRate'. It is not a stockpile and does not fall when collection improves. Uncollected garbage is the separate uncollectedGarbage field, which is also the only garbage figure with a district breakdown."
+        }
+      }
+    },
+
+    "tourismLevels": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "City-only. Game.City.Tourism exists on the city entity and nowhere else. Carries no landmark count: the game has no landmark concept — see signatureBuildingCount.",
+      "properties": {
+        "tourists": { "type": "integer", "minimum": 0 },
+        "attractiveness": {
+          "type": "integer",
+          "$comment": "A dimensionless index, not a percentage, and stored raw rather than normalised because it is the exact quantity the shipped city-attractiveness effect moves."
+        },
+        "lodgingUsed": { "type": "integer", "minimum": 0 },
+        "lodgingTotal": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "progressionState": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "City-only by nature — a district has no level.",
+      "properties": {
+        "milestoneLevel": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "Game.City.MilestoneLevel.m_AchievedMilestone. This is ALSO 'city level': CS2 has no separate level counter, so the two names are one number."
+        },
+        "experience": { "type": "integer", "minimum": 0 },
+        "milestoneProgress": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+
+    "resourceTaxRate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["area", "resourceIndex", "resourceName", "rate"],
+      "properties": {
+        "area": { "type": "string", "enum": ["Commercial", "Industrial", "Office"] },
+        "resourceIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "EconomyUtils.GetResourceIndex — the game's own small dense key, not the Resource flag value, which is a bitfield up to 1<<40 and sorts badly."
+        },
+        "resourceName": { "type": "string", "minLength": 1 },
+        "rate": { "type": "number", "$comment": "A fraction, e.g. 0.10 for 10%. The game reports whole percentage points." }
+      }
+    },
+
     "districtIndices": {
       "type": "object",
       "additionalProperties": false,
@@ -154,6 +227,13 @@
         "transitRidership": { "$ref": "#/$defs/unitInterval" },
         "averageCommuteMinutes": { "type": "number", "minimum": 0 },
         "trafficCongestion": { "$ref": "#/$defs/unitInterval" },
+        "uncollectedGarbage": {
+          "type": "number",
+          "minimum": 0,
+          "$comment": "Summed Game.Buildings.GarbageProducer.m_Garbage. One of exactly three v4 fields that are genuinely per-district: the buildings behind them carry Game.Areas.CurrentDistrict. NOT the infoview's 'stored garbage', which comes from a private job — prose must say 'uncollected', never 'landfill'."
+        },
+        "attractionCount": { "type": "integer", "minimum": 0 },
+        "signatureBuildingCount": { "type": "integer", "minimum": 0 },
         "hasCityFallbacks": { "type": "boolean" },
         "cityFallbackFields": { "$ref": "#/$defs/idList" }
       }
@@ -163,8 +243,8 @@
   "properties": {
     "schemaVersion": {
       "type": "integer",
-      "const": 3,
-      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze. v3 adds the household budget: averageHouseholdUpkeep, averageHouseholdResourceSpend, averageHouseholdFees and the disposableMargin they add up to, city-wide and per district."
+      "const": 4,
+      "$comment": "v1 carried only population, happiness, unemployment and money. v2 is the M2 contract freeze. v3 adds the household budget: averageHouseholdUpkeep, averageHouseholdResourceSpend, averageHouseholdFees and the disposableMargin they add up to, city-wide and per district. v4 adds what the game's own city statistics screen exposes — statistics, tourism, progression, unlockedFeatureIds, industryTaxRates — plus the three counts that genuinely resolve per district. ADDITIVE ONLY: nothing was renamed or removed, and this document is not a sidecar so there is no migration to write; an old snapshot.json on disk is a debugging artifact, not state."
     },
     "date": { "$ref": "#/$defs/simDate" },
     "population": { "type": "integer", "minimum": 0 },
@@ -199,6 +279,25 @@
     "transitRidership": { "$ref": "#/$defs/unitInterval" },
     "averageCommuteMinutes": { "type": "number", "minimum": 0 },
     "trafficCongestion": { "$ref": "#/$defs/unitInterval" },
+    "statistics": { "$ref": "#/$defs/cityStatistics" },
+    "tourism": { "$ref": "#/$defs/tourismLevels" },
+    "progression": { "$ref": "#/$defs/progressionState" },
+    "uncollectedGarbage": { "type": "number", "minimum": 0 },
+    "attractionCount": { "type": "integer", "minimum": 0 },
+    "signatureBuildingCount": {
+      "type": "integer",
+      "minimum": 0,
+      "$comment": "What the rework plan called landmarkCount. There is no landmark concept anywhere in Game.dll — the only two occurrences of the word are DLC id lines — so the field is named for what is actually counted, the Game.Buildings.Signature tag."
+    },
+    "unlockedFeatureIds": {
+      "$ref": "#/$defs/idList",
+      "$comment": "Unlocked feature PREFAB NAMES, sorted ordinal ascending. A feature carries no id of its own — Game.Prefabs.FeatureData is a zero-field tag — so the identity is the prefab and the portable id is PrefabSystem.GetPrefabName. There is no FeatureType enum and no hash. A list, so no metric-history series stands behind it and no delta trigger may name it."
+    },
+    "industryTaxRates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resourceTaxRate" },
+      "$comment": "Sorted by (area, resourceIndex) ascending. The order is contractual for the same reason districts' is. City-only: TaxSystem has no per-district, per-resource overload."
+    },
     "activePolicyIds": { "$ref": "#/$defs/idList" },
     "recentDisasterIds": { "$ref": "#/$defs/idList" },
     "inProgressMandateIds": { "$ref": "#/$defs/idList" },
