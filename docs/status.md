@@ -2,7 +2,7 @@
 
 **Current milestone:** M6 · The Spectacle (in progress) — with a **fix-plan pass** (`fixplan.md`)
 running ahead of it against defects found in the first real play session.
-**Updated:** 2026-08-09
+**Updated:** 2026-08-16
 
 > **The fix-plan pass is code complete across all seven workstreams.** W0–W6 and the backlog are
 > merged and independently reviewed; W5's popup lane, the largest remaining piece, was planned in
@@ -75,7 +75,37 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 |---|---|---|
 | **0** | Tick correctness prerequisites — the reload double-tick, and trend memory that died at every save boundary. Not story-specific; stands on its own. | ✅ **code complete**, three lanes reviewed and merged, PR open into `EventSystemRefresh` · **five manual gates outstanding**, see below · 1415 → **1442 tests** |
 | **1** | Sensors and city statistics — what the game's own statistics screen shows, plus tourism, progression and per-resource taxes. `CitySnapshot` v4. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **sixteen manual gates outstanding, none walked**, see below · 1442 → **1469 tests** |
-| **2–7** | Story engine · catalog · tick wiring · prose · UI · retirement | not started |
+| **2** | Story engine core — the declarative trigger grammar, seeded drafting, the 2-of-3 resolution and the political-power currency. Pure `Agora.Core`. State v6, settings v4, `engine_tuning` v6. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **no new manual gates** — all of it is covered by the suite · 1469 → **1703 tests** |
+| **3–7** | Catalog · tick wiring · prose · UI · retirement | not started |
+
+### Wave 2 — built, and not yet reachable by a player
+
+The engine can decide what a city's political stories *are*. **Nothing calls it.** No tick drafts, no
+UI renders a story, no effect is dispatched, no power is ever awarded in play, and there is no
+catalog for it to read — `data/events_*.json` is wave 3. That is the honest state: wave 2's claim is
+that the arithmetic is right, not that anything happens.
+
+It is the first wave of this rework with **no manual gate of its own**, because it contains no
+game-facing code. Waves 0 and 1 remain unwalked; that is unchanged and still blocking.
+
+**Twelve rulings were taken mid-wave** and are recorded with their reasoning in
+`docs/plans/0004-wave-2-lanes.md`. Wave 3 authors content directly against several. The two that
+will bite hardest:
+
+- **`Manual` is a trigger *kind*, not a tier.** A `Manual`-triggered event is never pooled and can
+  never produce a story; "mandatory" is a *tier* derived from severity. A mandatory-severity event
+  still needs a real trigger. Two lanes read the earlier wording and built opposite things.
+- **An `Absent` trigger with a misspelled metric id evaluates `Met` on every city forever.**
+  `MetricId` carries three vocabularies and only one is validatable, so wave 3's catalog loader must
+  require a non-registry id to appear in an authored id list.
+
+**One verification not run:** the deploying `dotnet build Agora.sln` was blocked by a permission
+classifier. Wave 2 adds no ECS code, so no source-generator coverage is missed — recorded as not
+walked rather than assumed fine.
+
+**Three of the wave's five defects were found by executing code that had already survived rounds of
+careful reading**, including a determinism argument asserted as neutral that changed results in 529
+of 4320 configurations. Reviewing on this wave was worth more than reading it.
 
 **Wave 0 also repaired a red base.** `EventSystemRefresh` did not build and had five failing tests
 before the wave opened, from three prior commits landing unverified. Fixed as its own commit so the

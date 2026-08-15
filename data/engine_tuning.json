@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
@@ -463,5 +463,60 @@
     "discontentFloor": 0.50,
     "churnEventsForFullSignal": 2,
     "grievanceFloor": 0.35
+  },
+
+  "stories": {
+    "_comment": "Packet 16. The story cycle: each cycle drafts storiesPerCycle stories of eventsPerStory events (one major, two minors), and they resolve cycleMonths later. cycleMonths is a MONTH count and there is deliberately no day-based alternative — one in-game day IS one calendar month (TimeSettingsData.m_DaysPerYear = 12), so a mid-month reading returns the byte-identical snapshot taken at month start and every metric and delta check would be provably unmeasurable. Forcing a fresh mid-month sample instead would make the reading depend on which 128-frame tick crossed the threshold, which is a non-deterministic input and forbidden by non-negotiable #3. Full argument in docs/plans/0004-event-system-rework.md.",
+    "enabled": true,
+
+    "storiesPerCycle": 2,
+    "eventsPerStory": 3,
+    "cycleMonths": 2,
+    "successThreshold": 2,
+
+    "_deltaSlackComment": "A Delta spec takes the newest sample at or before today - windowMonths, with no lower bound on how far before. On a sparse history that answers a two-month window with a six-month change and calls it the two-month change — the same harm as a window outrunning the history, by a different route. Samples are monthly, so 2 tolerates an ordinary gap while refusing a stale answer. Deliberately does NOT change MetricHistory.TrendOver, which widens without bound: a trend line is drawn for a human to read, a threshold here decides whether the player is charged.",
+    "deltaWindowSlackMonths": 2,
+
+    "_severityComment": "Mandatory/Major/Minor is a PROJECTION of the existing 1-5 severity integer, never a stored enum. majorSeverityThreshold is deliberately equal to catalog.majorSeverityThreshold: 'major' already has exactly one definition, shared by EventScheduler.IsMajor, CoalitionStability and the alert lane, and a second number for one concept would drift on the next tuning pass.",
+    "mandatorySeverityThreshold": 5,
+    "majorSeverityThreshold": 4,
+
+    "missStreakWeightStep": 0.25,
+    "maxMissStreak": 8,
+    "poolMaxSize": 60,
+    "archiveRetention": 40,
+    "minorPromotionEnabled": true,
+
+    "_reuseComment": "reuseCooldownMonths is a DURATION and must stay well under liveCatalogSize / (storiesPerCycle * eventsPerStory) * cycleMonths — about 13 months at these values. Re-use was originally gated on 'anything the archive remembers', which is only sound while archiveRetention * eventsPerStory < liveCatalogSize; at 40 and 3 that names 120 slots over a ~40-event live catalog, so the pool emptied around month 14 and then never refilled — nothing drafted, so nothing resolved, so nothing archived, so nothing was ever released. Mandatory events ignore the cooldown: a mandatory trigger is a statement about the city right now.",
+    "reuseCooldownMonths": 6,
+    "maxMandatoryPerCycle": 2,
+
+    "_breadthComment": "effects.stackingMode is 'sum' with maxStackedPerModifier 4, so six story events several of which share a modifier would hit that limit and SILENTLY DROP the fifth. Capping breadth at draft time enforces it where it can be reasoned about rather than discovered in the ledger. Keep this below effects.maxStackedPerModifier.",
+    "maxStoryEffectsPerModifier": 3,
+
+    "activeEffectScale": 0.50,
+    "successEffectScale": 1.00,
+    "failureEffectScale": 1.00,
+
+    "alienationWeight": 1.00,
+    "enfranchisementWeight": 1.00,
+
+    "freeTextMaxLength": 500
+  },
+
+  "power": {
+    "_comment": "Packet 17. The political-power currency that gates an override and punishes debt. successGain and overrideCost are keyed by the DERIVED story tier (see stories.mandatorySeverityThreshold), not by a stored field. failureLossRatio is below 1 on purpose: failing should cost less than succeeding pays, so the economy rewards engagement rather than punishing it. A manual self-declared outcome is capped at the MINOR rate whatever the tier — otherwise a one-word justification mints the mandatory award.",
+    "enabled": true,
+
+    "maxMonthlyGain": 5,
+    "gainPopularityCurve": 1.00,
+
+    "successGain": { "minor": 10, "major": 20, "mandatory": 50 },
+    "failureLossRatio": 0.50,
+    "overrideCost": { "minor": 50, "major": 100, "mandatory": 500 },
+
+    "debtRevenuePenalty": 0.20,
+    "debtPenaltyCapPerMonth": 50000,
+    "ledgerRetention": 50
   }
 }

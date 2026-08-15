@@ -515,7 +515,8 @@ namespace Agora.Core.Tests
         {
             var parties = new List<Party> { Fringe("party-03", Issue.Environment) };
 
-            FringeCeilings c = FringeFailureModel.Ceilings(parties, null, AngryAbout(Issue.Environment),
+            // null! — the absent ledger is the case under test, not an annotation slip.
+            FringeCeilings c = FringeFailureModel.Ceilings(parties, null!, AngryAbout(Issue.Environment),
                                                            ElectoralSystem.FirstPastThePost, Shipped);
 
             double v;

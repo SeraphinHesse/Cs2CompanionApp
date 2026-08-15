@@ -20,7 +20,9 @@ namespace Agora.Mod.UiBindings
     /// arithmetic operation is summing four age bands into a crosstab cell.
     /// </para>
     /// </summary>
-    internal static class AgoraUiProjection
+    // `partial` for the same reason as AgoraRuntime: wave 6 adds AgoraUiProjection.Stories.cs as a
+    // new file instead of queueing on this one.
+    internal static partial class AgoraUiProjection
     {
         internal const int NewsFeedMax = 40;
         internal const int EventsMax = 25;

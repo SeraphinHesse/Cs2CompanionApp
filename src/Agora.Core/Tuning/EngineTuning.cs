@@ -28,7 +28,7 @@ namespace Agora.Core.Tuning
         /// because every other test in the suite runs against <see cref="Default"/> rather than the
         /// file — so a value that differs here is a value the shipped engine never verified.
         /// </summary>
-        public int SchemaVersion { get; internal set; } = 5;
+        public int SchemaVersion { get; internal set; } = 6;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -45,6 +45,8 @@ namespace Agora.Core.Tuning
         public IndicesTuning Indices { get; internal set; } = new IndicesTuning();
         public EffectsTuning Effects { get; internal set; } = new EffectsTuning();
         public FringeTuning Fringe { get; internal set; } = new FringeTuning();
+        public StoriesTuning Stories { get; internal set; } = new StoriesTuning();
+        public PowerTuning Power { get; internal set; } = new PowerTuning();
 
         /// <summary>
         /// Keys that were missing or the wrong shape, in the order they were read. Empty for a file
@@ -87,6 +89,8 @@ namespace Agora.Core.Tuning
             t.Indices = IndicesTuning.Read(reader.Section("indices"), d.Indices);
             t.Effects = EffectsTuning.Read(reader.Section("effects"), d.Effects);
             t.Fringe = FringeTuning.Read(reader.Section("fringe"), d.Fringe);
+            t.Stories = StoriesTuning.Read(reader.Section("stories"), d.Stories);
+            t.Power = PowerTuning.Read(reader.Section("power"), d.Power);
             t.Warnings = warnings;
             return t;
         }
@@ -1468,6 +1472,297 @@ namespace Agora.Core.Tuning
             DiscontentFloor = r.Num("discontentFloor", d.DiscontentFloor),
             ChurnEventsForFullSignal = r.Int("churnEventsForFullSignal", d.ChurnEventsForFullSignal),
             GrievanceFloor = r.Num("grievanceFloor", d.GrievanceFloor)
+        };
+    }
+
+    /// <summary>Packet 16 — the story cycle. JSON section <c>stories</c>.</summary>
+    public sealed class StoriesTuning
+    {
+        /// <summary>Master switch. False makes the whole packet inert and is the control in tests.</summary>
+        public bool Enabled { get; internal set; } = true;
+
+        /// <summary>Stories drafted per cycle.</summary>
+        public int StoriesPerCycle { get; internal set; } = 2;
+
+        /// <summary>Events bundled into one story: one major and two minors.</summary>
+        public int EventsPerStory { get; internal set; } = 3;
+
+        /// <summary>
+        /// The length of one full cycle in months. 2 means "draft on M, resolve on M+1, next batch
+        /// at M+2" — so the draft-to-resolution gap is <c>CycleMonths - 1</c>, not
+        /// <see cref="CycleMonths"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The summary of this field previously read "months from draft to resolution", which
+        /// contradicted its own worked example by exactly one month. The example is the authority and
+        /// always was: the cycle is the *period*, and a resolution lands one month after the draft.
+        /// </para>
+        /// <para>
+        /// <b>Not a day count, and there is no day-15 alternative.</b> CS2 ships
+        /// <c>m_DaysPerYear = 12</c>, so one in-game day is one calendar month and
+        /// <c>SimClockMath.ToSimDate</c> returns a literal <c>Day = 1</c>. A mid-month read would
+        /// hand back the byte-identical snapshot taken at month start, making every metric and delta
+        /// check provably unmeasurable; forcing a fresh sample instead would make the reading depend
+        /// on which 128-frame tick crossed the threshold, which is a non-deterministic input and so
+        /// forbidden by non-negotiable #3. The full argument is in the rework plan.
+        /// </para>
+        /// </remarks>
+        public int CycleMonths { get; internal set; } = 2;
+
+        /// <summary>Slots that must be met for a full story to succeed — the "2 of 3" rule.</summary>
+        public int SuccessThreshold { get; internal set; } = 2;
+
+        /// <summary>
+        /// How much older than <c>today - WindowMonths</c> a delta's earlier sample may be before the
+        /// reading is refused as <c>Unmeasurable</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Without a bound, a <c>Delta</c> spec takes the newest sample <i>at or before</i> its target
+        /// month however far before that is — so a history holding one sample six months old answers
+        /// a two-month window with the six-month change, and reports it as the two-month change. That
+        /// is the same harm as a window outrunning the history, reached by a different route: the
+        /// window does not outrun anything, the history is merely sparse. It costs the player power in
+        /// both directions, which is what makes it worth a dial rather than a comment.
+        /// </para>
+        /// <para>
+        /// Samples are monthly, so a slack of 2 tolerates an ordinary gap — a month the save was not
+        /// played, a capture that fell to a blind sensor — while refusing an answer built on a
+        /// genuinely stale reading.
+        /// </para>
+        /// <para>
+        /// <b>This deliberately does not change <c>MetricHistory.TrendOver</c></b>, which widens
+        /// without bound and should keep doing so. The two have different consumers and the
+        /// difference is the point: a trend line wants the best available evidence and is drawn for a
+        /// human to read, whereas a threshold here decides whether the player is charged. Evidence
+        /// good enough to sketch a direction is not evidence good enough to take somebody's money.
+        /// </para>
+        /// </remarks>
+        public int DeltaWindowSlackMonths { get; internal set; } = 2;
+
+        /// <summary>
+        /// Severity at or above which an event is Mandatory. Inclusive lower bound.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately the top of the 1–5 range: mandatory should feel rare (<c>/add-event</c>).
+        /// </remarks>
+        public int MandatorySeverityThreshold { get; internal set; } = 5;
+
+        /// <summary>
+        /// Severity at or above which an event is Major. Inclusive lower bound.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately equal to <c>catalog.majorSeverityThreshold</c>: "major" already has exactly
+        /// one definition, shared by <c>EventScheduler.IsMajor</c>, <c>CoalitionStability</c> and the
+        /// alert lane, and a second number for the same concept would drift on the next tuning pass.
+        /// </remarks>
+        public int MajorSeverityThreshold { get; internal set; } = 4;
+
+        /// <summary>Weight added per cycle an eligible entry goes undrawn — the pity term.</summary>
+        public double MissStreakWeightStep { get; internal set; } = 0.25;
+
+        /// <summary>Cap on the pity term, so an ancient entry cannot crowd out everything forever.</summary>
+        public int MaxMissStreak { get; internal set; } = 8;
+
+        /// <summary>Entries the pool may hold. Beyond this the lowest-weighted are dropped.</summary>
+        public int PoolMaxSize { get; internal set; } = 60;
+
+        /// <summary>
+        /// Months an event must wait after being told before it may be drawn again.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A duration, deliberately — not "everything the archive remembers".</b> The archive
+        /// rule looks equivalent and is not: it couples re-use to
+        /// <c>archiveRetention × eventsPerStory</c>, which at the shipped 40 and 3 names 120 slots
+        /// over a live catalog of roughly 40, so every event is excluded several times over and the
+        /// pool empties for good. A duration cannot exhaust a finite catalog however long the save
+        /// runs. See <see cref="EventPoolEntry.LastDraftedMonth"/> for the full arithmetic.
+        /// </para>
+        /// <para>
+        /// Keep it well under
+        /// <c>liveCatalogSize ÷ (storiesPerCycle × eventsPerStory) × cycleMonths</c> — about 13
+        /// months at shipped values. At 6 the cooling set is
+        /// <c>perCycle × ceil(cooldown ÷ cycleMonths) - perCycle</c> = 12 of a 40-event catalog, so 28
+        /// stay drawable at every draft, flat forever. (The <c>-perCycle</c> term is the easy thing to
+        /// get wrong: the cohort stamped exactly <c>cooldown</c> months ago has already been released
+        /// when the next draft runs, because the test is <c>elapsed &lt; cooldown</c>.) Raising it
+        /// toward the ceiling starves the pool gradually rather than suddenly, which is the harder
+        /// failure to notice.
+        /// </para>
+        /// <para>
+        /// <b>The cooling set must be protected from the <c>poolMaxSize</c> trim.</b> A cooling entry
+        /// has <c>MissStreak == 0</c> by construction, so it sits in the minimum-weight class and is
+        /// the <i>first</i> thing a weight-ordered trim discards — which destroys its
+        /// <see cref="EventPoolEntry.LastDraftedMonth"/>, re-admits it from the catalog at -1, and
+        /// silently reduces the cooldown to nothing. Do not rely on <c>poolMaxSize</c> being set
+        /// comfortably above the catalog: that is a correctness property delegated to a dial and a
+        /// data file, which is how the archive coupling this replaced went wrong.
+        /// </para>
+        /// <para>
+        /// <b>Mandatory events ignore this entirely.</b> A mandatory trigger is a statement about the
+        /// city right now; suppressing it because the same event was told two years ago would drop a
+        /// genuine crisis silently, with no story, no power movement and no prose.
+        /// </para>
+        /// </remarks>
+        public int ReuseCooldownMonths { get; internal set; } = 6;
+
+        /// <summary>
+        /// Most mandatory stories one cycle may open, over and above <see cref="StoriesPerCycle"/>.
+        /// </summary>
+        /// <remarks>
+        /// Mandatory stories are delivered rather than drawn, so without a cap a citywide crisis
+        /// firing five severity-5 triggers in one month hands the player five unavoidable stories on
+        /// top of the ordinary two — at 50 power each on success and 25 on failure, which is a swing
+        /// no other single month can produce. Excess mandatory events stay in the pool and age
+        /// normally, so they arrive next cycle rather than being dropped.
+        /// </remarks>
+        public int MaxMandatoryPerCycle { get; internal set; } = 2;
+
+        /// <summary>Resolved stories kept in <c>PoliticalState.StoryArchive</c>.</summary>
+        public int ArchiveRetention { get; internal set; } = 40;
+
+        /// <summary>
+        /// Whether a minor may be promoted to fill a story with no major left in the pool. False
+        /// makes the cycle draft fewer stories instead.
+        /// </summary>
+        public bool MinorPromotionEnabled { get; internal set; } = true;
+
+        /// <summary>
+        /// Story effects allowed to target one modifier in a cycle.
+        /// </summary>
+        /// <remarks>
+        /// <c>effects.stackingMode</c> is <c>sum</c> with <c>maxStackedPerModifier</c> 4, so six story
+        /// events several of which share a modifier would hit that limit and <b>silently drop the
+        /// fifth</b>. Capping breadth at draft time enforces the constraint where it can be reasoned
+        /// about rather than discovered in the ledger. Kept below the effects cap on purpose.
+        /// </remarks>
+        public int MaxStoryEffectsPerModifier { get; internal set; } = 3;
+
+        /// <summary>Magnitude scale for effects applied while a story is live.</summary>
+        public double ActiveEffectScale { get; internal set; } = 0.5;
+
+        /// <summary>Magnitude scale for effects applied on a met slot.</summary>
+        public double SuccessEffectScale { get; internal set; } = 1.0;
+
+        /// <summary>Magnitude scale for effects applied on a not-met slot.</summary>
+        public double FailureEffectScale { get; internal set; } = 1.0;
+
+        /// <summary>How far a failed outcome pushes voters away from the government.</summary>
+        public double AlienationWeight { get; internal set; } = 1.0;
+
+        /// <summary>How far a met outcome pulls voters toward the government.</summary>
+        public double EnfranchisementWeight { get; internal set; } = 1.0;
+
+        /// <summary>
+        /// Characters the player may write in an Ignore or Manual box. Over-length input is rejected
+        /// with the existing <c>CommandOutcome.TooLong</c>.
+        /// </summary>
+        public int FreeTextMaxLength { get; internal set; } = 500;
+
+        internal static StoriesTuning Read(TuningReader r, StoriesTuning d) => new StoriesTuning
+        {
+            Enabled = r.Flag("enabled", d.Enabled),
+            StoriesPerCycle = r.Int("storiesPerCycle", d.StoriesPerCycle),
+            EventsPerStory = r.Int("eventsPerStory", d.EventsPerStory),
+            CycleMonths = r.Int("cycleMonths", d.CycleMonths),
+            SuccessThreshold = r.Int("successThreshold", d.SuccessThreshold),
+            DeltaWindowSlackMonths = r.Int("deltaWindowSlackMonths", d.DeltaWindowSlackMonths),
+            MandatorySeverityThreshold = r.Int("mandatorySeverityThreshold", d.MandatorySeverityThreshold),
+            MajorSeverityThreshold = r.Int("majorSeverityThreshold", d.MajorSeverityThreshold),
+            MissStreakWeightStep = r.Num("missStreakWeightStep", d.MissStreakWeightStep),
+            MaxMissStreak = r.Int("maxMissStreak", d.MaxMissStreak),
+            PoolMaxSize = r.Int("poolMaxSize", d.PoolMaxSize),
+            ReuseCooldownMonths = r.Int("reuseCooldownMonths", d.ReuseCooldownMonths),
+            MaxMandatoryPerCycle = r.Int("maxMandatoryPerCycle", d.MaxMandatoryPerCycle),
+            ArchiveRetention = r.Int("archiveRetention", d.ArchiveRetention),
+            MinorPromotionEnabled = r.Flag("minorPromotionEnabled", d.MinorPromotionEnabled),
+            MaxStoryEffectsPerModifier = r.Int("maxStoryEffectsPerModifier", d.MaxStoryEffectsPerModifier),
+            ActiveEffectScale = r.Num("activeEffectScale", d.ActiveEffectScale),
+            SuccessEffectScale = r.Num("successEffectScale", d.SuccessEffectScale),
+            FailureEffectScale = r.Num("failureEffectScale", d.FailureEffectScale),
+            AlienationWeight = r.Num("alienationWeight", d.AlienationWeight),
+            EnfranchisementWeight = r.Num("enfranchisementWeight", d.EnfranchisementWeight),
+            FreeTextMaxLength = r.Int("freeTextMaxLength", d.FreeTextMaxLength)
+        };
+    }
+
+    /// <summary>An amount per story tier. Used for both award and cost schedules.</summary>
+    public sealed class PowerTierAmounts
+    {
+        public PowerTierAmounts() { }
+
+        public PowerTierAmounts(int minor, int major, int mandatory)
+        {
+            Minor = minor;
+            Major = major;
+            Mandatory = mandatory;
+        }
+
+        public int Minor { get; internal set; }
+        public int Major { get; internal set; }
+        public int Mandatory { get; internal set; }
+
+        internal static PowerTierAmounts Read(TuningReader r, PowerTierAmounts d) => new PowerTierAmounts
+        {
+            Minor = r.Int("minor", d.Minor),
+            Major = r.Int("major", d.Major),
+            Mandatory = r.Int("mandatory", d.Mandatory)
+        };
+    }
+
+    /// <summary>Packet 17 — the political-power economy. JSON section <c>power</c>.</summary>
+    public sealed class PowerTuning
+    {
+        /// <summary>Master switch. False makes the whole packet inert and is the control in tests.</summary>
+        public bool Enabled { get; internal set; } = true;
+
+        /// <summary>Ceiling on one month's accrual, before any tier or outcome award.</summary>
+        public int MaxMonthlyGain { get; internal set; } = 5;
+
+        /// <summary>
+        /// Exponent shaping how the government's vote share scales the monthly accrual. 1 is linear;
+        /// above 1 makes a weak government earn disproportionately little.
+        /// </summary>
+        public double GainPopularityCurve { get; internal set; } = 1.0;
+
+        /// <summary>Power awarded per met slot, by tier.</summary>
+        public PowerTierAmounts SuccessGain { get; internal set; } = new PowerTierAmounts(10, 20, 50);
+
+        /// <summary>
+        /// Fraction of the tier's <see cref="SuccessGain"/> lost on a not-met slot. Below 1 so that
+        /// failing costs less than succeeding pays — the economy should reward engagement.
+        /// </summary>
+        public double FailureLossRatio { get; internal set; } = 0.5;
+
+        /// <summary>Power required to buy a slot off, by tier.</summary>
+        public PowerTierAmounts OverrideCost { get; internal set; } = new PowerTierAmounts(50, 100, 500);
+
+        /// <summary>
+        /// Fraction of city income debited per month while the balance is negative. Also the
+        /// <c>magnitudeCap</c> on the debt effect, which is not a <c>CityModifier</c> and so gets no
+        /// cap from <c>EffectDispatcher</c>.
+        /// </summary>
+        public double DebtRevenuePenalty { get; internal set; } = 0.20;
+
+        /// <summary>Absolute ceiling on one month's debt debit, whatever the city earns.</summary>
+        public int DebtPenaltyCapPerMonth { get; internal set; } = 50000;
+
+        /// <summary>Ledger entries kept for the UI.</summary>
+        public int LedgerRetention { get; internal set; } = 50;
+
+        internal static PowerTuning Read(TuningReader r, PowerTuning d) => new PowerTuning
+        {
+            Enabled = r.Flag("enabled", d.Enabled),
+            MaxMonthlyGain = r.Int("maxMonthlyGain", d.MaxMonthlyGain),
+            GainPopularityCurve = r.Num("gainPopularityCurve", d.GainPopularityCurve),
+            SuccessGain = PowerTierAmounts.Read(r.Section("successGain"), d.SuccessGain),
+            FailureLossRatio = r.Num("failureLossRatio", d.FailureLossRatio),
+            OverrideCost = PowerTierAmounts.Read(r.Section("overrideCost"), d.OverrideCost),
+            DebtRevenuePenalty = r.Num("debtRevenuePenalty", d.DebtRevenuePenalty),
+            DebtPenaltyCapPerMonth = r.Int("debtPenaltyCapPerMonth", d.DebtPenaltyCapPerMonth),
+            LedgerRetention = r.Int("ledgerRetention", d.LedgerRetention)
         };
     }
 }

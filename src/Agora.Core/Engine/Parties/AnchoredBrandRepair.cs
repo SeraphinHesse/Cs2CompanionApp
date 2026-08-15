@@ -131,7 +131,7 @@ namespace Agora.Core.Engine.Parties
             for (int i = 0; i < ordered.Count; i++)
             {
                 Party party = ordered[i];
-                PartyArchetype archetype = MatchingAnchoredArchetype(party, catalog);
+                PartyArchetype? archetype = MatchingAnchoredArchetype(party, catalog);
                 if (archetype == null) continue;
 
                 if (!string.IsNullOrEmpty(archetype.Name) &&
@@ -184,8 +184,8 @@ namespace Agora.Core.Engine.Parties
         /// The anchored catalog entry this party was generated from, or null. A party with a
         /// predecessor is a splinter and never matches, however its archetype id reads.
         /// </summary>
-        private static PartyArchetype MatchingAnchoredArchetype(Party party,
-                                                                IReadOnlyList<PartyArchetype> catalog)
+        private static PartyArchetype? MatchingAnchoredArchetype(Party party,
+                                                                 IReadOnlyList<PartyArchetype> catalog)
         {
             if (party == null) return null;
             if (!string.IsNullOrEmpty(party.PredecessorPartyId)) return null;

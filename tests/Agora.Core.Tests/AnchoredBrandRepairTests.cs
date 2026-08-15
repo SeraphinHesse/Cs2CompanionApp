@@ -39,7 +39,7 @@ namespace Agora.Core.Tests
             {
                 if (p.Id == id) return p;
             }
-            return null;
+            throw new Xunit.Sdk.XunitException("no party with id '" + id + "' in the registry");
         }
 
         [Fact]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Agora.Core.Stories;
 
 namespace Agora.Core.Contracts
 {
@@ -121,13 +122,41 @@ namespace Agora.Core.Contracts
     }
 
     /// <summary>
+    /// How punishing the political-power economy is — the player-facing name for the <c>power</c>
+    /// gain, cost and penalty presets.
+    /// </summary>
+    /// <remarks>
+    /// A level, not a number, for the same reason as <see cref="VoteSharpness"/>: the coefficients
+    /// live in tuning because a number that affects behaviour may not live in C# (<c>data/CLAUDE.md</c>
+    /// rule 4). <see cref="Default"/> carries no preset entry and means "whatever the tuning file's
+    /// own values are", so retuning the shipped economy reaches every save that never chose otherwise.
+    /// </remarks>
+    public enum PowerIntensity
+    {
+        Lenient = 0,
+        Default = 1,
+        Harsh = 2
+    }
+
+    /// <summary>
+    /// How hard a story's goals are to meet — the player-facing name for the <c>stories</c> check
+    /// scaling presets. Same <see cref="PowerIntensity">Default-means-leave-tuning-alone</see> rule.
+    /// </summary>
+    public enum StoryDifficulty
+    {
+        Forgiving = 0,
+        Default = 1,
+        Demanding = 2
+    }
+
+    /// <summary>
     /// Per-save settings. Lives in the sidecar, not in global config (non-negotiable #10). The only
     /// exceptions are the master toggle and anything that must work before a save exists — those
     /// stay in the mod's own options page.
     /// </summary>
     public sealed class AgoraSettings
     {
-        public int SchemaVersion { get; set; } = 3;
+        public int SchemaVersion { get; set; } = 4;
 
         /// <summary>Political start year. Default 1990, chosen at save creation, locked afterward (§3).</summary>
         public int StartYear { get; set; } = 1990;
@@ -199,6 +228,51 @@ namespace Agora.Core.Contracts
         /// <summary>How tightly fixed party brands hold their archetype at generation.</summary>
         public BrandDiscipline BrandDiscipline { get; set; } = BrandDiscipline.Default;
 
+        // ------------------------------------------------------------------ the story system (v4)
+        //
+        // Every number the design document names is balanceable from here or from `stories`/`power`
+        // tuning. There is deliberately no StoryResolutionDay: a sim "day" is a calendar month, so
+        // there is no day 15 to resolve on — see the rework plan's "Why not half a month". The
+        // cadence tunable is `stories.cycleMonths`.
+
+        /// <summary>
+        /// Master switch for the story layer within this save. Off leaves the rest of the political
+        /// engine running exactly as before, which is what makes it a safe thing to turn off.
+        /// </summary>
+        public bool StoriesEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Stories drafted per cycle. <b>Wins over <c>stories.storiesPerCycle</c> when set</b>
+        /// (greater than zero); the tuning key is the fallback.
+        /// </summary>
+        /// <remarks>
+        /// Per-save settings live in the sidecar, not in global config — non-negotiable #10 — so
+        /// where a setting and a tuning key name the same quantity, the setting is the player's
+        /// answer and tuning is the default they never overrode. The pattern to copy is
+        /// <c>TickPlanner.SnapshotsToPrune</c>, which resolves <c>SnapshotRetention</c> against
+        /// <c>scheduler.snapshotRetention</c> the same way and states the same reason. "Set" is
+        /// <c>&gt; 0</c> rather than a nullable, matching that precedent.
+        /// </remarks>
+        public int StoriesPerCycle { get; set; } = 2;
+
+        /// <summary>
+        /// Events bundled into one story. <b>Wins over <c>stories.eventsPerStory</c> when set</b>,
+        /// on the same rule as <see cref="StoriesPerCycle"/>.
+        /// </summary>
+        public int EventsPerStory { get; set; } = 3;
+
+        /// <summary>
+        /// Master switch for the political-power currency. Off means overrides are unavailable and
+        /// no debt penalty can arise; stories still draft and resolve.
+        /// </summary>
+        public bool PoliticalPowerEnabled { get; set; } = true;
+
+        /// <summary>How punishing the power economy is.</summary>
+        public PowerIntensity PowerIntensity { get; set; } = PowerIntensity.Default;
+
+        /// <summary>How hard story goals are to meet.</summary>
+        public StoryDifficulty StoryDifficulty { get; set; } = StoryDifficulty.Default;
+
         /// <summary>
         /// A field-by-field copy.
         /// </summary>
@@ -234,7 +308,13 @@ namespace Agora.Core.Contracts
                 ShowAllReports = ShowAllReports,
                 VoteSharpness = VoteSharpness,
                 NewsInfluence = NewsInfluence,
-                BrandDiscipline = BrandDiscipline
+                BrandDiscipline = BrandDiscipline,
+                StoriesEnabled = StoriesEnabled,
+                StoriesPerCycle = StoriesPerCycle,
+                EventsPerStory = EventsPerStory,
+                PoliticalPowerEnabled = PoliticalPowerEnabled,
+                PowerIntensity = PowerIntensity,
+                StoryDifficulty = StoryDifficulty
             };
         }
     }
@@ -328,7 +408,7 @@ namespace Agora.Core.Contracts
         /// object that was never v4 and "upgraded" fields it had never written. Whoever bumps
         /// <c>CurrentStateVersion</c> bumps this in the same commit.
         /// </remarks>
-        public int SchemaVersion { get; set; } = 5;
+        public int SchemaVersion { get; set; } = 6;
 
         /// <summary>
         /// Agora's own save identity (§5). Written into the save via the serialization hooks, never
@@ -444,5 +524,70 @@ namespace Agora.Core.Contracts
         /// never had flavor. The engine never waits on it (#7).
         /// </summary>
         public SimDate? LastFlavorDate { get; set; }
+
+        // ------------------------------------------------------------------ the story system (v6)
+        //
+        // Every list below carries a DOCUMENTED SORT KEY, and that is not decoration: the determinism
+        // contract is the SHA-256 of this object's serialization, so a list whose order depends on
+        // insertion — or a Dictionary keyed by event id — fails it outright while nothing is
+        // actually wrong. Every member also has a setter, because CloneStateCoverageTests filters on
+        // CanWrite and a get-only member is one the guard silently skips.
+        //
+        // Story events deliberately do NOT enter ActiveEvents. Two stories of three events would sit
+        // at catalog.maxConcurrentEvents (6) and start refusing to fire timeline events; worse,
+        // AffinityEngine.EventTerm sums over every live event and clamps to [-1,+1] BEFORE weighting,
+        // so at that volume the clamp saturates permanently and the event term stops discriminating
+        // between a flood and a bus-fare rise. Stories contribute pressure through their own term
+        // with its own budget.
+
+        /// <summary>Stories currently open, sorted by <c>Id</c> ordinal.</summary>
+        public List<Story> LiveStories { get; set; } = new List<Story>();
+
+        /// <summary>
+        /// Resolved stories, sorted by <c>(ResolvedMonth descending, Id ordinal)</c>.
+        /// </summary>
+        /// <remarks>
+        /// <b>Intended to be bounded by <c>stories.archiveRetention</c>, and nothing enforces that
+        /// yet.</b> Wave 2 writes no story here — archiving happens where a story is retired, which
+        /// lands with the tick wiring in wave 4 — so the trim is that wave's obligation and is
+        /// recorded as such rather than left implied by this comment. An earlier draft simply
+        /// asserted "bounded by", which is the kind of claim that goes unchecked for a year and then
+        /// turns out never to have been true.
+        /// <para>
+        /// Do not make anything <i>depend</i> on the bound for correctness. The re-use cooldown
+        /// deliberately does not: gating re-use on archive membership couples it to
+        /// <c>archiveRetention × eventsPerStory</c> and empties a finite catalog permanently. See
+        /// <see cref="EventPoolEntry.LastDraftedMonth"/>.
+        /// </para>
+        /// </remarks>
+        public List<Story> StoryArchive { get; set; } = new List<Story>();
+
+        /// <summary>Triggered events awaiting a draw, sorted by <c>EventId</c> ordinal.</summary>
+        public List<EventPoolEntry> EventPool { get; set; } = new List<EventPoolEntry>();
+
+        /// <summary>The political-power currency. Never null.</summary>
+        public PoliticalPowerState Power { get; set; } = new PoliticalPowerState();
+
+        /// <summary>
+        /// The ordered, dated log of player decisions, sorted by
+        /// <c>(DecidedMonth, Sequence, EventId ordinal)</c>.
+        /// </summary>
+        /// <remarks>
+        /// This log <b>is</b> engine state, per the amendment to non-negotiable #3 recorded on
+        /// <see cref="PlayerCommand"/>. It is replayed, never re-solicited, which is what lets an
+        /// asynchronous player choice sit inside a deterministic engine.
+        /// </remarks>
+        public List<PlayerCommand> PlayerCommands { get; set; } = new List<PlayerCommand>();
+
+        /// <summary>
+        /// Last month a story draft ran, as <see cref="SimDate.TotalMonths"/>. -1 means never.
+        /// The draft phase's own idempotence guard.
+        /// </summary>
+        public int LastStoryDraftMonth { get; set; } = -1;
+
+        /// <summary>
+        /// Last month a story resolution ran, as <see cref="SimDate.TotalMonths"/>. -1 means never.
+        /// </summary>
+        public int LastStoryResolveMonth { get; set; } = -1;
     }
 }

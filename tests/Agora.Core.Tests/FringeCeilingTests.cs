@@ -409,7 +409,8 @@ namespace Agora.Core.Tests
         [Fact]
         public void EmptyOrNullRow_IsHandled()
         {
-            FringeCeiling.ApplyToRow(null, CeilingsFor(0.03, "party-03"), T);
+            // null! throughout this file: a null argument is the case under test.
+            FringeCeiling.ApplyToRow(null!, CeilingsFor(0.03, "party-03"), T);
             FringeCeiling.ApplyToRow(new List<BlocAffinity>(), CeilingsFor(0.03, "party-03"), T);
         }
 
@@ -437,7 +438,7 @@ namespace Agora.Core.Tests
 
             Assert.False(c.TryGet("party-01", out v));
             Assert.False(c.TryGet("", out v));
-            Assert.False(c.TryGet(null, out v));
+            Assert.False(c.TryGet(null!, out v));
         }
 
         /// <summary>A duplicate keeps the stricter of the two, not whichever arrived last.</summary>
@@ -479,7 +480,7 @@ namespace Agora.Core.Tests
         [Fact]
         public void FromList_OfNothing_IsEmpty()
         {
-            Assert.True(FringeCeilings.FromList(null).IsEmpty);
+            Assert.True(FringeCeilings.FromList(null!).IsEmpty);
             Assert.True(FringeCeilings.FromList(new List<PartyCeiling>()).IsEmpty);
             Assert.True(FringeCeilings.None.IsEmpty);
         }
