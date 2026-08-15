@@ -533,13 +533,13 @@ namespace Agora.Core.Tests
 
             StoryDraftResult result = Draft(catalog, pool);
 
-            Assert.Equal(1, Count(Ordinary(result)));
+            // A story was drafted at all, it is led by a minor wearing the Major role, and the fact
+            // was recorded for the log. Promotion is a shape, not a shortfall.
+            Assert.NotEmpty(Ordinary(result));
             Assert.NotEmpty(result.Degradations);
 
             foreach (Story story in Ordinary(result))
             {
-                Assert.Equal(Tuning.Stories.EventsPerStory, story.Slots.Count);
-
                 int majors = 0;
                 foreach (StorySlot slot in story.Slots)
                 {
@@ -547,7 +547,12 @@ namespace Agora.Core.Tests
                 }
 
                 Assert.Equal(1, majors);
+                Assert.True(story.Slots.Count > 0);
             }
+
+            // How the scarce events are spread ACROSS the cycle's stories is asserted separately, in
+            // Draft_FillsOneStoryBeforeOpeningAnother — it is a distinct claim and it is currently in
+            // dispute, so folding it in here would make this test fail for a reason it is not about.
         }
 
         /// <summary>
@@ -621,13 +626,116 @@ namespace Agora.Core.Tests
 
             StoryDraftResult result = Draft(catalog, pool);
 
-            Assert.Equal(1, Count(Ordinary(result)));
+            // The cycle did not throw the major away for want of two minors to go with it: something
+            // was drafted, every event available was used, and the shortfall was logged.
+            Assert.NotEmpty(Ordinary(result));
             Assert.NotEmpty(result.Degradations);
+
+            HashSet<string> drawn = DrawnIds(result);
+            Assert.Contains("evt-major-00", drawn);
+            Assert.Contains("evt-minor-00", drawn);
 
             foreach (Story story in Ordinary(result))
             {
-                Assert.Equal(2, story.Slots.Count);
+                Assert.True(story.Slots.Count > 0, "A story was opened with no slots in it at all.");
                 Assert.True(story.Slots.Count < Tuning.Stories.EventsPerStory);
+            }
+        }
+
+        /// <summary>
+        /// <b>A minor must not be promoted while a real major is still available.</b> Promotion exists
+        /// for "no major left"; here one was left, and it was only unavailable because the draft had
+        /// already given it to a different story.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This currently fails, and I believe the implementation is wrong rather than the
+        /// assertion.</b> With exactly one major and one minor in the pool, the draft opens two
+        /// stories: the first led by the real major, the second led by the minor promoted into the
+        /// Major role — and then neither has anything left to fill it, so both come out one slot long.
+        /// The alternative was available and strictly better: one story of <c>[major, minor]</c>, no
+        /// promotion, one degradation instead of three.
+        /// </para>
+        /// <para>
+        /// The cause is that leads are allocated greedily — one per story for the whole cycle, before
+        /// any story is filled — so story 1 finds the majors list already empty and takes the
+        /// promotion branch. The promotion is manufactured by the allocation order rather than by the
+        /// pool's actual contents, which is what makes this a defect rather than a policy choice: the
+        /// degradation the log reports did not happen.
+        /// </para>
+        /// <para>
+        /// It is not merely cosmetic. A one-slot story is decided by a single slot, and a story of
+        /// fewer than three needs <i>all</i> its scored slots — so splitting one two-slot story into
+        /// two one-slot stories doubles the number of all-or-nothing verdicts the player faces and
+        /// changes what the cycle pays out.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void Draft_DoesNotPromoteAMinorWhileARealMajorIsAvailable()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            Build(new[] { StoryTestFixtures.Major("evt-major-00"), StoryTestFixtures.Minor("evt-minor-00") },
+                  out catalog, out pool);
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            foreach (string degradation in result.Degradations)
+            {
+                Assert.False(degradation.StartsWith("minor-promoted", StringComparison.Ordinal),
+                    "A minor was promoted although the pool held a real major: " + degradation +
+                    ". Promotion is for 'no major left', and one was left — it had already been " +
+                    "given to another story by the greedy lead allocation.");
+            }
+        }
+
+        /// <summary>
+        /// <b>Scarce events fill one story before another is opened.</b> Spreading them thin maximises
+        /// exactly the degradations the draft is supposed to minimise.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This currently fails, and is the general form of the defect above.</b> Three minors and
+        /// no major produce two stories — <c>[promoted, minor]</c> and <c>[promoted]</c> — and so two
+        /// promotions and two short-story degradations. Concentrating them gives one full three-slot
+        /// story with a single promotion: the same events, a better story, and a quarter of the
+        /// degradations.
+        /// </para>
+        /// <para>
+        /// Asserted as "no story is opened while an earlier one is still short" rather than as a story
+        /// count, because the count depends on <c>storiesPerCycle</c> and on how many events happen to
+        /// be available. The invariant is what matters and it holds at every pool size: an unfilled
+        /// story means there was nothing left to fill it with, not that the leftovers went elsewhere.
+        /// </para>
+        /// <para>
+        /// A one-slot ordinary story is also the shape the design reserves for a <i>mandatory</i>
+        /// event — the bare single-slot story — so producing them by accident blurs a distinction the
+        /// UI and the power economy both read.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void Draft_FillsOneStoryBeforeOpeningAnother()
+        {
+            var events = new List<CivicEvent>();
+            for (int i = 0; i < Tuning.Stories.EventsPerStory; i++)
+            {
+                events.Add(StoryTestFixtures.Minor("evt-minor-" + i.ToString("00")));
+            }
+
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            Build(events, out catalog, out pool);
+
+            var drafted = new List<Story>(Ordinary(Draft(catalog, pool)));
+
+            for (int i = 0; i < drafted.Count - 1; i++)
+            {
+                Assert.True(drafted[i].Slots.Count >= Tuning.Stories.EventsPerStory,
+                    "Story '" + drafted[i].Id + "' holds " + drafted[i].Slots.Count + " of " +
+                    Tuning.Stories.EventsPerStory + " slots, yet '" + drafted[i + 1].Id +
+                    "' was opened as well. The events that would have filled the first were spread " +
+                    "into the second, which manufactures a promotion and two short stories where " +
+                    "one full story was available from the same pool.");
             }
         }
 
@@ -664,6 +772,95 @@ namespace Agora.Core.Tests
                 {
                     Assert.NotEqual("evt-retired-content", slot.EventId);
                 }
+            }
+        }
+
+        // --- Manual-triggered events are not pool members -----------------------------------------
+
+        /// <summary>
+        /// <b>The refresh does not adopt a <see cref="TriggerKind.Manual"/> event.</b> It never fires
+        /// from the city, so nothing about the city can put it in the pool.
+        /// </summary>
+        /// <remarks>
+        /// Ruling 11, and it is worth its own test rather than being left implied. This behaviour is
+        /// invisible from the engine's side — the skip is one <c>continue</c> before eligibility is
+        /// considered — and the whole wave-2 fixture set was built on the opposite reading of the same
+        /// sentence, which is how it came to be ruled on at all.
+        /// </remarks>
+        [Fact]
+        public void Draft_NeverAdoptsAManualTriggeredEvent()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            catalog.Add(StoryTestFixtures.ManualTriggered("evt-introduced-elsewhere",
+                                                          Tuning.Stories.MajorSeverityThreshold));
+            catalog.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            Assert.Null(Find(result.UpdatedPool, "evt-introduced-elsewhere"));
+            Assert.DoesNotContain("evt-introduced-elsewhere", DrawnIds(result));
+        }
+
+        /// <summary>
+        /// <b>And it drops one already carried in the pool</b> — the skip is before eligibility, so a
+        /// Manual event is not merely un-admitted but actively released.
+        /// </summary>
+        /// <remarks>
+        /// The distinction matters on a save whose catalog changed: an event that was pooled under a
+        /// metric trigger and is re-authored as Manual must leave rather than sit there forever,
+        /// eligible for a draw the refresh will never re-confirm.
+        /// </remarks>
+        [Fact]
+        public void Draft_ReleasesAManualTriggeredEventAlreadyInThePool()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            catalog.Add(StoryTestFixtures.ManualTriggered("evt-rewritten-as-manual",
+                                                          Tuning.Stories.MajorSeverityThreshold));
+            catalog.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            pool.Add(StoryTestFixtures.Pooled("evt-rewritten-as-manual", missStreak: 3));
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            Assert.Null(Find(result.UpdatedPool, "evt-rewritten-as-manual"));
+            Assert.DoesNotContain("evt-rewritten-as-manual", DrawnIds(result));
+        }
+
+        /// <summary>
+        /// A mandatory-severity event with a Manual trigger is excluded too, and this is the pairing
+        /// ruling 11 was written to prevent anyone assuming their way past. <b>Manual is a trigger
+        /// kind; mandatory is a tier derived from severity.</b> They are orthogonal, so a Manual
+        /// trigger removes even a severity-5 event from the pool entirely and it will never produce a
+        /// story.
+        /// </summary>
+        [Fact]
+        public void Draft_ExcludesAManualTriggeredEventEvenAtMandatorySeverity()
+        {
+            List<CivicEvent> catalog;
+            List<EventPoolEntry> pool;
+            FullPool(out catalog, out pool);
+
+            catalog.Add(StoryTestFixtures.ManualTriggered("evt-manual-mandatory",
+                                                          Tuning.Stories.MandatorySeverityThreshold));
+            catalog.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            pool.Add(StoryTestFixtures.Pooled("evt-manual-mandatory"));
+
+            StoryDraftResult result = Draft(catalog, pool);
+
+            Assert.Null(Find(result.UpdatedPool, "evt-manual-mandatory"));
+
+            foreach (Story story in result.DraftedStories)
+            {
+                Assert.False(story.IsMandatory && story.Slots.Count == 1 &&
+                             story.Slots[0].EventId == "evt-manual-mandatory",
+                    "A Manual-triggered event was delivered as a mandatory story. Manual is a " +
+                    "trigger kind and mandatory is a tier; a Manual trigger takes the event out of " +
+                    "the pool whatever its severity.");
             }
         }
 

@@ -204,14 +204,53 @@ namespace Agora.Core.Tests
         // --- events ---------------------------------------------------------------------------
 
         /// <summary>
-        /// An authored event with a <see cref="TriggerKind.Manual"/> trigger unless a fixture supplies
-        /// one.
+        /// A trigger every fixture snapshot in this file satisfies: population at or above zero.
         /// </summary>
         /// <remarks>
-        /// <b>Manual is the deliberate default, and it is what decouples the drafting tests from lane
-        /// 2a.</b> A manual trigger never fires from the city, so a catalog built out of these adds
-        /// nothing to the pool on a refresh — which lets a draft test state its own pool outright and
-        /// assert about the draw rather than about the evaluator.
+        /// <para>
+        /// Chosen so that no test can accidentally make its own catalog ineligible. Population is on
+        /// every snapshot, <see cref="City"/> defaults it to a real figure, and no fixture anywhere
+        /// sets a negative one — so this evaluates <see cref="CheckResult.Met"/> whatever else a test
+        /// varies. A trigger on happiness or unemployment would fire or not depending on values other
+        /// tests legitimately move, which is a fixture that breaks at a distance.
+        /// </para>
+        /// <para>
+        /// It goes through 2a's evaluator like any other trigger. That is the point of it.
+        /// </para>
+        /// </remarks>
+        internal static TriggerSpec AlwaysEligible() =>
+            Metric(MetricHistory.Population, Comparison.GreaterThanOrEqual, 0.0);
+
+        /// <summary>
+        /// An authored event, eligible for the pool unless a fixture supplies its own trigger.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The default used to be a <see cref="TriggerKind.Manual"/> trigger, and that was wrong —
+        /// though for a reason nobody could see until every lane was merged.</b> The reasoning was
+        /// that a trigger which never fires from the city lets a drafting test state its pool outright
+        /// and assert about the draw rather than about the evaluator. Ruling 11 settles what that
+        /// actually means: a Manual event is not a pool member at all, so the refresh neither admits
+        /// one nor retains one already carried. A catalog of them is discarded before eligibility is
+        /// even considered, every draft comes back empty, and the tests asserting about the draw were
+        /// asserting about nothing.
+        /// </para>
+        /// <para>
+        /// <b>So the default is a real trigger, and the drafting tests now depend on 2a's evaluator.
+        /// That is a genuine cost</b> — a failure in the evaluator will now surface as a drafting
+        /// failure, and the two are no longer independently diagnosable from the test names alone. The
+        /// compensation is worth more than the cost: a drafting test now runs the eligibility path the
+        /// engine actually runs, rather than a pool asserted into existence by a route the engine has
+        /// no equivalent of.
+        /// </para>
+        /// <para>
+        /// The default <see cref="Check"/> stays Manual, and that is deliberate rather than an
+        /// oversight: it means "this event has no measurable goal", which is a legitimate thing for an
+        /// event to be and evaluates <see cref="CheckResult.Unmeasurable"/> at resolution. Every test
+        /// that scores a slot supplies its own check. Manual is fine on a <i>check</i> and fatal on a
+        /// <i>trigger</i> — the two are read by different code with different rules, which is the
+        /// distinction ruling 11 exists to draw.
+        /// </para>
         /// </remarks>
         internal static CivicEvent Event(string id, int severity, TriggerSpec? trigger = null,
                                          CheckSpec? check = null, string? name = null)
@@ -221,11 +260,23 @@ namespace Agora.Core.Tests
                 Id = id,
                 Severity = severity,
                 Region = EventRegion.Global,
-                Trigger = trigger ?? OfKind(TriggerKind.Manual, ""),
+                Trigger = trigger ?? AlwaysEligible(),
                 Check = check ?? Check(OfKind(TriggerKind.Manual, "")),
                 Name = name ?? ("Event " + id)
             };
         }
+
+        /// <summary>
+        /// An event the pool refresh must refuse: same in every respect except that its trigger is
+        /// <see cref="TriggerKind.Manual"/>.
+        /// </summary>
+        /// <remarks>
+        /// Kept, now that it is no longer the default, precisely because the exclusion is worth
+        /// pinning in its own right — it is what ruling 11 decided, and it is invisible from the
+        /// engine's side without a fixture that carries one.
+        /// </remarks>
+        internal static CivicEvent ManualTriggered(string id, int severity) =>
+            Event(id, severity, trigger: OfKind(TriggerKind.Manual, ""));
 
         /// <summary>A minor event, at a severity below <c>stories.majorSeverityThreshold</c>.</summary>
         internal static CivicEvent Minor(string id, CheckSpec? check = null) =>
