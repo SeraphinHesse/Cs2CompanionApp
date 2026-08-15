@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
 using Colossal.Entities;
@@ -46,7 +47,10 @@ namespace Agora.Mod.Sensors
         private GarbageAccumulationSystem _garbageAccumulation;
 
         /// <summary>
-        /// Set once the collection-type census has been written to the log. Deliberately not cleared
+        /// Set once the collection-type census has actually been written, or once it has thrown. An
+        /// <i>empty</i> census does not latch it, so a first sample taken before the statistic
+        /// prefabs exist retries; a throwing one does, because that will not fix itself and a daily
+        /// warning would be noise. Deliberately not cleared
         /// by <see cref="Invalidate"/>: the statistic prefabs are the same for every save loaded in a
         /// session, so re-logging sixty-odd lines per load would be noise, not information.
         /// </summary>
@@ -100,10 +104,22 @@ namespace Agora.Mod.Sensors
 
         protected override void Sample(SimDate date)
         {
+            // A diagnostic must never be able to cost a measurement: a throw here would reach
+            // AgoraSensorSystemBase.TrySample and discard the whole day's statistics and garbage
+            // reading over a census nobody's city depends on.
             if (!_loggedCollectionTypes)
             {
-                _loggedCollectionTypes = true;
-                LogCollectionTypes();
+                try
+                {
+                    _loggedCollectionTypes = LogCollectionTypes();
+                }
+                catch (Exception ex)
+                {
+                    _loggedCollectionTypes = true;
+                    AgoraMod.Log.Warn("AGORA-STATCOLLECTION census failed (" + ex.GetType().Name +
+                                      ": " + ex.Message + "); scout 0004 Q2 stays open for this " +
+                                      "session. Measurements are unaffected.");
+                }
             }
 
             _city.Statistics = ReadStatistics();
@@ -178,12 +194,14 @@ namespace Agora.Mod.Sensors
             long cityGarbage = 0L;
             int visited = 0;
             int total;
+            bool subsampled;
 
             NativeArray<Entity> producers = _garbageProducerQuery.ToEntityArray(Allocator.TempJob);
             try
             {
                 total = producers.Length;
                 int stride = SubsampleStride(total);
+                subsampled = stride > 1;
 
                 for (int i = 0; i < total; i++)
                 {
@@ -193,13 +211,17 @@ namespace Agora.Mod.Sensors
                     // residents walk does: chunk order is not stable across loads, so a positional
                     // stride would visit a different set of buildings each capture and quietly make
                     // the snapshot non-reproducible.
-                    if (stride > 1 && (producer.Index % stride) != 0) continue;
+                    if (subsampled && (producer.Index % stride) != 0) continue;
 
                     GarbageProducer garbage;
                     if (!EntityManager.TryGetComponent(producer, out garbage)) continue;
 
                     visited++;
                     cityGarbage += garbage.m_Garbage;
+
+                    // No district tally under a stride: the per-district figures are withheld in that
+                    // case, for the reason set out where they are published below.
+                    if (subsampled) continue;
 
                     CurrentDistrict currentDistrict;
                     if (!EntityManager.TryGetComponent(producer, out currentDistrict)) continue;
@@ -219,9 +241,11 @@ namespace Agora.Mod.Sensors
             // Under the emergency cap this is a sum over a subset, and a sum — unlike the shares and
             // averages the other walks produce — does not survive subsampling on its own
             // (SensorCalibration.MaxBuildingsPerCapture says so in as many words). Scaling it back up
-            // by the sampled fraction keeps the metric meaning the same quantity whatever the cap is
-            // set to, at the cost of sampling noise. With the default cap of 0 the walk is exhaustive
-            // and the factor is exactly 1.
+            // by the sampled fraction is an unbiased estimator over the whole city, where the
+            // unscaled alternative is biased low by a factor of the stride. This deviates from
+            // AgoraResidentsSensorSystem, which does not extrapolate — deliberately, because it
+            // publishes shares and averages, which need no correction. With the default cap of 0 the
+            // walk is exhaustive and the factor is exactly 1.
             double scale = visited > 0 && visited < total ? (double)total / visited : 1.0;
 
             _city.UncollectedGarbage = cityGarbage * scale;
@@ -234,14 +258,25 @@ namespace Agora.Mod.Sensors
                 long districtGarbage;
                 if (!byDistrict.TryGetValue(entry.Entity, out districtGarbage)) continue;
 
-                // Zero is published here, not withheld: the walk covered every producer in the city,
-                // so a district that contributed nothing has no garbage waiting in it — which is a
-                // measurement, not an absence of one.
+                // Zero is published, not withheld, and the invariant that licenses it is that the
+                // walk was exhaustive: every producer in the city was visited, so a district that
+                // contributed nothing has no garbage waiting in it — a measurement, not an absence
+                // of one.
+                //
+                // Under a stride that invariant does not hold, and the estimator that works city-wide
+                // does not survive being cut into district-sized pieces. A district with forty
+                // producers sampled at stride 25 expects fewer than two hits: it draws none about one
+                // capture in five, which would publish a confident 0.0 over a week of uncollected
+                // rubbish, and when it is hit, two producers holding 800 each scale to 40,000 against
+                // a truth nearer 24,000. Alternating between those two readings is exactly the shape
+                // of a garbage crisis to a delta trigger. So the district figure is withheld: null
+                // means "not measured here", assembly records the CityFallbackFields marker, and the
+                // marker is the honest claim.
                 _districts[entry.Id] = new DistrictReading
                 {
                     Id = entry.Id,
                     Name = entry.Name,
-                    UncollectedGarbage = districtGarbage * scale,
+                    UncollectedGarbage = subsampled ? (double?)null : districtGarbage,
                 };
             }
         }
@@ -269,7 +304,14 @@ namespace Agora.Mod.Sensors
         /// and sorted so the block can be grepped out of <c>Agora.log</c> and pasted into the handoff
         /// unedited.
         /// </remarks>
-        private void LogCollectionTypes()
+        /// <returns>
+        /// True once the census has actually been written. An empty result is <b>not</b> a census:
+        /// if the first sample of a session lands before the statistic prefabs reach the entity
+        /// manager, latching on it would log "0 statistic prefabs" and leave Q2 unanswerable from
+        /// that player's log for the whole session — a round trip to a player to discover, and a
+        /// blocked wave 3 in the meantime. So a zero-row result retries on the next sample.
+        /// </returns>
+        private bool LogCollectionTypes()
         {
             var rows = new List<StatisticsData>();
 
@@ -286,6 +328,8 @@ namespace Agora.Mod.Sensors
             {
                 data.Dispose();
             }
+
+            if (rows.Count == 0) return false;
 
             // Sorted by statistic id so two players' logs are diffable line for line. Ties are broken
             // by collection type, which keeps the order total for the parametric statistics that
@@ -311,6 +355,7 @@ namespace Agora.Mod.Sensors
             }
 
             AgoraMod.Log.Info("AGORA-STATCOLLECTION end");
+            return true;
         }
 
         /// <summary>
