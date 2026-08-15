@@ -46,34 +46,37 @@ namespace Agora.Core.Stories
         /// <see cref="CheckResult.Unmeasurable"/> when the reading is unavailable — which is never
         /// the same as not met.
         /// </returns>
+        /// <param name="tuning">
+        /// Required. It carries <c>stories.deltaWindowSlackMonths</c>, which bounds how stale a
+        /// <see cref="TriggerKind.Delta"/>'s earlier sample may be.
+        /// </param>
         /// <remarks>
+        /// <para>
         /// <b>Never throws, whatever it is handed.</b> A null <see cref="TriggerSpec"/>, a null
-        /// <see cref="StoryReadContext"/>, a null <c>Today</c> and an empty <c>MetricId</c> all
-        /// degrade to <see cref="CheckResult.Unmeasurable"/>. That is a stated contract rather than
-        /// defensive habit: this is the entry point a wave-3 catalog loader will feed authored JSON
-        /// into, so a malformed entry has to become a reading nobody can take — which costs the
-        /// player nothing — rather than an exception on the sim thread, which takes the game down.
-        /// </remarks>
-        public static CheckResult Evaluate(TriggerSpec spec, StoryReadContext context)
-        {
-            return Evaluate(spec, context, null);
-        }
-
-        /// <summary>
-        /// As <see cref="Evaluate(TriggerSpec, StoryReadContext)"/>, with the tuning that bounds how
-        /// stale a <see cref="TriggerKind.Delta"/>'s earlier sample may be.
-        /// </summary>
-        /// <remarks>
-        /// The two-argument form is the published seam and stays exactly as it was; this overload
-        /// exists because <c>stories.deltaWindowSlackMonths</c> has to reach the evaluator and the
-        /// seam carries no <see cref="EngineTuning"/>. A caller that has tuning in hand — 2b and 2c
-        /// both do — should call this one; the two-argument form falls back to the shipped default
-        /// for the key rather than to a number written into this file.
+        /// <see cref="StoryReadContext"/>, a null <c>Today</c>, a null <see cref="EngineTuning"/> and
+        /// an empty <c>MetricId</c> all degrade to <see cref="CheckResult.Unmeasurable"/>. That is a
+        /// stated contract rather than defensive habit: this is the entry point a wave-3 catalog
+        /// loader will feed authored JSON into, so a malformed entry has to become a reading nobody
+        /// can take — which costs the player nothing — rather than an exception on the sim thread,
+        /// which takes the game down.
+        /// </para>
+        /// <para>
+        /// <b><paramref name="tuning"/> is required rather than defaulted, and there is deliberately
+        /// no shorter overload.</b> An overload that fell back to the shipped default would let a
+        /// caller ignore the player's tuned slack with nothing anywhere saying so — the silent
+        /// wrong answer this class spends its whole budget refusing. A compile error is the better
+        /// failure: every caller already holds tuning, so the cost is one argument. The parameter is
+        /// non-nullable for the same reason — the signature should not invite a null — while the
+        /// body still degrades one to <see cref="CheckResult.Unmeasurable"/>, because a slack that
+        /// cannot be read is not a licence to invent one.
+        /// </para>
         /// </remarks>
         public static CheckResult Evaluate(TriggerSpec spec, StoryReadContext context,
-                                           EngineTuning? tuning)
+                                           EngineTuning tuning)
         {
             if (spec == null || context == null || context.Today == null) return CheckResult.Unmeasurable;
+            if (tuning == null || tuning.Stories == null) return CheckResult.Unmeasurable;
+
             return EvaluateAgainst(spec, spec.Threshold, context, SlackMonths(tuning));
         }
 
@@ -91,19 +94,13 @@ namespace Agora.Core.Stories
         /// the baseline from the reading. The two are the same arithmetic for all four comparisons,
         /// and shifting is what keeps this method from owning a second copy of the scope and
         /// unmeasurability rules: everything after the shift is <see cref="Evaluate"/>'s own path.
+        /// <para>
+        /// <paramref name="tuning"/> is required, and null-tolerant in the body, on exactly the rule
+        /// stated on <see cref="Evaluate(TriggerSpec, StoryReadContext, EngineTuning)"/>.
+        /// </para>
         /// </remarks>
         public static CheckResult EvaluateCheck(CheckSpec check, double? baseline,
-                                                StoryReadContext context)
-        {
-            return EvaluateCheck(check, baseline, context, null);
-        }
-
-        /// <summary>
-        /// As <see cref="EvaluateCheck(CheckSpec, double?, StoryReadContext)"/>, with the tuning that
-        /// bounds how stale a <see cref="TriggerKind.Delta"/>'s earlier sample may be.
-        /// </summary>
-        public static CheckResult EvaluateCheck(CheckSpec check, double? baseline,
-                                                StoryReadContext context, EngineTuning? tuning)
+                                                StoryReadContext context, EngineTuning tuning)
         {
             // A CheckSpec whose Spec is null is exactly what a malformed catalog entry deserialises
             // to, and the guard one level up in 2c tests the CheckSpec rather than the TriggerSpec
@@ -111,6 +108,7 @@ namespace Agora.Core.Stories
             // being discovered by the first bad entry.
             if (check == null || check.Spec == null) return CheckResult.Unmeasurable;
             if (context == null || context.Today == null) return CheckResult.Unmeasurable;
+            if (tuning == null || tuning.Stories == null) return CheckResult.Unmeasurable;
 
             int slack = SlackMonths(tuning);
             TriggerSpec spec = check.Spec;
@@ -127,22 +125,19 @@ namespace Agora.Core.Stories
         }
 
         /// <summary>
-        /// The shipped default for <c>stories.deltaWindowSlackMonths</c>, for the seam overloads that
-        /// are handed no tuning. Read off <see cref="StoriesTuning"/>'s own declaration rather than
-        /// written out here, so the fallback cannot drift from the key it stands in for — a tuning
-        /// constant written into C# is what <c>data/CLAUDE.md</c> rule 4 forbids.
+        /// <c>stories.deltaWindowSlackMonths</c>, as this file is willing to use it.
         /// </summary>
-        private static readonly StoriesTuning DefaultStories = new StoriesTuning();
-
-        private static int SlackMonths(EngineTuning? tuning)
+        /// <remarks>
+        /// Called only after the two public methods have established that the tuning and its
+        /// <c>stories</c> block are both present. There is no default instance to fall back on and
+        /// that is the point: a slack this file could not read is answered as an unreadable slack,
+        /// not as the shipped one.
+        /// </remarks>
+        private static int SlackMonths(EngineTuning tuning)
         {
-            StoriesTuning stories = tuning != null && tuning.Stories != null
-                ? tuning.Stories
-                : DefaultStories;
-
             // A negative slack would put the accepted band after the month asked for and refuse every
             // sample. Clamped rather than trusted; netstandard2.0 has no Math.Clamp.
-            int slack = stories.DeltaWindowSlackMonths;
+            int slack = tuning.Stories.DeltaWindowSlackMonths;
             return slack < 0 ? 0 : slack;
         }
 
