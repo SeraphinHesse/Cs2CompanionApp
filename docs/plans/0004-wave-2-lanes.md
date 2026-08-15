@@ -139,8 +139,8 @@ A lane must not have to guess at a name another lane owns.
 
 | Seam | Signature | Written by | Read by |
 |---|---|---|---|
-| Trigger evaluation | `CheckResult TriggerEvaluator.Evaluate(TriggerSpec, StoryReadContext)` | 2a | 2b, 2e |
-| Check evaluation | `CheckResult TriggerEvaluator.EvaluateCheck(CheckSpec, double? baseline, StoryReadContext)` | 2a | 2c, 2e |
+| Trigger evaluation | `CheckResult TriggerEvaluator.Evaluate(TriggerSpec, StoryReadContext, EngineTuning)` | 2a | 2b, 2e |
+| Check evaluation | `CheckResult TriggerEvaluator.EvaluateCheck(CheckSpec, double? baseline, StoryReadContext, EngineTuning)` | 2a | 2c, 2e |
 | Metric read (city) | `double? MetricRegistry.ReadCity(CitySnapshot, string metricId)` | 2a | 2b, 2c, 2e |
 | Metric read (district) | `double? MetricRegistry.ReadDistrict(DistrictSnapshot, string metricId)` | 2a | 2b, 2c, 2e |
 | Metric id validity | `bool MetricRegistry.IsKnown(string metricId, TriggerScope)` | 2a | 2b, 2e, and wave 3's catalog loader |
@@ -224,6 +224,65 @@ the lane's.
    together. Without it, a district-scoped check resolved early recorded nothing and re-measured a
    moved city on replay — a determinism hole, closed now rather than in wave 4, which is what would
    have built on it. Lookups must match on both fields.
+
+4. **Re-use is gated on a cooldown, not on the archive** — `EventPoolEntry.LastDraftedMonth` against
+   `stories.reuseCooldownMonths` (6), with `stories.maxMandatoryPerCycle` (2) bounding the events
+   that are exempt from it. Excluding anything the archive remembered emptied a ~40-event catalog by
+   month 14 into an absorbing state: nothing drafted, so nothing resolved, so nothing archived, so
+   nothing was ever released. Archive-based exclusion is sound only while
+   `archiveRetention × eventsPerStory < liveCatalogSize`; at 40 and 3 it names 120 slots over 40
+   events.
+
+5. **A drawn entry STAYS in the pool. This reverses "clear the pool afterwards" in row 2b above,
+   and that row is now wrong where it says otherwise.** The cooldown stamp lives on the entry, so the
+   entry has to survive the months it is counting: a drawn entry is retained with `MissStreak` reset
+   and `LastDraftedMonth` stamped, and it is kept through the cycle its story is live and through any
+   month its trigger lapses. Drop it instead and it is re-admitted next cycle with
+   `LastDraftedMonth = -1`, at which point the cooldown does nothing whatsoever.
+
+   An entry sitting out its cooldown is **not** aged — it was never offered, so it was never passed
+   over, and ageing it would hand it a pity bonus for time it did not spend waiting.
+
+   Anything asserting that a drawn id is *absent* from `UpdatedPool` must instead assert it is
+   **present, streak 0, stamped**.
+
+6. **Per-save settings win over the tuning key of the same name** when set (`> 0`), tuning being the
+   fallback — non-negotiable #10, following `TickPlanner.SnapshotsToPrune`. Applies to
+   `StoriesPerCycle` and `EventsPerStory`.
+
+7. **Both evaluator entry points take `EngineTuning`, and there is no shorter overload.** The delta
+   window bound reads `stories.deltaWindowSlackMonths`, so the evaluator needs tuning. Lane 2a
+   originally kept the published two-argument forms as delegating overloads that fell back to the
+   declared default — which is worse than a signature change, because a caller that used the short
+   form would silently ignore the player's tuned slack and nothing would say so. **A compile error is
+   the better failure here**, so the two-argument forms are removed rather than kept. Every caller has
+   tuning in hand already.
+
+8. **The steady-state pool arithmetic is `N - perCycle × (ceil(cooldown ÷ cycleMonths) - 1)`.** At
+   shipped values that is 40 - 12 = **28 drawable**, not 22 — the obvious formula double-counts,
+   because the cohort stamped exactly `cooldown` months ago has already been released by the time the
+   next draft runs (`elapsed < cooldown`). Recorded because the wrong figure appeared in a commit
+   message; no code asserts either number, and none should.
+
+9. **The cooling set is protected from the `poolMaxSize` trim.** A cooling entry has
+   `MissStreak == 0` by construction and therefore sits in the minimum-weight class, so a
+   weight-ordered trim discards *exactly* the entries whose cooldown stamp is load-bearing — which
+   re-admits them at `LastDraftedMonth = -1` and reduces the cooldown to nothing. Relying on
+   `poolMaxSize` being set above the catalog size is a correctness property delegated to a dial and a
+   data file, which is how the archive rule went wrong one level up.
+
+### Known-unreachable, recorded so it is not mistaken for tested behaviour
+
+`PoliticalPower.AwardFor(NotMet, tier, manualDeclared: true)` cannot be reached from the resolution
+path: a *declared* `Manual` slot always yields `Met`, so a failing `Manual` slot always carries
+`manualDeclared == false`. The penalty half of the one-sided cap is therefore defensive contract
+rather than live behaviour today. It is kept because wave 4's `DeclareManualOutcome` is where a
+self-declared *failure* would become expressible.
+
+The residue this leaves is accepted and not closable in arithmetic: a player may always declare
+success for the minor award rather than take an honest failure at the real tier. Closing it belongs
+at the response layer — making `Manual` unavailable when a slot's check is measurable — not in the
+award schedule.
 
 ---
 

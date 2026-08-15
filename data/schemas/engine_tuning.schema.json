@@ -668,8 +668,10 @@
       "$comment": "Packet 16. Four constraints the schema cannot express and a reviewer must: cycleMonths is a MONTH count and must stay >= 2 (a 1-month cycle would draft and resolve against the same snapshot, making every delta check unmeasurable); successThreshold must not exceed eventsPerStory; mandatorySeverityThreshold must be >= majorSeverityThreshold or the Mandatory tier is unreachable; and maxStoryEffectsPerModifier must stay below effects.maxStackedPerModifier, or story effects silently drop past the stacking cap instead of being refused at draft.",
       "required": [
         "enabled", "storiesPerCycle", "eventsPerStory", "cycleMonths", "successThreshold",
+        "deltaWindowSlackMonths",
         "mandatorySeverityThreshold", "majorSeverityThreshold", "missStreakWeightStep",
         "maxMissStreak", "poolMaxSize", "archiveRetention", "minorPromotionEnabled",
+        "reuseCooldownMonths", "maxMandatoryPerCycle",
         "maxStoryEffectsPerModifier", "activeEffectScale", "successEffectScale",
         "failureEffectScale", "alienationWeight", "enfranchisementWeight", "freeTextMaxLength"
       ],
@@ -679,6 +681,7 @@
         "eventsPerStory": { "$ref": "#/$defs/positiveInt" },
         "cycleMonths": { "type": "integer", "minimum": 2 },
         "successThreshold": { "$ref": "#/$defs/positiveInt" },
+        "deltaWindowSlackMonths": { "$ref": "#/$defs/nonNegativeInt" },
         "mandatorySeverityThreshold": { "type": "integer", "minimum": 1, "maximum": 5 },
         "majorSeverityThreshold": { "type": "integer", "minimum": 1, "maximum": 5 },
         "missStreakWeightStep": { "type": "number", "minimum": 0 },
@@ -686,6 +689,8 @@
         "poolMaxSize": { "$ref": "#/$defs/positiveInt" },
         "archiveRetention": { "$ref": "#/$defs/positiveInt" },
         "minorPromotionEnabled": { "type": "boolean" },
+        "reuseCooldownMonths": { "$ref": "#/$defs/nonNegativeInt" },
+        "maxMandatoryPerCycle": { "$ref": "#/$defs/nonNegativeInt" },
         "maxStoryEffectsPerModifier": { "$ref": "#/$defs/positiveInt" },
         "activeEffectScale": { "type": "number", "minimum": 0 },
         "successEffectScale": { "type": "number", "minimum": 0 },
