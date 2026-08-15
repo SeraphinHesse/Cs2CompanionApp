@@ -364,10 +364,21 @@ namespace Agora.Core.Stories
         /// The districts of a snapshot, sorted by ordinal id.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <see cref="CitySnapshot.Districts"/> is documented as already ordered, but sorting a copy
         /// costs nothing and keeps the verdict independent of whether the producer honoured that.
-        /// A district with an empty id is dropped: an empty <see cref="MetricReading.DistrictId"/> is
-        /// what marks a city-wide reading, so such a district's reading could not be told from one.
+        /// </para>
+        /// <para>
+        /// <b>A district with an empty id is dropped, and that filter is load-bearing.</b> An empty
+        /// <see cref="MetricReading.DistrictId"/> is what marks a reading city-wide, so a district
+        /// with an empty id would produce a reading indistinguishable from the city's own — the two
+        /// keyspaces would collide on the one key that has to stay unambiguous. The contract does not
+        /// rule this out: <see cref="DistrictSnapshot.Id"/> defaults to <c>""</c> and nothing in
+        /// <c>Agora.Core</c> requires otherwise, so a hand-built snapshot — a test fixture, or any
+        /// future non-sensor caller — can carry one. The sensor path happens to prevent it, but a
+        /// guard that rests on a producer's habit is not a guarantee, and dropping here makes the two
+        /// keyspaces provably disjoint whichever path built the snapshot.
+        /// </para>
         /// </remarks>
         private static List<DistrictSnapshot> SortedDistricts(CitySnapshot snapshot)
         {
