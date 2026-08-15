@@ -142,7 +142,7 @@ namespace Agora.Core.Stories
                 // A live event is not waiting to be drawn — it is being told.
                 if (live.Contains(ev.Id)) continue;
 
-                CheckResult eligibility = TriggerEvaluator.Evaluate(ev.Trigger, context);
+                CheckResult eligibility = TriggerEvaluator.Evaluate(ev.Trigger, context, tuning);
                 if (eligibility == CheckResult.NotMet) continue;
                 if (eligibility == CheckResult.Unmeasurable && !pooled) continue;
 
@@ -256,8 +256,19 @@ namespace Agora.Core.Stories
                 open.Add(story);
             }
 
+            // eventsPerStory has no upper bound — it can arrive from a hand-edited sidecar — and
+            // unlike storiesPerCycle it is not self-limiting, because the story loop breaks on an
+            // empty pool whereas this one would allocate first and fail to fill afterwards. Bound it
+            // by the minors that actually exist: with M minors left, no story can hold more than M of
+            // them, so a slot index above M is unfillable for every story at once whatever the fill
+            // order turns out to be. Dropping those pairs is therefore outcome-neutral — which
+            // matters, because truncating a pair that *could* have been filled would hand "which
+            // story goes short" to loop order instead of to the seeded fill order.
+            int fillSlots = eventsPerStory;
+            if (fillSlots > minors.Count + 1) fillSlots = minors.Count + 1;
+
             var fills = new List<SlotFill>();
-            for (int slot = 1; slot < eventsPerStory; slot++)
+            for (int slot = 1; slot < fillSlots; slot++)
             {
                 for (int i = 0; i < open.Count; i++) fills.Add(new SlotFill { Story = i, Slot = slot });
             }
@@ -297,10 +308,9 @@ namespace Agora.Core.Stories
             // cooldown is neither, because it was never offered and so was never passed over.
             int cap = stories.MaxMissStreak < 0 ? 0 : stories.MaxMissStreak;
 
-            var survivors = new List<EventPoolEntry>(pool);
-            for (int i = 0; i < survivors.Count; i++)
+            for (int i = 0; i < pool.Count; i++)
             {
-                EventPoolEntry entry = survivors[i];
+                EventPoolEntry entry = pool[i];
 
                 if (drawn.Contains(entry.EventId))
                 {
@@ -315,17 +325,57 @@ namespace Agora.Core.Stories
                 entry.MissStreak = streak >= cap ? cap : streak + 1;
             }
 
-            // Over capacity, the lowest-weighted go — decided by the same total order as every other
-            // choice here, so the entry that gets dropped is never the one that happened to be last.
-            // Note that a poolMaxSize set below the live catalog size would start evicting cooldown
-            // records, which shortens a re-use gap; it ships at 60 against a live catalog of roughly
-            // 40 precisely so that it never binds.
-            if (stories.PoolMaxSize > 0 && survivors.Count > stories.PoolMaxSize)
+            // --- 5. Trim to poolMaxSize, and the invariant this code enforces is that an entry
+            // carrying an unexpired stamp is NEVER in the removal range.
+            //
+            // The trim is weight-ordered, and a cooling or freshly stamped entry has MissStreak == 0
+            // by construction — so it sits in the minimum-weight class and a naive trim discards
+            // exactly the entries whose LastDraftedMonth is load-bearing. Those events are then
+            // re-admitted from the catalog at -1, OnCooldown answers false, and the cooldown becomes
+            // a no-op permanently, with the most recently told events the first to come back. It is
+            // no defence that poolMaxSize ships above the catalog size: that would delegate the
+            // anti-repeat property to a dial and to a data file, which is how the archive coupling
+            // this replaced went wrong one level up.
+            var survivors = new List<EventPoolEntry>();
+            var trimmable = new List<EventPoolEntry>();
+
+            for (int i = 0; i < pool.Count; i++)
             {
-                EventPoolWeighting.SortByOrder(survivors, eventsById, tuning);
-                survivors.RemoveRange(stories.PoolMaxSize, survivors.Count - stories.PoolMaxSize);
+                EventPoolEntry entry = pool[i];
+                if (OnCooldown(entry, today, stories)) survivors.Add(entry);
+                else trimmable.Add(entry);
             }
 
+            if (stories.PoolMaxSize > 0 && survivors.Count + trimmable.Count > stories.PoolMaxSize)
+            {
+                int room = stories.PoolMaxSize - survivors.Count;
+
+                if (room < 0) room = 0;
+                if (room < trimmable.Count)
+                {
+                    // Among the trimmable, the lowest-weighted go — decided by the same total order
+                    // as every other choice here, so the entry dropped is never the one that
+                    // happened to be last.
+                    EventPoolWeighting.SortByOrder(trimmable, eventsById, tuning);
+                    result.Degradations.Add("pool-trimmed: dropped " + Index(trimmable.Count - room)
+                                            + " of " + Index(trimmable.Count)
+                                            + " trimmable entries at cap " + Index(stories.PoolMaxSize));
+                    trimmable.RemoveRange(room, trimmable.Count - room);
+                }
+
+                if (survivors.Count > stories.PoolMaxSize)
+                {
+                    // The protected set alone is over the cap. The pool is allowed to exceed it for
+                    // the duration rather than surrender the property: a cooling record is a few
+                    // bytes, and the cap exists to bound pity-weight competition among drawable
+                    // entries, not storage.
+                    result.Degradations.Add("pool-cap-exceeded: " + Index(survivors.Count)
+                                            + " cooling entries over a cap of "
+                                            + Index(stories.PoolMaxSize) + ", held rather than dropped");
+                }
+            }
+
+            survivors.AddRange(trimmable);
             survivors.Sort(CompareEntriesById);
             drafted.Sort(CompareStoriesById);
 
