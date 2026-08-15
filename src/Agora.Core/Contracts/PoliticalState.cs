@@ -241,10 +241,24 @@ namespace Agora.Core.Contracts
         /// </summary>
         public bool StoriesEnabled { get; set; } = true;
 
-        /// <summary>Stories drafted per cycle. Mirrors <c>stories.storiesPerCycle</c>.</summary>
+        /// <summary>
+        /// Stories drafted per cycle. <b>Wins over <c>stories.storiesPerCycle</c> when set</b>
+        /// (greater than zero); the tuning key is the fallback.
+        /// </summary>
+        /// <remarks>
+        /// Per-save settings live in the sidecar, not in global config — non-negotiable #10 — so
+        /// where a setting and a tuning key name the same quantity, the setting is the player's
+        /// answer and tuning is the default they never overrode. The pattern to copy is
+        /// <c>TickPlanner.SnapshotsToPrune</c>, which resolves <c>SnapshotRetention</c> against
+        /// <c>scheduler.snapshotRetention</c> the same way and states the same reason. "Set" is
+        /// <c>&gt; 0</c> rather than a nullable, matching that precedent.
+        /// </remarks>
         public int StoriesPerCycle { get; set; } = 2;
 
-        /// <summary>Events bundled into one story. Mirrors <c>stories.eventsPerStory</c>.</summary>
+        /// <summary>
+        /// Events bundled into one story. <b>Wins over <c>stories.eventsPerStory</c> when set</b>,
+        /// on the same rule as <see cref="StoriesPerCycle"/>.
+        /// </summary>
         public int EventsPerStory { get; set; } = 3;
 
         /// <summary>
@@ -530,9 +544,22 @@ namespace Agora.Core.Contracts
         public List<Story> LiveStories { get; set; } = new List<Story>();
 
         /// <summary>
-        /// Resolved stories, sorted by <c>(ResolvedMonth descending, Id ordinal)</c> and bounded by
-        /// <c>stories.archiveRetention</c>.
+        /// Resolved stories, sorted by <c>(ResolvedMonth descending, Id ordinal)</c>.
         /// </summary>
+        /// <remarks>
+        /// <b>Intended to be bounded by <c>stories.archiveRetention</c>, and nothing enforces that
+        /// yet.</b> Wave 2 writes no story here — archiving happens where a story is retired, which
+        /// lands with the tick wiring in wave 4 — so the trim is that wave's obligation and is
+        /// recorded as such rather than left implied by this comment. An earlier draft simply
+        /// asserted "bounded by", which is the kind of claim that goes unchecked for a year and then
+        /// turns out never to have been true.
+        /// <para>
+        /// Do not make anything <i>depend</i> on the bound for correctness. The re-use cooldown
+        /// deliberately does not: gating re-use on archive membership couples it to
+        /// <c>archiveRetention × eventsPerStory</c> and empties a finite catalog permanently. See
+        /// <see cref="EventPoolEntry.LastDraftedMonth"/>.
+        /// </para>
+        /// </remarks>
         public List<Story> StoryArchive { get; set; } = new List<Story>();
 
         /// <summary>Triggered events awaiting a draw, sorted by <c>EventId</c> ordinal.</summary>
