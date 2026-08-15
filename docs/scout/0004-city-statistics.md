@@ -390,14 +390,35 @@ itself; this is not a proxy, it is a direct count of the right entities.
 | Attraction (anything contributing attractiveness) | `Game.Buildings.AttractivenessProvider { public int m_Attractiveness; }` | `Game.Prefabs.AttractionData { public int m_Attractiveness; }` |
 | Signature building | `Game.Buildings.Signature` (empty tag) | `Game.Prefabs.SignatureBuildingData`, `Game.Prefabs.PlacedSignatureBuildingData` (both empty tags) |
 
-The game's own query, `AttractionSystem.cs:241`, is the pattern to copy — note both exclusions, they
-are what keeps preview and demolished buildings out of the count:
+The game's own query is the pattern to copy — note that it excludes **three** components, not two.
+They are what keeps preview, demolished and destroyed buildings out of the count:
 
 ```csharp
-GetEntityQuery(ComponentType.ReadWrite<AttractivenessProvider>(),
-               ComponentType.Exclude<Temp>(),
-               ComponentType.Exclude<Deleted>());
+// refsrc/Game/Game.Simulation/AttractionSystem.cs:216-230, verbatim
+m_BuildingGroup = GetEntityQuery(new EntityQueryDesc
+{
+    All  = new ComponentType[3] { ComponentType.ReadWrite<AttractivenessProvider>(),
+                                  ComponentType.ReadOnly<PrefabRef>(),
+                                  ComponentType.ReadOnly<UpdateFrame>() },
+    None = new ComponentType[3] { ComponentType.ReadOnly<Destroyed>(),
+                                  ComponentType.ReadOnly<Deleted>(),
+                                  ComponentType.ReadOnly<Temp>() }
+});
 ```
+
+> **Corrected 2026-08-15, wave 1.** An earlier revision of this section quoted an abbreviated form of
+> this query with only `Temp` and `Deleted`, and said "note both exclusions". Lane 1c caught the
+> discrepancy against the real source and escalated rather than widening the set on its own
+> authority. **`Destroyed` matters and is not optional:** a burnt-out or collapsed attraction is
+> skipped by the game's own attractiveness job, so counting it makes Agora's number disagree with the
+> one the player sees in the tourism infoview. Lane 1a independently copied the same three-exclusion
+> shape from `GarbageAccumulationSystem`'s producer query, so three is also what keeps the two
+> sensors of this wave agreeing about what a live building is.
+>
+> `PrefabRef` and `UpdateFrame` in the `All` list are **not** to be copied. They exist because the
+> game's job needs those handles and shards its walk across frames; requiring `UpdateFrame` would
+> make a counting sensor see a fraction of the city and report a count that changes with the frame
+> bucket a building landed in.
 
 **These two, uniquely in this report, ARE available per district** — the placed instances carry
 `Game.Areas.CurrentDistrict`, which `AgoraDistrictSensorSystem` already uses. `AttractivenessProvider`

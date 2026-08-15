@@ -342,10 +342,30 @@ namespace Agora.Core.Contracts
         /// </remarks>
         public int MilestoneLevel { get; }
 
-        /// <summary>Accumulated experience, from <c>MilestoneSystem.currentXP</c>.</summary>
+        /// <summary>
+        /// <b>Lifetime</b> experience, from <c>CitySystem.XP</c> (the <c>Game.City.XP.m_XP</c>
+        /// accumulator).
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not <c>MilestoneSystem.currentXP</c>, which looks like the same number and is
+        /// not: <c>MilestoneSystem.cs:90</c> computes it as <c>CitySystem.XP - max(0, lastRequired)</c>,
+        /// so it is XP *since the last milestone* and it **drops back toward zero every time the city
+        /// achieves one**. That matters here because this field is recorded into the metric history
+        /// and wave 3 may author a <c>delta</c> trigger against it — and a resetting counter would fire
+        /// "experience collapsed" at the exact moment the city succeeded, an event whose prose the
+        /// simulation contradicts. A lifetime total is monotonic, so a delta on it always means what
+        /// it says. Within-milestone position is <see cref="MilestoneProgress"/>, which is the honest
+        /// place for it.
+        /// </remarks>
         public int Experience { get; }
 
         /// <summary>Progress toward the next milestone, 0–1. <c>MilestoneSystem.progress</c>.</summary>
+        /// <remarks>
+        /// Sanitised by the sensor rather than trusted raw. <c>MilestoneSystem.progress</c> is
+        /// <c>currentXP / requiredXP</c> with no guard of its own, and at the top of the milestone
+        /// tree the denominator can reach zero — which would put an infinity or a NaN into this field
+        /// and serialise <c>snapshot.json</c> as invalid JSON.
+        /// </remarks>
         public double MilestoneProgress { get; }
 
         public ProgressionState(int milestoneLevel, int experience, double milestoneProgress)
