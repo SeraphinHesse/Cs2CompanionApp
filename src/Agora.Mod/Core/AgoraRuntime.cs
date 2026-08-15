@@ -1058,6 +1058,24 @@ namespace Agora.Mod.Core
 
                 int majorCount = _saveSettings.Theme == RegionTheme.Na ? Tuning.Parties.TargetCountNa : 0;
 
+                // Anchored brand identity, before the major/minor flags and before that block's early
+                // return. A save generated before the anchored catalog landed carries the palette's
+                // colours in catalog order — which handed the liberal party red and the conservative
+                // party blue — and whatever names the flavor pipeline invented. Nothing else in the
+                // engine ever writes a party's identity, so without this the fix would only ever
+                // reach saves created after it.
+                BrandRepairResult brands = AnchoredBrandRepair.Apply(
+                    _state.Parties, PartyArchetypes.For(_saveSettings.Theme), Tuning);
+
+                if (brands.Changed)
+                {
+                    _stateVersion++;
+                    AgoraMod.Log.Warn("Agora: repaired anchored party identities on load (" +
+                                      brands.Summary + "). Platforms are untouched — a party's stance " +
+                                      "is the record of how it has governed, and the blocs' previous " +
+                                      "votes were taken against it.");
+                }
+
                 MajorRepairResult repair = NaMajorParties.Repair(
                     _state.Parties, NaMajorParties.DefaultMajorArchetypeIds(majorCount), majorCount);
 
