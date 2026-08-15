@@ -207,7 +207,7 @@ namespace Agora.Core.Stories
 
                 case TriggerScope.AnyDistrict:
                 case TriggerScope.AllDistricts:
-                    return EvaluateDistricts(spec, threshold, today, past, delta);
+                    return EvaluateDistricts(spec, threshold, today, past, delta, context);
 
                 default:
                     return CheckResult.Unmeasurable;
@@ -238,7 +238,7 @@ namespace Agora.Core.Stories
                                          bool delta, StoryReadContext context)
         {
             double? recorded;
-            if (TryRecordedEvidence(context, metricId, out recorded)) return recorded;
+            if (TryRecordedEvidence(context, metricId, CityDistrictId, out recorded)) return recorded;
 
             double? now = MetricRegistry.ReadCity(today, metricId);
             if (!now.HasValue) return null;
@@ -269,10 +269,19 @@ namespace Agora.Core.Stories
         /// is that the district existed in that month at all, and it does: a district absent from the
         /// earlier snapshot is unmeasurable rather than unchanged. Anything finer needs the history
         /// store passed in, which would be a change to <c>StoryReadContext</c> — a spine file.
+        /// <para>
+        /// <b>Recorded evidence is consulted here too, keyed on this district's id</b>, on the same
+        /// rule and for the same reason as the city path. It short-circuits both legs of a delta: a
+        /// recorded reading is the comparand the verdict was reached on, so replay must not re-derive
+        /// it from two snapshots that have since moved.
+        /// </para>
         /// </remarks>
         private static double? DistrictValue(string metricId, DistrictSnapshot today,
-                                             CitySnapshot? past, bool delta)
+                                             CitySnapshot? past, bool delta, StoryReadContext context)
         {
+            double? recorded;
+            if (TryRecordedEvidence(context, metricId, today.Id, out recorded)) return recorded;
+
             double? now = MetricRegistry.ReadDistrict(today, metricId);
             if (!now.HasValue) return null;
             if (!delta) return now;
@@ -316,7 +325,8 @@ namespace Agora.Core.Stories
         /// </list>
         /// </remarks>
         private static CheckResult EvaluateDistricts(TriggerSpec spec, double threshold,
-                                                     CitySnapshot today, CitySnapshot? past, bool delta)
+                                                     CitySnapshot today, CitySnapshot? past, bool delta,
+                                                     StoryReadContext context)
         {
             List<DistrictSnapshot> ordered = SortedDistricts(today);
             if (ordered.Count == 0) return CheckResult.Unmeasurable;
@@ -327,7 +337,7 @@ namespace Agora.Core.Stories
 
             for (int i = 0; i < ordered.Count; i++)
             {
-                double? value = DistrictValue(spec.MetricId, ordered[i], past, delta);
+                double? value = DistrictValue(spec.MetricId, ordered[i], past, delta, context);
                 if (!value.HasValue)
                 {
                     anyUnreadable = true;
@@ -448,19 +458,36 @@ namespace Agora.Core.Stories
         }
 
         /// <summary>
-        /// The recorded reading for <paramref name="metricId"/>, when the context carries one.
+        /// The <see cref="MetricReading.DistrictId"/> of a city-wide reading. Empty, per the contract
+        /// — spelled once here so the two call sites cannot disagree about what "no district" is.
+        /// </summary>
+        private const string CityDistrictId = "";
+
+        /// <summary>
+        /// The recorded reading for <paramref name="metricId"/> in <paramref name="districtId"/>,
+        /// when the context carries one.
         /// </summary>
         /// <remarks>
-        /// <b>City scope only, because a <c>MetricReading</c> carries no scope.</b> It is a metric id
-        /// and a value, so there is no key form in which a per-district reading could have been
-        /// recorded — a district-scoped spec therefore falls through to the snapshot even on an early
-        /// resolve. Recorded, not re-measured, is what keeps that path deterministic on replay; the
-        /// district half of it needs a scope on <c>MetricReading</c>, which is a spine type.
-        /// The evidence list is walked in its own order and matched by exact id, so nothing depends
-        /// on it being sorted even though the contract says it is.
+        /// <para>
+        /// <b>A reading is identified by metric id and district id together, and both halves are
+        /// matched.</b> Matching on the metric alone would let one district's recorded reading answer
+        /// for another's, which is worse than having no record at all: it is a confident wrong answer,
+        /// and because the record is what replay reads instead of re-measuring, it would be believed
+        /// permanently rather than corrected by the next capture. A city-wide reading carries an empty
+        /// district id, so the city path asks for exactly that and cannot be answered by a district's
+        /// entry either — which holds because the district walk already drops any district with no
+        /// id, so no district read ever asks under the city's key.
+        /// </para>
+        /// <para>
+        /// The evidence list is walked in its own order and matched by exact id on both fields, so
+        /// nothing depends on it being sorted even though the contract says it is. A recorded entry
+        /// whose <c>Value</c> is null is a recorded <i>absence</i> and is honoured as one; so is a
+        /// recorded non-finite value, which no honest capture produces and which must not be allowed
+        /// to reach the comparison.
+        /// </para>
         /// </remarks>
         private static bool TryRecordedEvidence(StoryReadContext context, string metricId,
-                                                out double? value)
+                                                string districtId, out double? value)
         {
             value = null;
 
@@ -474,7 +501,12 @@ namespace Agora.Core.Stories
                 if (reading == null) continue;
                 if (!string.Equals(reading.MetricId, metricId, StringComparison.Ordinal)) continue;
 
-                // A recorded null is a recorded absence and is honoured as one.
+                // Null and empty are the same claim here — "no district" — because a reading
+                // deserialised from a sidecar written before this field existed carries null where a
+                // freshly built one carries "".
+                string recordedDistrict = reading.DistrictId ?? CityDistrictId;
+                if (!string.Equals(recordedDistrict, districtId, StringComparison.Ordinal)) continue;
+
                 if (reading.Value.HasValue && !IsFinite(reading.Value.Value)) return true;
 
                 value = reading.Value;
