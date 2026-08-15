@@ -18,6 +18,8 @@ import { bindValue, call } from "cs2/api";
 export const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
   themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+  voteSharpness: "Default", newsInfluence: "Default", brandDiscipline: "Default",
+  voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
 };
 
 /**

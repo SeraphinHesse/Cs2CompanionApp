@@ -206,7 +206,7 @@ namespace Agora.Mod.UiBindings
             var state = AgoraRuntime.State;
 
             _summary.Update(AgoraUiProjection.BuildSummary(state));
-            _settings.Update(AgoraUiProjection.BuildSettings(AgoraRuntime.SaveSettings));
+            _settings.Update(AgoraUiProjection.BuildSettings(AgoraRuntime.SaveSettings, AgoraRuntime.Tuning));
             _roster.Update(AgoraUiProjection.BuildRoster(state));
             _factions.Update(AgoraUiProjection.BuildFactions(state));
 

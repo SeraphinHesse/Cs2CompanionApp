@@ -55,6 +55,17 @@ namespace Agora.Mod.UiBindings
         /// </summary>
         internal static SettingsPayload BuildSettings(Agora.Core.Contracts.AgoraSettings settings)
         {
+            return BuildSettings(settings, null);
+        }
+
+        /// <param name="tuning">
+        /// Supplies the coefficient each chosen level currently resolves to. Null publishes zeroes,
+        /// which the panel renders as "no value yet" rather than as a real setting — a tuning file
+        /// that failed to load must not make the panel claim the temperature is 0.
+        /// </param>
+        internal static SettingsPayload BuildSettings(Agora.Core.Contracts.AgoraSettings settings,
+                                                      Agora.Core.Tuning.EngineTuning tuning)
+        {
             var payload = new SettingsPayload();
             if (settings == null) return payload;
 
@@ -66,6 +77,21 @@ namespace Agora.Mod.UiBindings
             payload.PauseOnMajorNews = settings.PauseOnMajorNews;
             payload.ShowAllReports = settings.ShowAllReports;
             payload.EffectsEnabled = settings.EffectsEnabled;
+
+            payload.VoteSharpness = settings.VoteSharpness.ToString();
+            payload.NewsInfluence = settings.NewsInfluence.ToString();
+            payload.BrandDiscipline = settings.BrandDiscipline.ToString();
+
+            if (tuning != null)
+            {
+                payload.VoteSharpnessValue =
+                    Agora.Core.Tuning.TuningPresets.SoftmaxTemperatureFor(tuning, settings.VoteSharpness);
+                payload.NewsInfluenceValue =
+                    Agora.Core.Tuning.TuningPresets.EventModifierWeightFor(tuning, settings.NewsInfluence);
+                payload.BrandDisciplineValue =
+                    Agora.Core.Tuning.TuningPresets.AnchoredSpreadSigmaFor(tuning, settings.BrandDiscipline);
+            }
+
             return payload;
         }
 

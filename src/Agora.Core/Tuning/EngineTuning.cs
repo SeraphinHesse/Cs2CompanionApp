@@ -225,6 +225,36 @@ namespace Agora.Core.Tuning
         /// <summary>Sigma of the seeded jitter applied to an archetype's platform at generation.</summary>
         public double ArchetypeSpreadSigma { get; internal set; } = 0.35;
 
+        /// <summary>
+        /// The same jitter, for a catalog entry with
+        /// <see cref="Engine.Parties.PartyArchetype.IsAnchored"/> set.
+        /// </summary>
+        /// <remarks>
+        /// Far tighter than <see cref="ArchetypeSpreadSigma"/> because the two sigmas answer
+        /// different questions. 0.35 on a [-1,+1] axis is the right spread for "generate a plausible
+        /// new brand": it is wide enough that two saves do not produce the same party. Applied to a
+        /// brand the player already has expectations about, it is wide enough to flip the sign of
+        /// every axis except the defining one — a conservative party drew a positive environment
+        /// stance about one run in five. 0.08 keeps a stance of ±0.10 on the correct side of centre
+        /// at better than 89%, and leaves the defining ±0.80 axes untouched for all practical
+        /// purposes.
+        /// </remarks>
+        public double AnchoredSpreadSigma { get; internal set; } = 0.08;
+
+        /// <summary>
+        /// What <c>anchoredSpreadSigma</c> becomes under
+        /// <see cref="Contracts.BrandDiscipline.Loose"/> — the generated-brand sigma, i.e. anchoring
+        /// switched off in all but name.
+        /// </summary>
+        public double AnchoredSpreadSigmaLoose { get; internal set; } = 0.35;
+
+        /// <summary>
+        /// What it becomes under <see cref="Contracts.BrandDiscipline.Locked"/>: tight enough that
+        /// even a ±0.10 lean holds its sign in all but a fraction of a percent of saves, at the cost
+        /// of two cities generating near-identical parties.
+        /// </summary>
+        public double AnchoredSpreadSigmaLocked { get; internal set; } = 0.02;
+
         /// <summary>Two parties closer than this are nudged apart so the ballot stays legible.</summary>
         public double MinPlatformDistance { get; internal set; } = 0.15;
 
@@ -283,6 +313,9 @@ namespace Agora.Core.Tuning
             MinorPartyCountNa = r.Int("minorPartyCountNa", d.MinorPartyCountNa),
             MaxPartiesTotal = r.Int("maxPartiesTotal", d.MaxPartiesTotal),
             ArchetypeSpreadSigma = r.Num("archetypeSpreadSigma", d.ArchetypeSpreadSigma),
+            AnchoredSpreadSigma = r.Num("anchoredSpreadSigma", d.AnchoredSpreadSigma),
+            AnchoredSpreadSigmaLoose = r.Num("anchoredSpreadSigmaLoose", d.AnchoredSpreadSigmaLoose),
+            AnchoredSpreadSigmaLocked = r.Num("anchoredSpreadSigmaLocked", d.AnchoredSpreadSigmaLocked),
             MinPlatformDistance = r.Num("minPlatformDistance", d.MinPlatformDistance),
             PlatformDriftPerCycle = r.Num("platformDriftPerCycle", d.PlatformDriftPerCycle),
             PlatformDriftCapPerCycle = r.Num("platformDriftCapPerCycle", d.PlatformDriftCapPerCycle),
@@ -395,7 +428,16 @@ namespace Agora.Core.Tuning
         public double MandatePerformanceWeight { get; internal set; } = 0.15;
         public double MandateFailurePenalty { get; internal set; } = 0.20;
 
-        public double EventModifierWeight { get; internal set; } = 0.25;
+        public double EventModifierWeight { get; internal set; } = 0.18;
+
+        /// <summary>
+        /// What <c>eventModifierWeight</c> becomes under <see cref="Contracts.NewsInfluence.Muted"/>.
+        /// See <see cref="TuningPresets"/> for why the Default level has no key here.
+        /// </summary>
+        public double EventModifierWeightMuted { get; internal set; } = 0.10;
+
+        /// <summary>What it becomes under <see cref="Contracts.NewsInfluence.Loud"/>.</summary>
+        public double EventModifierWeightLoud { get; internal set; } = 0.30;
         public int EventModifierDecayHalfLifeMonths { get; internal set; } = 9;
 
         public double LocalGrievanceWeight { get; internal set; } = 0.20;
@@ -417,7 +459,25 @@ namespace Agora.Core.Tuning
         public double NoiseClamp { get; internal set; } = 0.10;
 
         /// <summary>Temperature of the softmax that turns affinities into vote shares.</summary>
-        public double SoftmaxTemperature { get; internal set; } = 0.35;
+        public double SoftmaxTemperature { get; internal set; } = 0.15;
+
+        /// <summary>
+        /// What <c>softmaxTemperature</c> becomes under
+        /// <see cref="Contracts.VoteSharpness.Blurred"/>. This is the pre-2026-08 shipped value, kept
+        /// as a level so a player who preferred the flatter electorate can have it back.
+        /// </summary>
+        public double SoftmaxTemperatureBlurred { get; internal set; } = 0.35;
+
+        /// <summary>
+        /// What it becomes under <see cref="Contracts.VoteSharpness.Sharp"/>.
+        /// </summary>
+        /// <remarks>
+        /// 0.10 rather than lower on purpose. On a five-district synthetic city the weakest party
+        /// sits at 5.04% at 0.10 and 3.03% at 0.06, and <c>electionsPr.thresholdShare</c> is 5% — so
+        /// a fourth, sharper level would predictably wipe small parties off a PR ballot and fire the
+        /// <c>affinity.minPartyShare</c> prune path. Sharp is the sharpest level that does not.
+        /// </remarks>
+        public double SoftmaxTemperatureSharp { get; internal set; } = 0.10;
 
         /// <summary>Shares below this are zeroed and redistributed, so rounding noise is not reported.</summary>
         public double MinPartyShare { get; internal set; } = 0.001;
@@ -436,6 +496,8 @@ namespace Agora.Core.Tuning
             MandatePerformanceWeight = r.Num("mandatePerformanceWeight", d.MandatePerformanceWeight),
             MandateFailurePenalty = r.Num("mandateFailurePenalty", d.MandateFailurePenalty),
             EventModifierWeight = r.Num("eventModifierWeight", d.EventModifierWeight),
+            EventModifierWeightMuted = r.Num("eventModifierWeightMuted", d.EventModifierWeightMuted),
+            EventModifierWeightLoud = r.Num("eventModifierWeightLoud", d.EventModifierWeightLoud),
             EventModifierDecayHalfLifeMonths = r.Int("eventModifierDecayHalfLifeMonths", d.EventModifierDecayHalfLifeMonths),
             LocalGrievanceWeight = r.Num("localGrievanceWeight", d.LocalGrievanceWeight),
             NationalMoodWeight = r.Num("nationalMoodWeight", d.NationalMoodWeight),
@@ -444,6 +506,8 @@ namespace Agora.Core.Tuning
             NoiseSigma = r.Num("noiseSigma", d.NoiseSigma),
             NoiseClamp = r.Num("noiseClamp", d.NoiseClamp),
             SoftmaxTemperature = r.Num("softmaxTemperature", d.SoftmaxTemperature),
+            SoftmaxTemperatureBlurred = r.Num("softmaxTemperatureBlurred", d.SoftmaxTemperatureBlurred),
+            SoftmaxTemperatureSharp = r.Num("softmaxTemperatureSharp", d.SoftmaxTemperatureSharp),
             MinPartyShare = r.Num("minPartyShare", d.MinPartyShare),
             TacticalVotingThresholdFptp = r.Num("tacticalVotingThresholdFptp", d.TacticalVotingThresholdFptp)
         };

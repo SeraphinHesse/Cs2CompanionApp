@@ -191,6 +191,12 @@ skeleton, because every other binding in this contract is still at its empty val
 (non-negotiable #10). It is a mirror: the panel renders it and writes through `setSetting`, never the
 other way round.
 
+The three `*Value` fields are **display only**. They carry the coefficient each chosen level
+currently resolves to, read from `engine_tuning.json` through `Agora.Core.Tuning.TuningPresets`, so
+the panel can show what a level means without holding its own copy of a number the engine owns. They
+are not settable and have no `setSetting` key. A tuning file that failed to load publishes them as
+zero, which the panel renders as absent rather than as a real value.
+
 `isFirstRun` is a **one-shot lifecycle signal** — this save has never chosen a region theme. True
 only when the sidecar carried neither a political state nor a settings document; it goes false the
 moment the theme is chosen or the dialog is dismissed, and it is never persisted. It is a getter, not
@@ -207,6 +213,9 @@ the sidecar is how the two come to disagree.
 | `pauseOnMajorNews` | `"true"` \| `"false"` | Per-save (W5). |
 | `showAllReports` | `"true"` \| `"false"` | Per-save (W5). |
 | `effectsEnabled` | `"true"` \| `"false"` | The per-save effect kill switch. |
+| `voteSharpness` | `"Blurred"` \| `"Default"` \| `"Sharp"` | How decisively blocs convert preference into votes (`affinity.softmaxTemperature`). Enum **name**, case-sensitive; an all-digit value is `BadValue`. Takes effect at the next engine tick. |
+| `newsInfluence` | `"Muted"` \| `"Default"` \| `"Loud"` | How far a live event can move a bloc (`affinity.eventModifierWeight`). Same parsing rule. |
+| `brandDiscipline` | `"Loose"` \| `"Default"` \| `"Locked"` | How tightly fixed brands hold their archetype (`parties.anchoredSpreadSigma`). Read **only at party generation**, so an accepted write changes nothing visible until the registry is regenerated. |
 | `dismissFirstRun` | ignored | Clears `isFirstRun` without changing a setting. Not persisted. |
 
 Anything else returns `UnknownKey`. A theme change **destroys** the political state built under the
@@ -618,7 +627,9 @@ Summarised here so a C# publisher author does not have to read TypeScript:
 StateSummary        schemaVersion, date, termNumber, system, theme, nextElectionDate,
                     isCampaignSeason, weeksToElection, mayorPartyId
 SettingsPayload     schemaVersion, startYear, theme, system, themeLocked, pauseOnMajorNews,
-                    showAllReports, effectsEnabled
+                    showAllReports, effectsEnabled, voteSharpness, newsInfluence,
+                    brandDiscipline, voteSharpnessValue, newsInfluenceValue,
+                    brandDisciplineValue
 PartyBrief          id, name, shortName, description, slogan, colorHex, status, isIncumbent,
                     isInGovernment, coreGrievance, foundedDate, dissolvedDate, nameLocked,
                     descriptionLocked, colorLocked

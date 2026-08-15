@@ -8,11 +8,15 @@ import { closeSettings } from "./state";
 import styles from "./SettingsPanel.module.scss";
 
 /**
- * The per-save settings surface. Three settings, and no more than three.
+ * The per-save settings surface.
  *
  * fixplan.md §W3 says the player "may change their mind from the settings surface" without ever
  * saying where that is. This is it, kept deliberately small: without it `ThemeLocked` is a mechanic
  * no player can reach, and W5's two press settings need the same surface anyway.
+ *
+ * The three voter-model levels at the bottom are the one place a player can reach an engine
+ * coefficient. They are levels rather than numbers on purpose: the value each maps to lives in
+ * `engine_tuning.json`, so this file holds no coefficient and cannot drift from the engine.
  *
  * It is a row in the dashboard shell rather than a fourth tab — a queued plan puts Parties in that
  * slot, and settings are not a panel of political data.
@@ -23,7 +27,87 @@ import styles from "./SettingsPanel.module.scss";
  */
 
 /** Setting keys this surface writes. The wire names, exactly (contract §4.1). */
-type SettingKey = "theme" | "pauseOnMajorNews" | "showAllReports";
+type SettingKey =
+  | "theme"
+  | "pauseOnMajorNews"
+  | "showAllReports"
+  | "voteSharpness"
+  | "newsInfluence"
+  | "brandDiscipline";
+
+/** One level of a voter-model setting: the wire name, a label, and what it does. */
+interface Level {
+  value: string;
+  label: string;
+}
+
+/**
+ * The three voter-model settings.
+ *
+ * Levels are wire names from contract §4.1 and are sent verbatim — the engine parses them by enum
+ * name and rejects anything numeric, so a label must never be sent in place of a value.
+ *
+ * The hints say what changes in the city, not which coefficient moves. A player choosing "Sharp"
+ * wants to know their districts will start disagreeing, not that `affinity.softmaxTemperature` fell
+ * to 0.10.
+ */
+const VOTER_SETTINGS: {
+  key: SettingKey;
+  label: string;
+  hint: string;
+  levels: Level[];
+  /** Reads this setting's published level. A function rather than an index so the payload's field
+   *  names are checked by the compiler instead of cast away. */
+  read: (s: Agora.SettingsPayload) => string;
+}[] = [
+  {
+    key: "voteSharpness",
+    read: function (s) {
+      return s.voteSharpness;
+    },
+    label: "How decisively voters pick",
+    hint:
+      "Blurred spreads each group's vote thinly over every party, so districts come out looking alike. " +
+      "Sharp makes groups commit to the party that fits them, so a rich district and a poor one vote " +
+      "visibly differently. Sharp also magnifies events and broken promises.",
+    levels: [
+      { value: "Blurred", label: "Blurred" },
+      { value: "Default", label: "Default" },
+      { value: "Sharp", label: "Sharp" },
+    ],
+  },
+  {
+    key: "newsInfluence",
+    read: function (s) {
+      return s.newsInfluence;
+    },
+    label: "How much the news moves voters",
+    hint:
+      "How far a strike, a scandal or a disaster can push people toward the parties that agree with " +
+      "them about it. Muted keeps elections about the record; Loud lets one bad month decide them.",
+    levels: [
+      { value: "Muted", label: "Muted" },
+      { value: "Default", label: "Default" },
+      { value: "Loud", label: "Loud" },
+    ],
+  },
+  {
+    key: "brandDiscipline",
+    read: function (s) {
+      return s.brandDiscipline;
+    },
+    label: "How closely parties stick to type",
+    hint:
+      "Only affects North American cities, and only when parties are created. Locked keeps the two " +
+      "main parties recognisably themselves in every city; Loose lets them come out with surprising " +
+      "positions. Changing this does nothing until a new set of parties is generated.",
+    levels: [
+      { value: "Loose", label: "Loose" },
+      { value: "Default", label: "Default" },
+      { value: "Locked", label: "Locked" },
+    ],
+  },
+];
 
 /** A write that has been sent and not yet answered. */
 interface Pending {
@@ -38,6 +122,45 @@ interface ToggleRowProps {
   disabled: boolean;
   onChange: (next: boolean) => void;
 }
+
+interface LevelRowProps {
+  label: string;
+  hint: string;
+  levels: Level[];
+  value: string;
+  disabled: boolean;
+  onChange: (next: string) => void;
+}
+
+/**
+ * A multi-level setting, rendered with the same button row as the theme choice above it so the
+ * panel reads as one surface rather than three control styles.
+ */
+const LevelRow = ({ label, hint, levels, value, disabled, onChange }: LevelRowProps): JSX.Element => (
+  <div className={styles.row}>
+    <div className={styles.rowLabel}>{label}</div>
+    <div className={styles.rowHint}>{hint}</div>
+    <div className={styles.options}>
+      {levels.map(function (level) {
+        const selected = level.value === value;
+        return (
+          <Button
+            key={level.value}
+            variant="flat"
+            className={selected ? styles.optionSelected : styles.option}
+            selected={selected}
+            disabled={disabled}
+            onSelect={function () {
+              onChange(level.value);
+            }}
+          >
+            {level.label}
+          </Button>
+        );
+      })}
+    </div>
+  </div>
+);
 
 /**
  * A two-state setting as a pair of buttons rather than a checkbox: `cs2/ui` ships no checkbox, and a
@@ -248,6 +371,31 @@ export const SettingsPanel = (): JSX.Element => {
           send("showAllReports", next ? "true" : "false");
         }}
       />
+
+      {VOTER_SETTINGS.map(function (setting) {
+        // Same optimistic-render rule as the toggles: show the pending value while a write is in
+        // flight, and fall back to what the engine published, so a refused write puts the row back.
+        const shown =
+          pending !== null && pending.key === setting.key
+            ? pending.value
+            : setting.read(settings);
+
+        return (
+          <LevelRow
+            key={setting.key}
+            label={setting.label}
+            hint={setting.hint}
+            levels={setting.levels}
+            value={shown}
+            disabled={busy}
+            onChange={function (next) {
+              if (next !== shown) {
+                send(setting.key, next);
+              }
+            }}
+          />
+        );
+      })}
 
       {/* The engine's verdict, in English. Never a code and never an exception message. */}
       {message ? <div className={styles.refusal}>{message}</div> : null}

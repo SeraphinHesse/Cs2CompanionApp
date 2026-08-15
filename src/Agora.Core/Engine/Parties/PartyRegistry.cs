@@ -329,7 +329,11 @@ namespace Agora.Core.Engine.Parties
                 PartyArchetype archetype = catalog[i];
                 var rng = SeedStreams.RngFor(saveGuid, date, StreamNames.PartyGeneration, archetype.Id);
 
-                IssuePosition platform = PartyPlatform.Instantiate(archetype, rng, t.ArchetypeSpreadSigma);
+                // An anchored brand is an institution the player recognises, so its stance is jittered
+                // only enough to keep two saves from being identical. See PartiesTuning.AnchoredSpreadSigma
+                // for why the generated-brand sigma is the wrong number here.
+                double sigma = archetype.IsAnchored ? t.AnchoredSpreadSigma : t.ArchetypeSpreadSigma;
+                IssuePosition platform = PartyPlatform.Instantiate(archetype, rng, sigma);
 
                 // Keep the ballot legible: nudge away from every party already placed. Earlier
                 // parties are never moved, so the result does not depend on placement order beyond
@@ -352,7 +356,16 @@ namespace Agora.Core.Engine.Parties
                 parties.Add(new Party
                 {
                     Id = FormatId(i + 1),
-                    ColorHex = AllocateColor(parties, i, tuning),
+
+                    // Name and short name are normally flavor-owned and left empty here. An anchored
+                    // brand fills them at generation, which also stops the flavor pipeline renaming
+                    // it later — see PartyArchetype.Name for why that is the intent and not a side
+                    // effect. Description and slogan stay empty either way: those are prose, they
+                    // move with the politics, and flavor writes them independently of the name.
+                    Name = archetype.Name,
+                    ShortName = archetype.ShortName,
+
+                    ColorHex = BrandColor(parties, archetype, i, tuning),
                     ArchetypeId = archetype.Id,
                     Platform = platform,
                     LastManifesto = platform,
@@ -367,6 +380,28 @@ namespace Agora.Core.Engine.Parties
 
             parties.Sort(CompareById);
             return parties;
+        }
+
+        /// <summary>
+        /// The colour a freshly generated party wears: its archetype's own, when it has one and
+        /// nobody has taken it, and otherwise the palette scan from <paramref name="index"/>.
+        /// </summary>
+        /// <remarks>
+        /// The fallback is not defensive padding — it is what keeps two brands from sharing a slice
+        /// on the seat chart when a catalog colour collides with one already allocated, and it is the
+        /// whole behaviour for every unanchored entry. A malformed catalog colour falls back too
+        /// rather than reaching the sidecar, where <c>political_state.schema.json</c>'s
+        /// <c>colorHex</c> pattern would reject it and fail the save.
+        /// </remarks>
+        private static string BrandColor(IReadOnlyList<Party> existing, PartyArchetype archetype,
+                                         int index, EngineTuning tuning)
+        {
+            string preferred = archetype.ColorHex;
+
+            if (PartyIdentity.IsValidHex(preferred) && !IsColorTaken(existing, preferred, null))
+                return preferred;
+
+            return AllocateColor(existing, index, tuning);
         }
 
         // netstandard2.0 has no Math.Clamp. A min above max resolves to max, never throws.

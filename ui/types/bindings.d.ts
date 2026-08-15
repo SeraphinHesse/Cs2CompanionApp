@@ -3832,7 +3832,29 @@ declare namespace Agora {
     pauseOnMajorNews: boolean;
     showAllReports: boolean;
     effectsEnabled: boolean;
+
+    /** How decisively blocs convert preference into votes. Writes `affinity.softmaxTemperature`. */
+    voteSharpness: VoteSharpnessName;
+    /** How far a live event can move a bloc. Writes `affinity.eventModifierWeight`. */
+    newsInfluence: NewsInfluenceName;
+    /** How tightly fixed brands hold their archetype. Read only at party generation. */
+    brandDiscipline: BrandDisciplineName;
+
+    /**
+     * What each chosen level currently resolves to, straight from `engine_tuning.json`.
+     *
+     * Display only: there is no `setSetting` key for these, and the panel must never hold its own
+     * copy of a coefficient the engine owns. Zero means the tuning file was not readable, and
+     * renders as absent rather than as a real value.
+     */
+    voteSharpnessValue: number;
+    newsInfluenceValue: number;
+    brandDisciplineValue: number;
   }
+
+  type VoteSharpnessName = "Blurred" | "Default" | "Sharp";
+  type NewsInfluenceName = "Muted" | "Default" | "Loud";
+  type BrandDisciplineName = "Loose" | "Default" | "Locked";
 
   // -- agora.parties ---------------------------------------------------------------------------
 

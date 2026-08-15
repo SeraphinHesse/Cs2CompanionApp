@@ -119,8 +119,8 @@ namespace Agora.Mod.Persistence
     {
         public const string VersionProperty = "schemaVersion";
 
-        public const int CurrentStateVersion = 3;
-        public const int CurrentSettingsVersion = 2;
+        public const int CurrentStateVersion = 4;
+        public const int CurrentSettingsVersion = 3;
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
         public const int CurrentTimelineProgressVersion = 1;
@@ -191,6 +191,34 @@ namespace Agora.Mod.Persistence
             if (settings["themeLocked"] == null) settings["themeLocked"] = false;
             if (settings["pauseOnMajorNews"] == null) settings["pauseOnMajorNews"] = true;
             if (settings["showAllReports"] == null) settings["showAllReports"] = false;
+
+            settings[VersionProperty] = 2;
+        }
+
+        /// <summary>
+        /// Brings one settings object from v2 to v3: the three voter-model levels.
+        ///
+        /// <para>
+        /// All three default to <c>Default</c>, which is not a value but an instruction to leave the
+        /// tuning file alone (see <c>Agora.Core.Tuning.TuningPresets</c>). That is what makes this
+        /// migration behaviour-preserving: a save upgraded here runs on exactly the coefficients it
+        /// ran on before, and would do so even if those coefficients were retuned again tomorrow.
+        /// </para>
+        /// </summary>
+        /// <remarks>
+        /// Written as enum <i>names</i> rather than ordinals. A save file is read by humans when
+        /// something goes wrong, and an ordinal silently means something different the moment a
+        /// member is inserted above it.
+        /// </remarks>
+        internal static void UpgradeSettingsObjectToV3(JObject settings)
+        {
+            if (settings == null) return;
+
+            // v1 saves reach here through the step table, which runs v1→v2 first; a v2 save arrives
+            // with these absent. Either way, absent means "never chosen".
+            if (settings["voteSharpness"] == null) settings["voteSharpness"] = "Default";
+            if (settings["newsInfluence"] == null) settings["newsInfluence"] = "Default";
+            if (settings["brandDiscipline"] == null) settings["brandDiscipline"] = "Default";
 
             settings[VersionProperty] = CurrentSettingsVersion;
         }
@@ -280,6 +308,24 @@ namespace Agora.Mod.Persistence
         /// <c>PartyLifecycle.ApplyRevivals</c> does not restore it either, so this matches the engine.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// State v3 to v4: the nested settings block gains the three voter-model levels.
+        /// </summary>
+        /// <remarks>
+        /// A state file carries its own copy of the settings and <c>SidecarStore.ResolveSettings</c>
+        /// prefers it over <c>settings.json</c>, so a save with a state file never reaches
+        /// <see cref="SettingsSteps"/> at all. Without this step the nested block would sit at v2
+        /// forever and the three levels would be absent on every existing save — which the reader
+        /// tolerates, but it would also mean the settings panel showed a level the sidecar never
+        /// stored. Same helper as the standalone path, for the reason given on
+        /// <see cref="MigrateStateV1ToV2"/>.
+        /// </remarks>
+        private static void MigrateStateV3ToV4(JObject root)
+        {
+            var settings = root["settings"] as JObject;
+            if (settings != null) UpgradeSettingsObjectToV3(settings);
+        }
+
         private static void MigrateStateV2ToV3(JObject root)
         {
             bool isNa = string.Equals((string)root["settings"]?["theme"], "Na", StringComparison.OrdinalIgnoreCase);
@@ -449,13 +495,17 @@ namespace Agora.Mod.Persistence
             new MigrationStep(1, "added party playerOverrides and the three per-save UI settings",
                 MigrateStateV1ToV2),
             new MigrationStep(2, "added party isMajor and the fringe watch",
-                MigrateStateV2ToV3)
+                MigrateStateV2ToV3),
+            new MigrationStep(3, "added the three voter-model levels to the nested settings block",
+                MigrateStateV3ToV4)
         };
 
         private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>
         {
             new MigrationStep(1, "added themeLocked, pauseOnMajorNews, showAllReports",
-                root => UpgradeSettingsObjectToV2(root))
+                root => UpgradeSettingsObjectToV2(root)),
+            new MigrationStep(2, "added voteSharpness, newsInfluence, brandDiscipline",
+                root => UpgradeSettingsObjectToV3(root))
         };
 
         private static readonly List<MigrationStep> TimelineProgressSteps = new List<MigrationStep>();
