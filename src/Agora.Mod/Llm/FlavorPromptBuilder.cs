@@ -456,6 +456,19 @@ namespace Agora.Mod.Llm
         // Every threshold below picks an adjective. None of them feeds engine state, so none of them
         // is a tuning coefficient in the sense of non-negotiable "no hardcoded tuning constants" -
         // changing one changes a word in a prompt and nothing else.
+        //
+        // ONE RULE, stated here because four bands now depend on it: THE BOTTOM BAND OF EVERY LINE
+        // FED BY A SENSOR MUST BE TRUE OF AN UNMEASURED CITY AS WELL AS AN EMPTY ONE. Every reading
+        // in the v4 block arrives as a struct with a zero default, and a sensor that never ran, a
+        // singleton guard that declined to read, or an Invalidate() before the first sample all
+        // produce exactly the same zeros as a city that genuinely has none of the thing. The contract
+        // cannot tell them apart, so a bottom band phrased as a positive fact - "a brand-new
+        // settlement", "nobody is homeless" - states something about the city on the strength of a
+        // measurement that may never have happened, and goes on stating it for the rest of the
+        // session while the lines fed by other sensor families stay correct beside it. A model handed
+        // "a metropolis" and "a brand-new settlement" two lines apart writes the contradiction into
+        // the prose, from a defect that logged one warning at startup and is otherwise silent.
+        // Phrase the bottom band so that it is true either way, and it costs nothing.
 
         private static string SystemDescription(RegionTheme theme) =>
             theme == RegionTheme.Na
@@ -660,6 +673,14 @@ namespace Agora.Mod.Llm
         /// and a small city of the same size have different arguments available to them, because one
         /// of them has unlocked public transport and the other has not.
         /// <para>
+        /// Level 0 says "no milestones on record" rather than describing a brand-new settlement,
+        /// under the bottom-band rule stated at the head of this section. It is the reading where
+        /// getting it wrong is loudest: <c>AgoraProgressionSensorSystem</c> reports nothing for the
+        /// rest of the session if <c>CreateQueries</c> throws, and the milestone singleton is guarded
+        /// besides, so a 400,000-resident city can arrive here at level 0 — and the size line, fed by
+        /// a different sensor family, would go on calling it a metropolis in the line above.
+        /// </para>
+        /// <para>
         /// <see cref="ProgressionState.MilestoneProgress"/> is deliberately not printed beside it. The
         /// obvious clause — "and close to its next milestone" past some threshold — is permanently
         /// wrong on a city that has finished the track, where there is no next milestone for the
@@ -669,7 +690,7 @@ namespace Agora.Mod.Llm
         /// </remarks>
         private static string MilestoneBand(int milestoneLevel)
         {
-            if (milestoneLevel <= 0) return "a brand-new settlement with almost nothing unlocked";
+            if (milestoneLevel <= 0) return "no milestones on record";
             if (milestoneLevel < 5) return "early in its development, with much still out of reach";
             if (milestoneLevel < 10) return "growing into itself, unlocking more as it goes";
             if (milestoneLevel < 15) return "well established, with most of its options open";
