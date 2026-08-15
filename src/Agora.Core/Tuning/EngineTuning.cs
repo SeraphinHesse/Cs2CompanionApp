@@ -1583,9 +1583,22 @@ namespace Agora.Core.Tuning
         /// <para>
         /// Keep it well under
         /// <c>liveCatalogSize ÷ (storiesPerCycle × eventsPerStory) × cycleMonths</c> — about 13
-        /// months at shipped values. 6 leaves roughly half the catalog drawable at any moment, which
-        /// is variety without starvation. Raising it toward that ceiling starves the pool gradually
-        /// rather than suddenly, which is the harder failure to notice.
+        /// months at shipped values. At 6 the cooling set is
+        /// <c>perCycle × ceil(cooldown ÷ cycleMonths) - perCycle</c> = 12 of a 40-event catalog, so 28
+        /// stay drawable at every draft, flat forever. (The <c>-perCycle</c> term is the easy thing to
+        /// get wrong: the cohort stamped exactly <c>cooldown</c> months ago has already been released
+        /// when the next draft runs, because the test is <c>elapsed &lt; cooldown</c>.) Raising it
+        /// toward the ceiling starves the pool gradually rather than suddenly, which is the harder
+        /// failure to notice.
+        /// </para>
+        /// <para>
+        /// <b>The cooling set must be protected from the <c>poolMaxSize</c> trim.</b> A cooling entry
+        /// has <c>MissStreak == 0</c> by construction, so it sits in the minimum-weight class and is
+        /// the <i>first</i> thing a weight-ordered trim discards — which destroys its
+        /// <see cref="EventPoolEntry.LastDraftedMonth"/>, re-admits it from the catalog at -1, and
+        /// silently reduces the cooldown to nothing. Do not rely on <c>poolMaxSize</c> being set
+        /// comfortably above the catalog: that is a correctness property delegated to a dial and a
+        /// data file, which is how the archive coupling this replaced went wrong.
         /// </para>
         /// <para>
         /// <b>Mandatory events ignore this entirely.</b> A mandatory trigger is a statement about the

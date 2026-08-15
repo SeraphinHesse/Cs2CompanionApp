@@ -139,8 +139,8 @@ A lane must not have to guess at a name another lane owns.
 
 | Seam | Signature | Written by | Read by |
 |---|---|---|---|
-| Trigger evaluation | `CheckResult TriggerEvaluator.Evaluate(TriggerSpec, StoryReadContext)` | 2a | 2b, 2e |
-| Check evaluation | `CheckResult TriggerEvaluator.EvaluateCheck(CheckSpec, double? baseline, StoryReadContext)` | 2a | 2c, 2e |
+| Trigger evaluation | `CheckResult TriggerEvaluator.Evaluate(TriggerSpec, StoryReadContext, EngineTuning)` | 2a | 2b, 2e |
+| Check evaluation | `CheckResult TriggerEvaluator.EvaluateCheck(CheckSpec, double? baseline, StoryReadContext, EngineTuning)` | 2a | 2c, 2e |
 | Metric read (city) | `double? MetricRegistry.ReadCity(CitySnapshot, string metricId)` | 2a | 2b, 2c, 2e |
 | Metric read (district) | `double? MetricRegistry.ReadDistrict(DistrictSnapshot, string metricId)` | 2a | 2b, 2c, 2e |
 | Metric id validity | `bool MetricRegistry.IsKnown(string metricId, TriggerScope)` | 2a | 2b, 2e, and wave 3's catalog loader |
@@ -249,6 +249,27 @@ the lane's.
 6. **Per-save settings win over the tuning key of the same name** when set (`> 0`), tuning being the
    fallback — non-negotiable #10, following `TickPlanner.SnapshotsToPrune`. Applies to
    `StoriesPerCycle` and `EventsPerStory`.
+
+7. **Both evaluator entry points take `EngineTuning`, and there is no shorter overload.** The delta
+   window bound reads `stories.deltaWindowSlackMonths`, so the evaluator needs tuning. Lane 2a
+   originally kept the published two-argument forms as delegating overloads that fell back to the
+   declared default — which is worse than a signature change, because a caller that used the short
+   form would silently ignore the player's tuned slack and nothing would say so. **A compile error is
+   the better failure here**, so the two-argument forms are removed rather than kept. Every caller has
+   tuning in hand already.
+
+8. **The steady-state pool arithmetic is `N - perCycle × (ceil(cooldown ÷ cycleMonths) - 1)`.** At
+   shipped values that is 40 - 12 = **28 drawable**, not 22 — the obvious formula double-counts,
+   because the cohort stamped exactly `cooldown` months ago has already been released by the time the
+   next draft runs (`elapsed < cooldown`). Recorded because the wrong figure appeared in a commit
+   message; no code asserts either number, and none should.
+
+9. **The cooling set is protected from the `poolMaxSize` trim.** A cooling entry has
+   `MissStreak == 0` by construction and therefore sits in the minimum-weight class, so a
+   weight-ordered trim discards *exactly* the entries whose cooldown stamp is load-bearing — which
+   re-admits them at `LastDraftedMonth = -1` and reduces the cooldown to nothing. Relying on
+   `poolMaxSize` being set above the catalog size is a correctness property delegated to a dial and a
+   data file, which is how the archive rule went wrong one level up.
 
 ### Known-unreachable, recorded so it is not mistaken for tested behaviour
 
