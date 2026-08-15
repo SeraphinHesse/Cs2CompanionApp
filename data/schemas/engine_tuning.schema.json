@@ -67,7 +67,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 3 },
+    "schemaVersion": { "type": "integer", "const": 4 },
 
     "blocs": {
       "type": "object",
@@ -120,7 +120,8 @@
       "additionalProperties": false,
       "required": [
         "targetCountEu", "minCountEu", "maxCountEu", "targetCountNa", "minorPartyCountNa",
-        "maxPartiesTotal", "archetypeSpreadSigma", "minPlatformDistance", "platformDriftPerCycle",
+        "maxPartiesTotal", "archetypeSpreadSigma", "anchoredSpreadSigma",
+        "minPlatformDistance", "platformDriftPerCycle",
         "platformDriftCapPerCycle", "platformGrievanceResponsiveness", "incumbencyBonus",
         "incumbencyDecayPerTerm", "deathVoteShareThreshold", "deathConsecutiveElections",
         "endangeredVoteShareThreshold", "revivalGrievanceThreshold", "revivalCooldownMonths",
@@ -136,6 +137,7 @@
         "minorPartyCountNa": { "$ref": "#/$defs/nonNegativeInt" },
         "maxPartiesTotal": { "$ref": "#/$defs/positiveInt" },
         "archetypeSpreadSigma": { "type": "number", "minimum": 0 },
+        "anchoredSpreadSigma": { "type": "number", "minimum": 0 },
         "minPlatformDistance": { "$ref": "#/$defs/unitInterval" },
         "platformDriftPerCycle": { "type": "number", "minimum": 0 },
         "platformDriftCapPerCycle": { "type": "number", "minimum": 0 },

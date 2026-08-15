@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
@@ -57,7 +57,7 @@
   },
 
   "parties": {
-    "_comment": "Packet 2. EU parties split, merge, die below deathVoteShareThreshold across two consecutive elections, and revive if their core grievance resurges (plan section 3). NA party-level lifecycle is handled in `factions`. deathVoteShareThreshold sits below `fringe.baseCeiling` on purpose: a party the fringe ceiling is holding down has not been rejected by voters, and must not be killed by the suppression itself. incumbencyDecayPerTerm is per TERM, so it was rescaled with the 1-year term to preserve its per-year shape.",
+    "_comment": "Packet 2. EU parties split, merge, die below deathVoteShareThreshold across two consecutive elections, and revive if their core grievance resurges (plan section 3). NA party-level lifecycle is handled in `factions`. deathVoteShareThreshold sits below `fringe.baseCeiling` on purpose: a party the fringe ceiling is holding down has not been rejected by voters, and must not be killed by the suppression itself. incumbencyDecayPerTerm is per TERM, so it was rescaled with the 1-year term to preserve its per-year shape. anchoredSpreadSigma is the generation jitter for a catalog entry flagged isAnchored — the four NA brands, which are fixed institutions rather than generated ones. It is far below archetypeSpreadSigma because 0.35 on a [-1,+1] axis flips the sign of every axis except the defining one, which is fine for inventing a party and wrong for one the player already has expectations about.",
     "targetCountEu": 6,
     "minCountEu": 4,
     "maxCountEu": 7,
@@ -66,6 +66,7 @@
     "maxPartiesTotal": 9,
 
     "archetypeSpreadSigma": 0.35,
+    "anchoredSpreadSigma": 0.08,
     "minPlatformDistance": 0.15,
     "platformDriftPerCycle": 0.08,
     "platformDriftCapPerCycle": 0.20,

@@ -225,6 +225,22 @@ namespace Agora.Core.Tuning
         /// <summary>Sigma of the seeded jitter applied to an archetype's platform at generation.</summary>
         public double ArchetypeSpreadSigma { get; internal set; } = 0.35;
 
+        /// <summary>
+        /// The same jitter, for a catalog entry with
+        /// <see cref="Engine.Parties.PartyArchetype.IsAnchored"/> set.
+        /// </summary>
+        /// <remarks>
+        /// Far tighter than <see cref="ArchetypeSpreadSigma"/> because the two sigmas answer
+        /// different questions. 0.35 on a [-1,+1] axis is the right spread for "generate a plausible
+        /// new brand": it is wide enough that two saves do not produce the same party. Applied to a
+        /// brand the player already has expectations about, it is wide enough to flip the sign of
+        /// every axis except the defining one — a conservative party drew a positive environment
+        /// stance about one run in five. 0.08 keeps a stance of ±0.10 on the correct side of centre
+        /// at better than 89%, and leaves the defining ±0.80 axes untouched for all practical
+        /// purposes.
+        /// </remarks>
+        public double AnchoredSpreadSigma { get; internal set; } = 0.08;
+
         /// <summary>Two parties closer than this are nudged apart so the ballot stays legible.</summary>
         public double MinPlatformDistance { get; internal set; } = 0.15;
 
@@ -283,6 +299,7 @@ namespace Agora.Core.Tuning
             MinorPartyCountNa = r.Int("minorPartyCountNa", d.MinorPartyCountNa),
             MaxPartiesTotal = r.Int("maxPartiesTotal", d.MaxPartiesTotal),
             ArchetypeSpreadSigma = r.Num("archetypeSpreadSigma", d.ArchetypeSpreadSigma),
+            AnchoredSpreadSigma = r.Num("anchoredSpreadSigma", d.AnchoredSpreadSigma),
             MinPlatformDistance = r.Num("minPlatformDistance", d.MinPlatformDistance),
             PlatformDriftPerCycle = r.Num("platformDriftPerCycle", d.PlatformDriftPerCycle),
             PlatformDriftCapPerCycle = r.Num("platformDriftCapPerCycle", d.PlatformDriftCapPerCycle),
