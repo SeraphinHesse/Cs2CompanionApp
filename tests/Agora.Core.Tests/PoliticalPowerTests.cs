@@ -210,6 +210,66 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
+        /// <b>The cap is one-sided: it applies to the award and never to the penalty.</b> A
+        /// self-declared failure is charged at the event's real tier, exactly as <c>Ignore</c> would be.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Capping both sides looks symmetrical and is a trap. Under shipped tuning it would make a
+        /// truthfully self-declared mandatory failure cost 5 where <c>Ignore</c> costs 25 — so a player
+        /// who simply preferred the Manual button would take an 80% discount on every mandatory failure
+        /// in the game, with no lying required, and the tier ladder would survive on the award side
+        /// alone.
+        /// </para>
+        /// <para>
+        /// Charging the real tier keeps honest self-reporting exactly as expensive as <c>Ignore</c> and
+        /// never worse, so honesty is never punished relative to silence. That a <i>false</i>
+        /// declaration of success still beats an honest failure is not closable in arithmetic; the
+        /// design concedes unverifiable declarations.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(StoryTier.Minor)]
+        [InlineData(StoryTier.Major)]
+        [InlineData(StoryTier.Mandatory)]
+        public void AwardFor_DoesNotCapTheFailurePenaltyOfADeclaredSlot(StoryTier tier)
+        {
+            Assert.Equal(PoliticalPower.AwardFor(SlotOutcome.NotMet, tier, false, Tuning),
+                         PoliticalPower.AwardFor(SlotOutcome.NotMet, tier, true, Tuning));
+        }
+
+        /// <summary>
+        /// The consequence that makes the one-sidedness worth having: a declared failure on a big
+        /// event costs strictly more than one on a small event. Capped at the minor rate these would
+        /// be equal, and the tier ladder would exist only on the way up.
+        /// </summary>
+        [Fact]
+        public void AwardFor_ADeclaredFailureStillClimbsWithTheTier()
+        {
+            int minor = PoliticalPower.AwardFor(SlotOutcome.NotMet, StoryTier.Minor, true, Tuning);
+            int mandatory = PoliticalPower.AwardFor(SlotOutcome.NotMet, StoryTier.Mandatory, true, Tuning);
+
+            Assert.True(mandatory < minor,
+                "A declared mandatory failure moves the balance by " + mandatory + " against a minor's " +
+                minor + ": the penalty has been capped too, which hands the Manual button a discount " +
+                "on every mandatory failure in the game.");
+        }
+
+        /// <summary>
+        /// Both halves of the ruling in one place, on the tier where they differ most: on a mandatory
+        /// event the declared award is the minor rate while the declared penalty is the mandatory one.
+        /// </summary>
+        [Fact]
+        public void AwardFor_CapsTheDeclaredAwardButNotTheDeclaredPenalty()
+        {
+            Assert.Equal(Gain(StoryTier.Minor),
+                         PoliticalPower.AwardFor(SlotOutcome.Met, StoryTier.Mandatory, true, Tuning));
+
+            Assert.Equal(PoliticalPower.AwardFor(SlotOutcome.NotMet, StoryTier.Mandatory, false, Tuning),
+                         PoliticalPower.AwardFor(SlotOutcome.NotMet, StoryTier.Mandatory, true, Tuning));
+        }
+
+        /// <summary>
         /// The cap is a cap, not a rewrite: it may not turn the minor rate into something larger, and
         /// declaring on a minor event is worth exactly what a minor event is worth.
         /// </summary>

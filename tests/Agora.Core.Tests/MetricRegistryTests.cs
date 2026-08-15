@@ -275,6 +275,149 @@ namespace Agora.Core.Tests
             Assert.False(MetricRegistry.IsKnown(id, TriggerScope.AllDistricts));
         }
 
+        // --- the third vocabulary: the fallback markers -------------------------------------------
+
+        /// <summary>
+        /// Every marker <c>SnapshotAssembly</c> can write into
+        /// <see cref="DistrictSnapshot.CityFallbackFields"/>, by reflection over its own
+        /// <c>Field*</c> constants.
+        /// </summary>
+        /// <remarks>
+        /// Most of those constants are <c>private</c>, so this reaches them with
+        /// <see cref="BindingFlags.NonPublic"/> — legitimate here and nowhere else, because
+        /// <c>SnapshotAssembly.cs</c> is compile-linked into this very assembly. Reflecting rather
+        /// than re-typing them is the point: a hand-kept list would be a fourth copy of a vocabulary
+        /// that already has three.
+        /// </remarks>
+        private static IReadOnlyList<string> FallbackMarkers()
+        {
+            var markers = new List<string>();
+
+            foreach (FieldInfo field in typeof(SnapshotAssembly).GetFields(
+                         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+            {
+                if (!field.IsLiteral || field.IsInitOnly) continue;
+                if (field.FieldType != typeof(string)) continue;
+                if (!field.Name.StartsWith("Field", StringComparison.Ordinal)) continue;
+
+                var value = (string?)field.GetRawConstantValue();
+                if (!string.IsNullOrEmpty(value)) markers.Add(value!);
+            }
+
+            markers.Sort(StringComparer.Ordinal);
+            return markers;
+        }
+
+        /// <summary>
+        /// Which markers suppress <paramref name="metricId"/>, found by trying each one and asking
+        /// <see cref="MetricRegistry.ReadDistrict"/> whether the reading went dark.
+        /// </summary>
+        private static List<string> MarkersThatSuppress(string metricId)
+        {
+            var found = new List<string>();
+
+            foreach (string marker in FallbackMarkers())
+            {
+                DistrictSnapshot district = StoryTestFixtures.District("d00000001",
+                    uncollectedGarbage: 900.0, attractionCount: 7, signatureBuildingCount: 3,
+                    happiness: 61.5, fellBackOn: new[] { marker });
+
+                if (MetricRegistry.ReadDistrict(district, metricId) == null) found.Add(marker);
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// <b>The third string vocabulary, and until now it was pinned by nothing.</b>
+        /// <c>CityFallbackFields</c> holds <i>property</i> names — <c>"AverageRent"</c> — where the
+        /// registry says <c>"rent"</c>, so the two lists cannot be compared directly and a mismatch
+        /// never throws. It simply never matches, and every fallback district then reads as having
+        /// genuinely measured a number it copied down from the city.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Asserted behaviourally rather than by calling the mapping, because
+        /// <c>MetricRegistry.FallbackFieldFor</c> is <c>private</c> and is not on the published seam
+        /// table — reaching it would mean editing lane 2a's file. Probing every marker and asking
+        /// which one darkens the reading tests the same property from outside, and needs no change to
+        /// <c>src</c>.
+        /// </para>
+        /// <para>
+        /// A metric with <i>no</i> marker is the failure mode: it can never be reported as a fallback,
+        /// so a district that copied the city's figure scores the player against a number that was
+        /// never its own.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EveryDistrictMetricIsSuppressedByAMarkerTheAssemblerActuallyWrites()
+        {
+            var unmapped = new List<string>();
+
+            foreach (string metricId in MetricRegistry.DistrictMetricIds)
+            {
+                if (MarkersThatSuppress(metricId).Count == 0) unmapped.Add(metricId);
+            }
+
+            Assert.True(unmapped.Count == 0,
+                "No CityFallbackFields marker suppresses these district-scope metrics, so a district " +
+                "that fell back on one reads as having measured it: " +
+                string.Join(", ", unmapped) + Environment.NewLine +
+                "The marker vocabulary is PROPERTY names (\"AverageRent\"), not metric ids (\"rent\") " +
+                "— a mapping that compared the wrong one would silently never match.");
+        }
+
+        /// <summary>
+        /// The other end of the test above: a district that fell back on nothing reads every metric as
+        /// measured. A mapping that suppressed everything would pass that one and be equally wrong.
+        /// </summary>
+        [Fact]
+        public void ADistrictWithNoFallbacksMeasuresEveryDistrictMetric()
+        {
+            DistrictSnapshot district = StoryTestFixtures.District("d00000001",
+                uncollectedGarbage: 900.0, attractionCount: 7, signatureBuildingCount: 3,
+                happiness: 61.5);
+
+            var dark = new List<string>();
+            foreach (string metricId in MetricRegistry.DistrictMetricIds)
+            {
+                if (MetricRegistry.ReadDistrict(district, metricId) == null) dark.Add(metricId);
+            }
+
+            Assert.True(dark.Count == 0,
+                "A district that fell back on nothing still reads as unmeasurable for: " +
+                string.Join(", ", dark));
+        }
+
+        /// <summary>
+        /// The five education ids share one marker and the three wealth ids another, because the
+        /// sensor falls back on a whole distribution at once — a district that could not measure its
+        /// education cannot measure any tier of it. Asserted as "the ids in each family agree with each
+        /// other" rather than by naming the marker, which is lane 2a's to choose.
+        /// </summary>
+        [Theory]
+        [InlineData("education.")]
+        [InlineData("wealth.")]
+        public void ADistributionsTiersShareOneFallbackMarker(string prefix)
+        {
+            var family = new List<string>();
+            foreach (string metricId in MetricRegistry.DistrictMetricIds)
+            {
+                if (metricId.StartsWith(prefix, StringComparison.Ordinal)) family.Add(metricId);
+            }
+
+            Assert.True(family.Count > 1,
+                "Expected more than one '" + prefix + "' metric at district scope; found " +
+                family.Count + ". If the vocabulary really has changed, rewrite this test rather than " +
+                "deleting it.");
+
+            List<string> first = MarkersThatSuppress(family[0]);
+            for (int i = 1; i < family.Count; i++)
+            {
+                Assert.Equal(first, MarkersThatSuppress(family[i]));
+            }
+        }
+
         // --- reading ------------------------------------------------------------------------------
 
         [Fact]

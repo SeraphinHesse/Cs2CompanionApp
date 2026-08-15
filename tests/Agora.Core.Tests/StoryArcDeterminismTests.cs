@@ -27,7 +27,8 @@ namespace Agora.Core.Tests
         private static readonly SimDate Open = StoryTestFixtures.March1994;
         private static readonly EngineTuning Tuning = EngineTuning.Default;
 
-        private static SimDate Resolves => Open.AddMonths(Tuning.Stories.CycleMonths);
+        // CycleMonths is the period, so the draft-to-resolution gap is one month less than it.
+        private static SimDate Resolves => Open.AddMonths(Tuning.Stories.CycleMonths - 1);
 
         /// <summary>
         /// A catalog whose events all trigger manually — so the pool a run states is the pool it draws

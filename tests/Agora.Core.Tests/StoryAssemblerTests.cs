@@ -192,7 +192,7 @@ namespace Agora.Core.Tests
         /// day 15 because a sim "day" is a calendar month.
         /// </summary>
         [Fact]
-        public void Draft_OpensOnTodayAndResolvesOneCycleLater()
+        public void Draft_OpensOnTodayAndResolvesOneMonthBeforeTheCycleEnds()
         {
             List<CivicEvent> catalog;
             List<EventPoolEntry> pool;
@@ -201,7 +201,12 @@ namespace Agora.Core.Tests
             foreach (Story story in Draft(catalog, pool).DraftedStories)
             {
                 Assert.Equal(March1994.TotalMonths, story.OpenedDate.TotalMonths);
-                Assert.Equal(March1994.AddMonths(Tuning.Stories.CycleMonths).TotalMonths,
+
+                // CycleMonths is the PERIOD, not the draft-to-resolution gap: a cycle of 2 drafts on
+                // M, resolves on M+1 and drafts again at M+2. The worked example on
+                // StoriesTuning.CycleMonths is the authority, and the field's summary used to
+                // contradict it by exactly this one month.
+                Assert.Equal(March1994.AddMonths(Tuning.Stories.CycleMonths - 1).TotalMonths,
                              story.ResolvesDate.TotalMonths);
                 Assert.Equal(StoryOutcome.Pending, story.Outcome);
                 Assert.Equal(-1, story.ResolvedMonth);

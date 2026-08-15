@@ -135,7 +135,7 @@ namespace Agora.Core.Tests
                                                       params MetricReading[] evidence)
         {
             var readings = new List<MetricReading>(evidence);
-            readings.Sort((a, b) => string.CompareOrdinal(a.MetricId, b.MetricId));
+            readings.Sort(CompareReadings);
 
             return new StoryReadContext
             {
@@ -145,8 +145,24 @@ namespace Agora.Core.Tests
             };
         }
 
-        internal static MetricReading Reading(string metricId, double? value) =>
-            new MetricReading { MetricId = metricId, Value = value };
+        /// <summary>
+        /// A reading is identified by metric <b>and</b> district together, so the sort is over both.
+        /// Ordering on the metric alone would leave two districts' readings of one metric in whatever
+        /// order they happened to be appended.
+        /// </summary>
+        internal static int CompareReadings(MetricReading a, MetricReading b)
+        {
+            int byMetric = string.CompareOrdinal(a.MetricId, b.MetricId);
+            return byMetric != 0 ? byMetric : string.CompareOrdinal(a.DistrictId, b.DistrictId);
+        }
+
+        /// <summary>
+        /// One recorded reading. <paramref name="districtId"/> is empty for a city-wide one, and it is
+        /// <b>part of the identity</b> — a lookup matching on the metric alone would let one
+        /// district's record answer for another's, which is worse than having no record at all.
+        /// </summary>
+        internal static MetricReading Reading(string metricId, double? value, string districtId = "") =>
+            new MetricReading { MetricId = metricId, DistrictId = districtId, Value = value };
 
         // --- specs ----------------------------------------------------------------------------
 
@@ -273,7 +289,11 @@ namespace Agora.Core.Tests
             {
                 Id = id,
                 OpenedDate = opened,
-                ResolvesDate = opened.AddMonths(Stories.CycleMonths),
+                // CycleMonths is the PERIOD, so the draft-to-resolution gap is one month less: a
+                // cycle of 2 drafts on M, resolves on M+1 and drafts again at M+2. The worked example
+                // on StoriesTuning.CycleMonths is the authority, and its summary used to disagree with
+                // it by exactly this one month.
+                ResolvesDate = opened.AddMonths(Stories.CycleMonths - 1),
                 Slots = ordered
             };
         }
@@ -308,10 +328,11 @@ namespace Agora.Core.Tests
             Slot(eventId, SlotResponse.Ignore, role);
 
         /// <summary>
-        /// A slot that must resolve <see cref="SlotOutcome.Unmeasurable"/>: a <c>Manual</c> response
-        /// is neutral until the player declares an outcome on it.
+        /// A slot the player left alone. <b>This now scores <see cref="SlotOutcome.NotMet"/></b> — see
+        /// the remarks on <see cref="SlotResponse"/>. It used to be neutral, which made doing nothing
+        /// strictly cheaper than every response that could fail.
         /// </summary>
-        internal static StorySlot UnmeasurableSlot(string eventId, SlotRole role = SlotRole.Minor) =>
-            Slot(eventId, SlotResponse.Manual, role);
+        internal static StorySlot SilentSlot(string eventId, SlotRole role = SlotRole.Minor) =>
+            Slot(eventId, SlotResponse.Unaddressed, role);
     }
 }
