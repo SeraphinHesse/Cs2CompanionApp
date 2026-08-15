@@ -406,6 +406,68 @@ namespace Agora.Core.Tests
             }
         }
 
+        /// <summary>
+        /// The whole path, end to end, for the city-statistics vocabulary: record an assembled
+        /// snapshot, write the sidecar, read it back into a fresh history, rebuild the month — and get
+        /// the measurements rather than the defaults.
+        ///
+        /// <para>
+        /// The three tests above check shape, fingerprint and precision, and all three would pass on a
+        /// history whose new series were filed and then never read. This one closes that: it goes
+        /// through <c>SnapshotRehydration</c>, which is the only consumer that turns the file back
+        /// into something the engine understands, and it asserts the values by name. Everything before
+        /// this pass came back through it; a wave-3 <c>delta</c> trigger on homelessness or tourism
+        /// needs the same to be true of these.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheWidenedSnapshot_SurvivesRecordFileRestoreAndRehydrate()
+        {
+            string root = TempRoot("widened-rehydrate");
+
+            try
+            {
+                const int Retention = 128;
+
+                SimDate start = Month(1990, 1);
+                SimDate now = start.AddMonths(2);
+
+                CitySnapshot latest = WidenedSnapshotFixture.Snapshot(now, 2);
+
+                var recorded = new MetricHistory(Retention);
+                recorded.RecordSnapshot(WidenedSnapshotFixture.Snapshot(start, 0));
+                recorded.RecordSnapshot(WidenedSnapshotFixture.Snapshot(start.AddMonths(1), 1));
+                recorded.RecordSnapshot(latest);
+
+                var store = new SidecarStore(root, NullSidecarLog.Instance);
+                Assert.True(store.SaveMetricHistory(Save, recorded.ToFile()));
+
+                // A brand new instance, exactly as a fresh session gets.
+                var reloaded = new MetricHistory(Retention);
+                reloaded.RestoreFrom(store.LoadMetricHistory(Save), now);
+
+                System.Collections.Generic.List<CitySnapshot> restored =
+                    SnapshotRehydration.Restore(reloaded, now, Retention);
+
+                Assert.Equal(3, restored.Count);
+
+                // The newest rebuilt month is the one the fixture's `latest` describes, so the two are
+                // directly comparable; the earlier two prove the month keying did not collapse them.
+                Assert.Equal(now, restored[2].Date);
+                WidenedSnapshotFixture.AssertCityStatisticsMatch(latest, restored[2]);
+
+                // ...and the months either side are the months either side, not three copies of one.
+                Assert.NotEqual(0.0, restored[0].Statistics.HomelessShare);
+                Assert.Equal(restored[0].UncollectedGarbage, restored[2].UncollectedGarbage, 12);
+                Assert.NotEqual(restored[0].Districts[0].UncollectedGarbage,
+                                restored[2].Districts[0].UncollectedGarbage);
+            }
+            finally
+            {
+                Delete(root);
+            }
+        }
+
         // --- Fail soft ---------------------------------------------------------------------------
 
         /// <summary>

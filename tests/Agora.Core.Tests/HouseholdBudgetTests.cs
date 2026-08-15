@@ -276,13 +276,61 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// The snapshot contract moved, so the version it declares moved with it — <c>/schema-change</c>
-        /// step 1, and the thing <c>data/schemas/snapshot.schema.json</c> pins with a <c>const</c>.
+        /// The version <see cref="CitySnapshot"/> declares is the version
+        /// <c>data/schemas/snapshot.schema.json</c> pins with its <c>const</c> —
+        /// <c>/schema-change</c> steps 1 and 4, which are two sides of one change.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Deliberately <b>not</b> written as <c>Assert.Equal(4, …)</c>. A test that memorises the
+        /// current number goes red on the next bump for a reason that has nothing to do with what it
+        /// guards, and the fix for it is to type the new number in two places — which is exactly the
+        /// one-sided bump this test exists to catch. Comparing the two sides to each other instead
+        /// means the assertion survives every future bump and fails only when they disagree.
+        /// </para>
+        /// <para>
+        /// The one-sided bump is a real failure mode here rather than a theoretical one: the C#
+        /// default and the schema <c>const</c> are edited in different files by different steps of
+        /// the checklist, nothing compiles them together, and <c>SidecarSchema</c>'s own remarks
+        /// record that <c>PoliticalState</c>'s default and <c>CurrentStateVersion</c> had already
+        /// drifted apart once for precisely that reason.
+        /// </para>
+        /// </remarks>
         [Fact]
-        public void TheSnapshotContract_DeclaresVersionThree()
+        public void TheSnapshotContractVersion_MatchesTheShippedSchema()
         {
-            Assert.Equal(3, new CitySnapshot().SchemaVersion);
+            string path = System.IO.Path.Combine(RepoRoot(), "data", "schemas", "snapshot.schema.json");
+            Assert.True(System.IO.File.Exists(path),
+                        "data/schemas/snapshot.schema.json is the wire mirror of CitySnapshot; it must ship.");
+
+            var root = Newtonsoft.Json.Linq.JObject.Parse(System.IO.File.ReadAllText(path));
+            Newtonsoft.Json.Linq.JToken? pinned = root["properties"]?["schemaVersion"]?["const"];
+
+            Assert.True(pinned != null,
+                        "snapshot.schema.json must pin schemaVersion with a const, or nothing checks " +
+                        "that the two sides of the contract agree.");
+
+            // Explicit conversion rather than Value<int>(): the fluent form is an extension method on
+            // IEnumerable<JToken> and is not in scope here, where the type is fully qualified.
+            Assert.Equal((int)pinned!, new CitySnapshot().SchemaVersion);
+        }
+
+        /// <summary>
+        /// Walks up from the test binary to the repository root, the same way
+        /// <c>ShippedTuningTests</c> does and for the same reason: the runner's working directory
+        /// varies, so <c>AppContext.BaseDirectory</c> is the only stable anchor.
+        /// </summary>
+        private static string RepoRoot()
+        {
+            var dir = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "Agora.sln"))) return dir.FullName;
+                dir = dir.Parent;
+            }
+
+            throw new System.InvalidOperationException(
+                "Could not locate the repository root (no Agora.sln above " + System.AppContext.BaseDirectory + ").");
         }
 
         /// <summary>

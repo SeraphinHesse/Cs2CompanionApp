@@ -159,6 +159,40 @@ namespace Agora.Mod.Llm
             sb.Append("- commuting: ").Append(CommuteBand(snapshot.AverageCommuteMinutes)).Append('\n');
             sb.Append("- public finances: ").Append(BudgetBand(snapshot.BudgetBalance, snapshot.Debt)).Append('\n');
 
+            // The v4 city-statistics block, as words. Four lines out of the eighteen numbers that
+            // pass added, and every omission below is a decision rather than an oversight - the
+            // prompt has a cap, and a line that cannot say anything true costs the budget of one
+            // that can:
+            //
+            // - IndustryTaxRates and UnlockedFeatureIds are lists of ids, not a state of the city.
+            //   Forty resource names and every unlocked feature would outweigh every other line in
+            //   this block put together, and neither is a thing a reporter writes a paragraph about.
+            //   The dashboard carries both.
+            // - Attractiveness, AttractionCount and SignatureBuildingCount have no denominator:
+            //   attractiveness is a raw dimensionless index by contract, the other two are counts.
+            //   Banding any of them needs a reference maximum nobody has measured, and an invented
+            //   threshold picks its adjective at random.
+            // - UncollectedGarbage is in raw game units with the same problem, and the collection
+            //   story a model can actually write from is already carried by "public services".
+            // - Births and Deaths are the same "who is here" story as migration at a far slower
+            //   cadence, and their collection period is still open (scout 0004 Q2) - "births" may
+            //   mean this month or since the city was founded. The migration line survives that
+            //   question open because it bands the *ratio* of two figures gathered on the same
+            //   footing, which reads the same whichever period they cover; a births line would not.
+            sb.Append("- homelessness: ").Append(HomelessnessBand(snapshot.Statistics.HomelessShare)).Append('\n');
+            sb.Append("- migration: ").Append(MigrationBand(snapshot.Statistics)).Append('\n');
+            sb.Append("- visitors: ").Append(TourismBand(snapshot.Tourism, snapshot.Population)).Append('\n');
+            sb.Append("- city standing: ").Append(MilestoneBand(snapshot.Progression.MilestoneLevel)).Append('\n');
+
+            // All four are city-only at source - CityStatisticsSystem is keyed by (StatisticType,
+            // parameter) with no district dimension, Tourism lives on the city entity alone, and a
+            // district has no milestone (see the remarks on CityStatistics and DistrictSnapshot). The
+            // district block below carries no equivalent, so the only way one of these reaches the
+            // prose as a local fact is the model placing it there, and saying so is the same defence
+            // the fallback note on a district line makes.
+            sb.Append("- note: homelessness, migration, visitors and city standing are city-wide ");
+            sb.Append("measures; do not attribute any of them to a named district\n");
+
             var indices = snapshot.Indices;
             if (indices != null)
             {
@@ -422,6 +456,19 @@ namespace Agora.Mod.Llm
         // Every threshold below picks an adjective. None of them feeds engine state, so none of them
         // is a tuning coefficient in the sense of non-negotiable "no hardcoded tuning constants" -
         // changing one changes a word in a prompt and nothing else.
+        //
+        // ONE RULE, stated here because four bands now depend on it: THE BOTTOM BAND OF EVERY LINE
+        // FED BY A SENSOR MUST BE TRUE OF AN UNMEASURED CITY AS WELL AS AN EMPTY ONE. Every reading
+        // in the v4 block arrives as a struct with a zero default, and a sensor that never ran, a
+        // singleton guard that declined to read, or an Invalidate() before the first sample all
+        // produce exactly the same zeros as a city that genuinely has none of the thing. The contract
+        // cannot tell them apart, so a bottom band phrased as a positive fact - "a brand-new
+        // settlement", "nobody is homeless" - states something about the city on the strength of a
+        // measurement that may never have happened, and goes on stating it for the rest of the
+        // session while the lines fed by other sensor families stay correct beside it. A model handed
+        // "a metropolis" and "a brand-new settlement" two lines apart writes the contradiction into
+        // the prose, from a defect that logged one warning at startup and is otherwise silent.
+        // Phrase the bottom band so that it is true either way, and it costs nothing.
 
         private static string SystemDescription(RegionTheme theme) =>
             theme == RegionTheme.Na
@@ -515,6 +562,139 @@ namespace Agora.Mod.Llm
             if (balance < 0) return "spending more than it takes in";
             if (debt > 0) return "balanced, but servicing debt";
             return "in the black";
+        }
+
+        /// <summary>
+        /// Homelessness as a phrase. The share arrives 0-1 — the sensor has already divided the
+        /// game's 0-100 percentage down (see <see cref="CityStatistics.HomelessShare"/>).
+        /// </summary>
+        /// <remarks>
+        /// Not <see cref="UnitBand"/>: real homelessness lives in the bottom couple of percent of the
+        /// scale, so five even fifths would report a city in crisis and a city with nobody sleeping
+        /// rough in the same words. The bottom band says "no visible homelessness" rather than "none"
+        /// because a city whose statistics sensor found nothing also reads 0 here, and the contract
+        /// cannot tell the two apart — a phrase true of both is the honest one, on the same reasoning
+        /// that makes <see cref="CommuteBand"/> say "unmeasured".
+        /// </remarks>
+        private static string HomelessnessBand(double share)
+        {
+            double v = Clamp01(share);
+            if (v < 0.005) return "no visible homelessness";
+            if (v < 0.02) return "a few households with nowhere to live";
+            if (v < 0.05) return "homelessness is a visible problem";
+            if (v < 0.10) return "homelessness is a serious problem";
+            return "a homelessness crisis";
+        }
+
+        /// <summary>
+        /// Whether the city is filling or emptying, and whether unhappiness is why people are going.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Bands the arrivals' share of all movement rather than either count on its own, which is
+        /// what lets the line stand while scout 0004 Q2 is open: nobody yet knows whether these
+        /// statistics cover a day, a month or the whole life of the city, and a ratio of two figures
+        /// gathered on the same footing reads the same either way. A line banding arrivals against
+        /// population would not.
+        /// </para>
+        /// <para>
+        /// The second clause is the political half. <see cref="CityStatistics.MovedAwayUnhappy"/> is
+        /// carried separately from <see cref="CityStatistics.CitizensMovedAway"/> precisely because
+        /// the two mean opposite things — people leaving because there is nowhere to live is a
+        /// housing story, people leaving because they are miserable is a government story — and a
+        /// prompt that printed only the total would hand the model the wrong one.
+        /// </para>
+        /// </remarks>
+        private static string MigrationBand(CityStatistics statistics)
+        {
+            int arriving = statistics.CitizensMovedIn < 0 ? 0 : statistics.CitizensMovedIn;
+            int leaving = statistics.CitizensMovedAway < 0 ? 0 : statistics.CitizensMovedAway;
+
+            long total = (long)arriving + leaving;
+            if (total == 0) return "few people are moving either way";
+
+            string flow = UnitBand((double)arriving / total,
+                                   "people are leaving in numbers", "more are leaving than arriving",
+                                   "arrivals and departures roughly balance",
+                                   "more are arriving than leaving", "people are pouring in");
+
+            if (leaving > 0 && statistics.MovedAwayUnhappy > 0)
+            {
+                double unhappyShare = (double)statistics.MovedAwayUnhappy / leaving;
+                if (unhappyShare >= 0.5)
+                    return flow + ", and most of those leaving go because they are unhappy here";
+                if (unhappyShare >= 0.2)
+                    return flow + ", and a good share of those leaving go because they are unhappy here";
+            }
+
+            return flow;
+        }
+
+        /// <summary>
+        /// Visitor pressure, measured against the resident population rather than in absolute terms —
+        /// a thousand tourists is a curiosity in a metropolis and an occupation in a village.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="TourismLevels.Attractiveness"/> is deliberately not banded here. It is a raw
+        /// dimensionless index by contract, so every threshold would be measured against a reference
+        /// maximum nobody has established, and the adjective would then be chosen by that guess
+        /// rather than by the city. Lodging is reported only at the two ends because a hotel trade
+        /// running half full is not a story, and a clause that printed every single month would cost
+        /// prompt budget without ever telling the model anything.
+        /// </remarks>
+        private static string TourismBand(TourismLevels tourism, int population)
+        {
+            int tourists = tourism.Tourists < 0 ? 0 : tourism.Tourists;
+
+            string pressure;
+            double perResident = population > 0 ? (double)tourists / population : 0.0;
+            if (perResident < 0.01) pressure = "the city is not on the tourist map";
+            else if (perResident < 0.05) pressure = "a few visitors about";
+            else if (perResident < 0.15) pressure = "a steady tourist trade";
+            else if (perResident < 0.30) pressure = "visitors are a presence everywhere";
+            else pressure = "the city is thronged with visitors";
+
+            if (tourism.LodgingTotal > 0)
+            {
+                double occupancy = (double)tourism.LodgingUsed / tourism.LodgingTotal;
+                if (occupancy >= 0.90) return pressure + "; the hotels are full";
+                if (occupancy <= 0.25) return pressure + "; hotel beds are going empty";
+            }
+
+            return pressure;
+        }
+
+        /// <summary>
+        /// How far into the milestone track the city has got, as a phrase. This is also what the game
+        /// calls "city level" — one number, not two (see <see cref="ProgressionState.MilestoneLevel"/>).
+        /// </summary>
+        /// <remarks>
+        /// It says what kind of city the model is writing about in a way population cannot: a village
+        /// and a small city of the same size have different arguments available to them, because one
+        /// of them has unlocked public transport and the other has not.
+        /// <para>
+        /// Level 0 says "no milestones on record" rather than describing a brand-new settlement,
+        /// under the bottom-band rule stated at the head of this section. It is the reading where
+        /// getting it wrong is loudest: <c>AgoraProgressionSensorSystem</c> reports nothing for the
+        /// rest of the session if <c>CreateQueries</c> throws, and the milestone singleton is guarded
+        /// besides, so a 400,000-resident city can arrive here at level 0 — and the size line, fed by
+        /// a different sensor family, would go on calling it a metropolis in the line above.
+        /// </para>
+        /// <para>
+        /// <see cref="ProgressionState.MilestoneProgress"/> is deliberately not printed beside it. The
+        /// obvious clause — "and close to its next milestone" past some threshold — is permanently
+        /// wrong on a city that has finished the track, where there is no next milestone for the
+        /// progress figure to be close to, and a line that is wrong forever on the largest cities is
+        /// worse than one that is absent.
+        /// </para>
+        /// </remarks>
+        private static string MilestoneBand(int milestoneLevel)
+        {
+            if (milestoneLevel <= 0) return "no milestones on record";
+            if (milestoneLevel < 5) return "early in its development, with much still out of reach";
+            if (milestoneLevel < 10) return "growing into itself, unlocking more as it goes";
+            if (milestoneLevel < 15) return "well established, with most of its options open";
+            return "a mature city with little left to unlock";
         }
 
         /// <summary>Maps a [0,1] value onto five adjectives, lowest first.</summary>

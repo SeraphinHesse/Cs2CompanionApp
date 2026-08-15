@@ -172,7 +172,8 @@ namespace Agora.Mod.Sensors
 
             RecordScope(CityScope, date, snapshot.Population, snapshot.Happiness, snapshot.Unemployment,
                 snapshot.CrimeRate, snapshot.Education, snapshot.Wealth, snapshot.Pollution,
-                snapshot.Services);
+                snapshot.Services, snapshot.UncollectedGarbage, snapshot.AttractionCount,
+                snapshot.SignatureBuildingCount);
 
             // City scope only. Neither figure has a per-district sensor — the mobility family reports
             // nothing district-scoped at all — so every district's commute and congestion is a copy of
@@ -180,6 +181,31 @@ namespace Agora.Mod.Sensors
             // name claiming it is local.
             Record(CityKey(CommuteMinutes), date, snapshot.AverageCommuteMinutes);
             Record(CityKey(TrafficCongestion), date, snapshot.TrafficCongestion);
+
+            // The city-statistics pass. City scope only, and not for want of a district query: the
+            // game's statistics system is keyed by (StatisticType, parameter) with no district
+            // dimension at all, so these are city-only at source (scout 0004 §1.4). Recording them
+            // per district would file the city's number under a district's name.
+            CityStatistics statistics = snapshot.Statistics;
+            Record(CityKey(Homeless), date, statistics.Homeless);
+            Record(CityKey(HomelessShare), date, statistics.HomelessShare);
+            Record(CityKey(CitizensMovedIn), date, statistics.CitizensMovedIn);
+            Record(CityKey(CitizensMovedAway), date, statistics.CitizensMovedAway);
+            Record(CityKey(MovedAwayUnhappy), date, statistics.MovedAwayUnhappy);
+            Record(CityKey(Births), date, statistics.Births);
+            Record(CityKey(Deaths), date, statistics.Deaths);
+            Record(CityKey(GarbageProductionRate), date, statistics.GarbageProductionRate);
+
+            TourismLevels tourism = snapshot.Tourism;
+            Record(CityKey(Tourists), date, tourism.Tourists);
+            Record(CityKey(Attractiveness), date, tourism.Attractiveness);
+            Record(CityKey(LodgingUsed), date, tourism.LodgingUsed);
+            Record(CityKey(LodgingTotal), date, tourism.LodgingTotal);
+
+            ProgressionState progression = snapshot.Progression;
+            Record(CityKey(MilestoneLevel), date, progression.MilestoneLevel);
+            Record(CityKey(Experience), date, progression.Experience);
+            Record(CityKey(MilestoneProgress), date, progression.MilestoneProgress);
 
             List<DistrictSnapshot> districts = snapshot.Districts;
             if (districts == null) return;
@@ -191,19 +217,52 @@ namespace Agora.Mod.Sensors
                 DistrictSnapshot d = districts[i];
                 if (d == null || string.IsNullOrEmpty(d.Id)) continue;
 
+                // The three counts are passed as null — "not measured", the same convention the sensor
+                // readings use — for any field this district fell back on. See the vocabulary
+                // declaration below for why an absent sample beats a recorded zero.
                 RecordScope(d.Id, date, d.Population, d.Happiness, d.Unemployment, d.CrimeRate,
-                    d.Education, d.Wealth, d.Pollution, d.Services);
+                    d.Education, d.Wealth, d.Pollution, d.Services,
+                    Measured(d, SnapshotAssembly.FieldUncollectedGarbage, d.UncollectedGarbage),
+                    Measured(d, SnapshotAssembly.FieldAttractionCount, d.AttractionCount),
+                    Measured(d, SnapshotAssembly.FieldSignatureBuildingCount, d.SignatureBuildingCount));
             }
+        }
+
+        /// <summary>
+        /// <paramref name="value"/> if <paramref name="district"/> really measured
+        /// <paramref name="fieldName"/>, or null if the field is named in its
+        /// <see cref="DistrictSnapshot.CityFallbackFields"/>.
+        /// </summary>
+        private static T? Measured<T>(DistrictSnapshot district, string fieldName, T value)
+            where T : struct
+        {
+            List<string> fallbacks = district.CityFallbackFields;
+            if (fallbacks == null) return value;
+
+            for (int i = 0; i < fallbacks.Count; i++)
+            {
+                if (string.Equals(fallbacks[i], fieldName, StringComparison.Ordinal)) return null;
+            }
+
+            return value;
         }
 
         /// <summary>
         /// The metrics recorded identically at city and district scope. One method for both so the
         /// two scopes cannot drift into different vocabularies.
+        ///
+        /// <para>
+        /// The last three arrive nullable so that one scope may have measured them and the other not.
+        /// That is not a second vocabulary — the metric names are the same at both scopes — it is the
+        /// difference between a series with no sample this month and a series with a fabricated one.
+        /// The city never passes null: it has nowhere to fall back to and so is never fallback-marked.
+        /// </para>
         /// </summary>
         private void RecordScope(string scope, SimDate date, int population, double happiness,
                                  double unemployment, double crimeRate, EducationDistribution education,
                                  WealthDistribution wealth, PollutionLevels pollution,
-                                 ServiceCoverage services)
+                                 ServiceCoverage services, double? uncollectedGarbage,
+                                 int? attractionCount, int? signatureBuildingCount)
         {
             Record(ScopedKey(scope, Population), date, population);
             Record(ScopedKey(scope, Happiness), date, happiness);
@@ -225,6 +284,26 @@ namespace Agora.Mod.Sensors
             // district per month for a decade is a sidecar nobody wanted.
             Record(ScopedKey(scope, PollutionMean), date, pollution.Mean());
             Record(ScopedKey(scope, ServiceCoverageMean), date, services.Mean());
+
+            // The three v4 figures the game resolves per district as well as city-wide, so they are
+            // the only part of the city-statistics pass that belongs in this shared method — and the
+            // only three recorded conditionally. A null writes nothing at all, which TryValueAt
+            // already reports as "not measured" and SnapshotRehydration already leaves at the
+            // contract default.
+            if (uncollectedGarbage.HasValue)
+            {
+                Record(ScopedKey(scope, UncollectedGarbage), date, uncollectedGarbage.Value);
+            }
+
+            if (attractionCount.HasValue)
+            {
+                Record(ScopedKey(scope, AttractionCount), date, attractionCount.Value);
+            }
+
+            if (signatureBuildingCount.HasValue)
+            {
+                Record(ScopedKey(scope, SignatureBuildingCount), date, signatureBuildingCount.Value);
+            }
         }
 
         /// <summary>Number of samples held for a series. Diagnostics only.</summary>
@@ -515,5 +594,101 @@ namespace Agora.Mod.Sensors
 
         /// <summary>0–1. City scope only — see the recorder for why.</summary>
         public const string TrafficCongestion = "trafficCongestion";
+
+        // --- The city-statistics pass (snapshot v4) -------------------------------------------
+        //
+        // Eighteen city-scope names and three district-scope ones, and the split is the game's rather
+        // than ours: CityStatisticsSystem is keyed by (StatisticType, parameter) with no district
+        // dimension, so only the three counts whose buildings carry CurrentDistrict are recorded at
+        // both scopes (scout 0004 §1.4, §9).
+        //
+        // RECORDED CONDITIONALLY AT DISTRICT SCOPE: uncollectedGarbage, attractionCount and
+        // signatureBuildingCount. A district that could not measure one of the three is named in its
+        // CityFallbackFields, and that month's sample is skipped rather than filed — for the same
+        // reason rent and land value are not recorded here at all (see RecordSnapshot's remarks). A
+        // fabricated value written into a series poisons every window computed against it afterwards,
+        // and the only thing the fallback ruling changed is which fabrication it would be: the three
+        // fall back to zero rather than to the city total, which is less harmful but no more true.
+        // Skipping leaves an absence, which TryValueAt reports honestly as "not measured" — so wave
+        // 2's Unmeasurable is answerable off a rehydrated month and not only off the live snapshot.
+        //
+        // But it is answerable only by PROBING THE HISTORY, never by reading the marker off a
+        // rehydrated snapshot. SnapshotRehydration reconstructs a DistrictSnapshot from recorded
+        // samples alone, so its CityFallbackFields comes back empty and HasCityFallbacks false —
+        // the contract defaults — whatever the original month looked like. A wave-2 consumer that
+        // asks a rehydrated district "did you fall back on this?" is therefore told "no, and the
+        // value is 0", which is the one wrong answer this whole arrangement exists to prevent. The
+        // marker answers the question on the live snapshot; TryValueAt answers it on a historical
+        // one. Two surfaces, two mechanisms, and a consumer must not reach for the wrong one.
+        //
+        // Only these three, and only at district scope. Population, happiness, unemployment, crime,
+        // education and wealth are recorded unconditionally at both scopes, exactly as they were
+        // before this pass — and population in particular must stay unconditional, because
+        // SnapshotRehydration probes it to decide whether a district existed in a given month.
+        //
+        // NOT RECORDED, DELIBERATELY: CitySnapshot.UnlockedFeatureIds and
+        // CitySnapshot.IndustryTaxRates. Both are lists, and this class stores one double per series
+        // per month — there is no scalar to file. A trigger may ask what is unlocked or what a
+        // resource is taxed at *today*, off the live snapshot; there is no historical series behind
+        // either and therefore no honest `delta` or `windowMonths` read. This is a decision, not an
+        // omission: do not go looking for a series that was never written.
+
+        /// <summary>Homeless residents. A count.</summary>
+        public const string Homeless = "homeless";
+
+        /// <summary>Homeless share of the moved-in population, 0–1. Not the game's 0–100 percentage.</summary>
+        public const string HomelessShare = "homelessShare";
+
+        /// <summary>Citizens who moved in. A count, not a rate.</summary>
+        public const string CitizensMovedIn = "citizensMovedIn";
+
+        /// <summary>Citizens who moved away. A count.</summary>
+        public const string CitizensMovedAway = "citizensMovedAway";
+
+        /// <summary>Citizens who moved away specifically because they were unhappy. A count.</summary>
+        public const string MovedAwayUnhappy = "movedAwayUnhappy";
+
+        /// <summary>Births. A count.</summary>
+        public const string Births = "births";
+
+        /// <summary>Deaths. A count.</summary>
+        public const string Deaths = "deaths";
+
+        /// <summary>Garbage produced per day. A rate, not a stockpile — see <see cref="UncollectedGarbage"/>.</summary>
+        public const string GarbageProductionRate = "garbageProductionRate";
+
+        /// <summary>Tourists in the city. A count.</summary>
+        public const string Tourists = "tourists";
+
+        /// <summary>The city's attractiveness index. Dimensionless and stored raw, not normalised.</summary>
+        public const string Attractiveness = "attractiveness";
+
+        /// <summary>Hotel rooms occupied.</summary>
+        public const string LodgingUsed = "lodgingUsed";
+
+        /// <summary>Hotel rooms available.</summary>
+        public const string LodgingTotal = "lodgingTotal";
+
+        /// <summary>The achieved milestone. Also the city level; CS2 has only the one number.</summary>
+        public const string MilestoneLevel = "milestoneLevel";
+
+        /// <summary>Accumulated experience.</summary>
+        public const string Experience = "experience";
+
+        /// <summary>Progress toward the next milestone, 0–1.</summary>
+        public const string MilestoneProgress = "milestoneProgress";
+
+        /// <summary>
+        /// Garbage sitting uncollected at producers. City and district scope. Distinct from
+        /// <see cref="GarbageProductionRate"/>: production is what the city makes, this is what
+        /// nobody has come to collect.
+        /// </summary>
+        public const string UncollectedGarbage = "uncollectedGarbage";
+
+        /// <summary>Buildings contributing attractiveness. City and district scope.</summary>
+        public const string AttractionCount = "attractionCount";
+
+        /// <summary>Signature buildings. City and district scope. There is no landmark count.</summary>
+        public const string SignatureBuildingCount = "signatureBuildingCount";
     }
 }

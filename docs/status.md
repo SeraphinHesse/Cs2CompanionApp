@@ -74,7 +74,8 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | Wave | What | Status |
 |---|---|---|
 | **0** | Tick correctness prerequisites — the reload double-tick, and trend memory that died at every save boundary. Not story-specific; stands on its own. | ✅ **code complete**, three lanes reviewed and merged, PR open into `EventSystemRefresh` · **five manual gates outstanding**, see below · 1415 → **1442 tests** |
-| **1–7** | Sensors · story engine · catalog · tick wiring · prose · UI · retirement | not started |
+| **1** | Sensors and city statistics — what the game's own statistics screen shows, plus tourism, progression and per-resource taxes. `CitySnapshot` v4. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **sixteen manual gates outstanding, none walked**, see below · 1442 → **1469 tests** |
+| **2–7** | Story engine · catalog · tick wiring · prose · UI · retirement | not started |
 
 **Wave 0 also repaired a red base.** `EventSystemRefresh` did not build and had five failing tests
 before the wave opened, from three prior commits landing unverified. Fixed as its own commit so the
@@ -85,6 +86,48 @@ in `docs/plans/0004-wave-0-handoff.md`: `metric_ring.json` was never built becau
 already was one; wave 1's `metric_history` schema bump is probably unnecessary because the file is a
 keyed series bag; and `TickPlanner`'s poll cadence had no arithmetic slip to fix, only an intent to
 decide — it is now `pollTickIntervalMonths`, default 1, behaviour-identical for every existing save.
+
+### Wave 1 — what it added, and what it corrected
+
+Three new sensor systems read `Game.Simulation.CityStatisticsSystem` — the same source the game's own
+city statistics screen reads, which was the owner's stated constraint. `CitySnapshot` is at
+**schemaVersion 4**: homelessness, migration, births, deaths, garbage production and uncollected
+garbage, tourists, attractiveness, lodging, milestone level, lifetime XP, unlocked feature ids and
+per-resource tax rates. The pure half was widened in step, so the new scalars survive a reload
+instead of reading as fabricated zeros on the first tick after every load.
+
+**No sidecar or binding version moved.** Only `snapshot` 3 → 4, which is not a sidecar document and
+so has no migration to write; its C# and JSON sides are now pinned **to each other** by a
+version-relative test rather than to a memorised literal.
+
+`docs/scout/0004-city-statistics.md` is the new authority on what the game exposes, with file and
+line numbers. **Anything not marked CONFIRMED there does not get a trigger in wave 3.** Six of the
+rework plan's assumptions were wrong and are corrected in full in
+`docs/plans/0004-wave-1-handoff.md`; three matter beyond this wave:
+
+- **There is no landmark count** anywhere in `Game.dll`. Shipped as `SignatureBuildingCount`.
+- **Garbage "accumulation" is a production rate per day, not a stockpile** — the game's own binding
+  calls it `productionRate`. The backlog is a separate field, and it is not the infoview's "stored
+  garbage" either, so prose must say *uncollected*, never *landfill*.
+- **Birth and death rates are readable, and always were.** The "Known gaps" note below recording
+  birth rate as unreachable was about `CityModifierType` — nothing can *modify* it, which is a
+  different claim from being unable to *read* it. Corrected inline below.
+
+### Wave 1's manual gates — code built, nothing seen in game
+
+Lanes 1a, 1b and 1c are `GameSystemBase` and compile into **no test at all**, by design. Sixteen gate
+rows are listed in full in `docs/plans/0004-wave-1-handoff.md`; **none has been walked.** The one
+that blocks later work:
+
+- **`grep AGORA-STATCOLLECTION Agora.log`** must show exactly one census with a non-zero prefab
+  count. The `collection=` values for `BirthRate`, `DeathRate`, `CitizensMovedIn`,
+  `CitizensMovedAway` and `MovedAwayReason` decide whether those five mean "this month" or "since the
+  city was founded" — and **wave 3 cannot author a threshold on any of them until that is answered.**
+
+The rest cluster into units that look plausible either way (a homeless share of `3.0` where `0.03`
+was meant; tax rates as `20.0` rather than `0.2`), counts that must move for events and not for
+menus (a placement preview must not raise the attraction count), and the per-save reset (load city A
+then city B without restarting; B's first snapshot must not carry A's figures).
 
 ### Wave 0's manual gates — code built, nothing seen in game
 
@@ -441,6 +484,12 @@ would tell the ceiling an existing NA save has no majors and pin its whole ballo
 3. **Effect palette rescope.** Scout 0001 §3 found no enum support for RCI demand, rent/land value,
    birth rate, or subsidies, and district scope has only 14 modifiers. The palette shipped against
    that gap list; `politicsmodplan.md` §7 still reflects the pre-rescope intent.
+   **Corrected 2026-08-15 (wave 1):** that list is about what can be **modified**, and it was read
+   for years as though it were about what can be **read**. Birth and death rates are fully readable
+   — `StatisticType.BirthRate` and `DeathRate` have been public throughout, and wave 1 now records
+   both (scout 0004 §4). Nothing can *change* them, which is the only thing scout 0001 ever claimed.
+   The distinction matters because content authors were about to skip a working trigger on the
+   strength of this line.
 4. **`politicsmodplan.md` §14 open decisions** remain open: NA primaries, timeline jitter, snapshot
    retention, post-2026 authorship, unrest ceiling.
 

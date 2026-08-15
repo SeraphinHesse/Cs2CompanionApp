@@ -50,6 +50,19 @@ namespace Agora.Mod.Sensors
         private const string FieldAverageCommuteMinutes = "AverageCommuteMinutes";
         private const string FieldTrafficCongestion = "TrafficCongestion";
 
+        // The three v4 fields that are genuinely per-district. Nothing else from the city-statistics
+        // pass gets a constant here, because nothing else is mirrored onto DistrictSnapshot at all —
+        // a district cannot fall back on a figure it has no property for.
+        //
+        // Internal rather than private, unlike the twenty-three above, because these three now have a
+        // second reader: MetricHistory skips recording a district figure this file marked as a
+        // fallback, and it has to test the marker against the same string this file wrote. Sharing the
+        // constant is the point — two copies of "AttractionCount" that drifted would leave the
+        // recorder silently filing fabricated zeros it believed it was skipping.
+        internal const string FieldUncollectedGarbage = "UncollectedGarbage";
+        internal const string FieldAttractionCount = "AttractionCount";
+        internal const string FieldSignatureBuildingCount = "SignatureBuildingCount";
+
         /// <summary>
         /// Builds the snapshot. <paramref name="city"/> and <paramref name="districts"/> may be
         /// null or empty — a capture taken before a save is loaded produces an empty but valid
@@ -90,11 +103,35 @@ namespace Agora.Mod.Sensors
                 TransitRidership = city.TransitRidership ?? 0.0,
                 AverageCommuteMinutes = city.AverageCommuteMinutes ?? 0.0,
                 TrafficCongestion = city.TrafficCongestion ?? 0.0,
+
+                // The city-statistics pass. An unmeasured block resolves to its all-zero form for the
+                // same reason every scalar above resolves to 0: the city snapshot has nowhere further
+                // to fall back to. The struct is what the LLM prompt and the dashboard read, and a
+                // null one would make every consumer branch on a state only this file can see.
+                //
+                // The trap this leaves, named here because there is nowhere better to name it:
+                // TourismLevels.Attractiveness is the one field where a resolved 0 is genuinely
+                // indistinguishable from a measurement AND has a consumer that cares, because it is
+                // the exact quantity the shipped city-attractiveness effect moves. A blind tourism
+                // sensor therefore reports "attractiveness 0" rather than "attractiveness unknown",
+                // and unlike a district there is no CityFallbackFields to say which it was. Nothing
+                // reads it as an engine input today — the effect side only ever writes
+                // CityModifierType.Attractiveness — so there is no wrong number now. Whoever writes
+                // the first trigger against it inherits this and should read the sensor's own
+                // remarks before deciding what an attractiveness of zero is allowed to mean.
+                Statistics = city.Statistics ?? new CityStatistics(0, 0.0, 0, 0, 0, 0, 0, 0.0),
+                Tourism = city.Tourism ?? new TourismLevels(0, 0, 0, 0),
+                Progression = city.Progression ?? new ProgressionState(0, 0, 0.0),
+                UncollectedGarbage = city.UncollectedGarbage ?? 0.0,
+                AttractionCount = city.AttractionCount ?? 0,
+                SignatureBuildingCount = city.SignatureBuildingCount ?? 0,
             };
 
             snapshot.BudgetBalance = snapshot.Income - snapshot.Expenses;
             snapshot.ActivePolicyIds = SortedCopy(city.ActivePolicyIds);
             snapshot.RecentDisasterIds = SortedCopy(city.RecentDisasterIds);
+            snapshot.UnlockedFeatureIds = SortedCopy(city.UnlockedFeatureIds);
+            snapshot.IndustryTaxRates = SortedRates(city.IndustryTaxRates);
 
             // InProgressMandateIds is owned by the engine, not by a sensor: the mod cannot see a
             // mandate. Left empty for the caller that does know.
@@ -130,6 +167,25 @@ namespace Agora.Mod.Sensors
             return copy;
         }
 
+        /// <summary>
+        /// Per-resource tax rates in the contract's order, <c>(Area, ResourceIndex)</c>. Sorted here
+        /// as well as in the sensor, because a sensor that hands over collection order is relying on a
+        /// sort no consumer can see — and <c>TaxSystem</c> is read through a native array whose layout
+        /// is not the engine's business.
+        /// </summary>
+        private static List<ResourceTaxRate> SortedRates(List<ResourceTaxRate> source)
+        {
+            var copy = source == null ? new List<ResourceTaxRate>() : new List<ResourceTaxRate>(source);
+            copy.Sort(CompareRate);
+            return copy;
+        }
+
+        private static int CompareRate(ResourceTaxRate a, ResourceTaxRate b)
+        {
+            int area = ((int)a.Area).CompareTo((int)b.Area);
+            return area != 0 ? area : a.ResourceIndex.CompareTo(b.ResourceIndex);
+        }
+
         private static DistrictSnapshot BuildDistrict(DistrictReading reading, CitySnapshot city)
         {
             var fallbacks = new List<string>();
@@ -162,6 +218,22 @@ namespace Agora.Mod.Sensors
             district.TransitRidership = Resolve(reading.TransitRidership, city.TransitRidership, FieldTransitRidership, fallbacks);
             district.AverageCommuteMinutes = Resolve(reading.AverageCommuteMinutes, city.AverageCommuteMinutes, FieldAverageCommuteMinutes, fallbacks);
             district.TrafficCongestion = Resolve(reading.TrafficCongestion, city.TrafficCongestion, FieldTrafficCongestion, fallbacks);
+
+            // The only three that fall back to zero rather than to the city figure, and the reason is
+            // that they are sums where everything above is an average or a share. A city happiness is
+            // a genuine estimate of a district's happiness; a city attraction count is not an estimate
+            // of a district's, it is an upper bound that is wrong for every district at once. Zero is
+            // wrong too, but it is wrong in the direction that cannot fire a "too much garbage here"
+            // trigger in every district simultaneously out of one blind sensor — and the city total
+            // would not read as loud, it would read as an ordinary district.
+            //
+            // The fallback name is still appended, and that is the half that carries the meaning: it
+            // is the marker, not the magnitude, that tells a consumer this was never measured. Wave
+            // 2's CheckResult.Unmeasurable reads CityFallbackFields for exactly that. Do not "fix"
+            // these back to city.X to match the twenty-three calls above.
+            district.UncollectedGarbage = Resolve(reading.UncollectedGarbage, 0.0, FieldUncollectedGarbage, fallbacks);
+            district.AttractionCount = Resolve(reading.AttractionCount, 0, FieldAttractionCount, fallbacks);
+            district.SignatureBuildingCount = Resolve(reading.SignatureBuildingCount, 0, FieldSignatureBuildingCount, fallbacks);
 
             fallbacks.Sort(StringComparer.Ordinal);
             district.CityFallbackFields = fallbacks;

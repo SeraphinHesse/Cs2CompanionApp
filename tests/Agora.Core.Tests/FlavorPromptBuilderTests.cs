@@ -318,6 +318,373 @@ namespace Agora.Core.Tests
             return prompt.Substring(start, end + 1 - start);
         }
 
+        // ---- the v4 city-statistics block ---------------------------------------------------------
+        //
+        // /schema-change step 3: a snapshot field the model cannot see is a contract break, because
+        // the model then writes prose about a city it has no view of. These pin the four lines the
+        // v4 fields arrive as, the two fields that deliberately do not arrive at all, and - the one
+        // that would fail invisibly - that none of them arrives as a figure.
+
+        // None of these pins a sentence. The adjectives in a band table are prose vocabulary - the
+        // builder says so itself - so a test that held them would go red on a copy edit, and a suite
+        // that goes red on copy edits trains people to delete tests. What is pinned instead is what
+        // an edit must not change without meaning to: that a field reaches the model at all, where
+        // each band boundary sits, that the bands are ordered and distinct, and that a conditional
+        // clause is conditional. Every one of those fails on a real defect and none on a reword.
+
+        [Fact]
+        public void TheCityBlock_CarriesHomelessnessMigrationVisitorsAndStanding()
+        {
+            // /schema-change step 3 in one test: the four lines exist and each one moves when the
+            // field behind it moves. A line whose text is the same on a city in a homelessness crisis
+            // as on an empty snapshot is not reporting the field, whatever it says.
+            var measured = Request(districts: 3, districtIdLength: 12);
+            measured.Snapshot.Statistics = new CityStatistics(
+                homeless: 900, homelessShare: 0.06, citizensMovedIn: 200, citizensMovedAway: 1_400,
+                movedAwayUnhappy: 900, births: 300, deaths: 250, garbageProductionRate: 4_000.0);
+            measured.Snapshot.Tourism = new TourismLevels(
+                tourists: 36_000, attractiveness: 120, lodgingUsed: 950, lodgingTotal: 1_000);
+            measured.Snapshot.Progression = new ProgressionState(
+                milestoneLevel: 12, experience: 40_000, milestoneProgress: 0.4);
+
+            var unmeasured = Request(districts: 3, districtIdLength: 12);
+
+            string[] labels = { "homelessness", "migration", "visitors", "city standing" };
+            for (int i = 0; i < labels.Length; i++)
+            {
+                string described = CityLine(measured, labels[i]);
+                Assert.NotEqual(string.Empty, described);
+                Assert.NotEqual(CityLine(unmeasured, labels[i]), described);
+            }
+        }
+
+        [Fact]
+        public void TheCityBlock_SaysTheNewLinesAreCityWideAndNotADistrictFact()
+        {
+            // Every one of the four is city-only at source: CityStatisticsSystem is keyed by
+            // (StatisticType, parameter) with no district dimension, Tourism lives on the city entity
+            // and a district has no milestone. The district block carries no equivalent, so the only
+            // route by which one becomes a local claim is the model putting it there. This is the
+            // section that fails invisibly if it is cut - the prose still reads fine, it is just
+            // about a district that was never measured.
+            //
+            // Held by content rather than verbatim: the note may be rewritten, but it has to go on
+            // naming all four lines, and dropping one from the list is exactly how a rewrite would
+            // quietly stop covering it.
+            string note = CityLine(Request(districts: 3, districtIdLength: 12), "note");
+
+            Assert.Contains("homelessness", note);
+            Assert.Contains("migration", note);
+            Assert.Contains("visitors", note);
+            Assert.Contains("city standing", note);
+            Assert.Contains("city-wide", note);
+            Assert.Contains("do not attribute", note);
+        }
+
+        [Fact]
+        public void Homelessness_BandsAtTheDocumentedThresholdsAndNowhereElse()
+        {
+            var request = Request(districts: 1, districtIdLength: 12);
+            System.Func<double, string> line = share =>
+            {
+                request.Snapshot.Statistics = new CityStatistics(0, share, 0, 0, 0, 0, 0, 0.0);
+                return CityLine(request, "homelessness");
+            };
+
+            Assert.Equal(5, BandRuns(new[] { 0.0, 0.0049, 0.005, 0.019, 0.02, 0.049, 0.05, 0.099, 0.10, 0.90 },
+                                     line).Count);
+
+            // Where the four thresholds are. The scale is packed into the bottom few percent of the
+            // range on purpose: a city at 6% homeless is in serious trouble, not "a fifth of the way
+            // up the scale". A sensor that forgot to divide the game's 0-100 percentage down would
+            // land every fixture here in the top band, which is the failure the contract's own remarks
+            // on HomelessShare warn about - and this test would then see one band, not five.
+            AssertThresholds(line, new[] { 0.0049, 0.019, 0.049, 0.099 }, new[] { 0.005, 0.02, 0.05, 0.10 });
+        }
+
+        [Fact]
+        public void Migration_BandsOnTheArrivalsShareOfAllMovement()
+        {
+            // Banded on the ratio rather than on either count, which is what lets the line stand while
+            // scout 0004 Q2 is open: nobody yet knows what period these statistics cover, and a ratio
+            // of two figures gathered on the same footing reads the same either way.
+            var request = Request(districts: 1, districtIdLength: 12);
+            System.Func<double, string> line = arrivalsShare =>
+            {
+                int arriving = (int)System.Math.Round(arrivalsShare * 1_000.0);
+                request.Snapshot.Statistics =
+                    new CityStatistics(0, 0.0, arriving, 1_000 - arriving, 0, 0, 0, 0.0);
+                return CityLine(request, "migration");
+            };
+
+            Assert.Equal(5, BandRuns(new[] { 0.0, 0.19, 0.20, 0.39, 0.40, 0.59, 0.60, 0.79, 0.80, 1.0 },
+                                     line).Count);
+            AssertThresholds(line, new[] { 0.19, 0.39, 0.59, 0.79 }, new[] { 0.20, 0.40, 0.60, 0.80 });
+        }
+
+        [Fact]
+        public void Migration_OnAnUnmeasuredCity_ClaimsNothingEitherWay()
+        {
+            // Zero in and zero out is what a capture taken before the statistics sensor ran looks
+            // like, and it is indistinguishable on the contract from a genuinely settled city. So the
+            // phrase has to be one that is true of both, which means it must not be any of the five
+            // the band scale hands out - each of those is a claim about which way the city is going,
+            // and 0/0 does not support one.
+            var request = Request(districts: 1, districtIdLength: 12);
+            string unmeasured = CityLine(request, "migration");
+
+            System.Func<double, string> line = arrivalsShare =>
+            {
+                int arriving = (int)System.Math.Round(arrivalsShare * 1_000.0);
+                request.Snapshot.Statistics =
+                    new CityStatistics(0, 0.0, arriving, 1_000 - arriving, 0, 0, 0, 0.0);
+                return CityLine(request, "migration");
+            };
+
+            List<string> bands = BandRuns(new[] { 0.0, 0.30, 0.50, 0.70, 1.0 }, line);
+            Assert.Equal(5, bands.Count);
+            Assert.DoesNotContain(unmeasured, bands);
+        }
+
+        [Fact]
+        public void Migration_MentionsUnhappinessOnlyWhenItIsWhyPeopleAreGoing()
+        {
+            // MovedAwayUnhappy is carried apart from CitizensMovedAway because the two mean opposite
+            // things politically: people leaving because there is nowhere to live is a housing story,
+            // people leaving because they are miserable is a government story. A city losing residents
+            // to a housing shortage must not be described to the model as a city walking out on its
+            // council.
+            var request = Request(districts: 1, districtIdLength: 12);
+            System.Func<double, string> line = unhappyShare =>
+            {
+                int unhappy = (int)System.Math.Round(unhappyShare * 900.0);
+                request.Snapshot.Statistics = new CityStatistics(0, 0.0, 100, 900, unhappy, 0, 0, 0.0);
+                return CityLine(request, "migration");
+            };
+
+            string bare = line(0.0);
+
+            // Three states, and the clause is an addition to the flow phrase rather than a
+            // replacement of it - the city is still emptying whatever the reason.
+            List<string> states = BandRuns(new[] { 0.0, 0.199, 0.20, 0.499, 0.50, 1.0 }, line);
+            Assert.Equal(3, states.Count);
+            Assert.Equal(bare, states[0]);
+            Assert.StartsWith(bare, states[1]);
+            Assert.StartsWith(bare, states[2]);
+
+            AssertThresholds(line, new[] { 0.199, 0.499 }, new[] { 0.20, 0.50 });
+        }
+
+        [Fact]
+        public void Visitors_BandOnVisitorsPerResident()
+        {
+            // Against the resident population, not in absolute terms: a thousand tourists is a
+            // curiosity in a metropolis and an occupation in a village.
+            var request = Request(districts: 1, districtIdLength: 12);
+            request.Snapshot.Population = 100_000;
+
+            System.Func<double, string> line = perResident =>
+            {
+                int tourists = (int)System.Math.Round(perResident * 100_000.0);
+                request.Snapshot.Tourism = new TourismLevels(tourists, 40, 0, 0);
+                return CityLine(request, "visitors");
+            };
+
+            Assert.Equal(5, BandRuns(new[] { 0.0, 0.009, 0.01, 0.049, 0.05, 0.149, 0.15, 0.299, 0.30, 0.90 },
+                                     line).Count);
+            AssertThresholds(line, new[] { 0.009, 0.049, 0.149, 0.299 }, new[] { 0.01, 0.05, 0.15, 0.30 });
+        }
+
+        [Fact]
+        public void Visitors_ReportLodgingOnlyAtTheTwoEnds()
+        {
+            // A hotel trade running half full is not a story, and a clause that printed every month
+            // would cost prompt budget without ever telling the model anything.
+            var request = Request(districts: 1, districtIdLength: 12);
+            request.Snapshot.Population = 100_000;
+
+            System.Func<int, int, string> line = (used, total) =>
+            {
+                request.Snapshot.Tourism = new TourismLevels(2_000, 40, used, total);
+                return CityLine(request, "visitors");
+            };
+
+            // No hotels at all: no clause, and in particular no claim that the beds are empty.
+            string bare = line(0, 0);
+            Assert.Equal(bare, line(300, 1_000));       // about a third full: nothing to say
+            Assert.Equal(bare, line(899, 1_000));       // a shade under full: still nothing
+
+            string empty = line(250, 1_000);
+            string full = line(900, 1_000);
+
+            Assert.NotEqual(bare, empty);
+            Assert.NotEqual(bare, full);
+            Assert.NotEqual(empty, full);
+
+            // Both are additions to the visitor phrase, so the pressure reading survives the clause.
+            Assert.StartsWith(bare, empty);
+            Assert.StartsWith(bare, full);
+
+            // And the two thresholds, each read from the last value inside the clause and the first
+            // value outside it.
+            Assert.Equal(empty, line(250, 1_000));
+            Assert.Equal(bare, line(251, 1_000));
+            Assert.Equal(full, line(900, 1_000));
+        }
+
+        [Fact]
+        public void CityStanding_BandsOnTheMilestoneLevel()
+        {
+            // MilestoneProgress is deliberately not printed beside it, so nothing here sweeps it: the
+            // obvious "close to its next milestone" clause is permanently wrong on a city that has
+            // finished the track.
+            var request = Request(districts: 1, districtIdLength: 12);
+            System.Func<double, string> line = level =>
+            {
+                request.Snapshot.Progression = new ProgressionState((int)level, 0, 0.0);
+                return CityLine(request, "city standing");
+            };
+
+            Assert.Equal(5, BandRuns(new double[] { 0, 1, 4, 5, 9, 10, 14, 15, 30 }, line).Count);
+            AssertThresholds(line, new double[] { 0, 4, 9, 14 }, new double[] { 1, 5, 10, 15 });
+        }
+
+        [Fact]
+        public void CityStanding_OnAnUnmeasuredCity_ClaimsNothingAboutItsAge()
+        {
+            // A milestone level of 0 means "brand new" or "the progression sensor never read
+            // anything", and the contract cannot tell the two apart: AgoraProgressionSensorSystem
+            // reports nothing for the rest of the session if CreateQueries throws, the milestone
+            // singleton is guarded besides, and Invalidate() empties the reading before the first
+            // sample. All three leave the reading null, which SnapshotAssembly resolves to
+            // ProgressionState(0, 0, 0) - the same zeros a genuinely new city produces.
+            //
+            // So the bottom band may not describe a young city, under the rule stated at the head of
+            // the banding section. This is the loudest place in the block to break it, because the
+            // size line is fed by a different sensor family and stays correct: a prompt reading "a
+            // large city" and "a brand-new settlement" two lines apart writes the contradiction into
+            // a year of articles, from a defect that logs one warning at startup and is silent after.
+            var request = Request(districts: 1, districtIdLength: 12);
+            request.Snapshot.Population = 400_000;
+
+            string size = CityLine(request, "size");
+            string standing = CityLine(request, "city standing");
+
+            // Held as forbidden vocabulary rather than as a sentence, which is the non-brittle
+            // direction for this rule: any rewording that keeps it passes, and only one that puts the
+            // claim back fails.
+            string[] claimsTheCityIsYoung = { "settlement", "village", "brand-new", "brand new", "young", "new " };
+            for (int i = 0; i < claimsTheCityIsYoung.Length; i++)
+            {
+                Assert.DoesNotContain(claimsTheCityIsYoung[i], standing);
+            }
+
+            // The size line beside it is untouched, which is what makes the contradiction visible at
+            // all - this test would have nothing to say if both lines went quiet together.
+            Assert.NotEqual(string.Empty, size);
+            Assert.NotEqual(size, standing);
+        }
+
+        /// <summary>
+        /// The value of one labelled line in the city block: everything after <c>"- label: "</c> up to
+        /// the newline. Asserts the line exists, so a band test cannot silently pass by comparing two
+        /// empty strings when the line it was written for has been removed.
+        /// </summary>
+        private static string CityLine(FlavorRequest request, string label)
+        {
+            string prompt = FlavorPromptBuilder.Build(request);
+            string prefix = "- " + label + ": ";
+
+            int start = prompt.IndexOf(prefix, System.StringComparison.Ordinal);
+            Assert.True(start >= 0, "the city block must carry a \"" + label + "\" line");
+            start += prefix.Length;
+
+            int end = prompt.IndexOf('\n', start);
+            Assert.True(end > start, "the \"" + label + "\" line must carry a value");
+            return prompt.Substring(start, end - start);
+        }
+
+        /// <summary>
+        /// Walks an ascending sweep of inputs and returns the distinct phrases in the order they first
+        /// appeared, asserting as it goes that no phrase comes back after the sweep has moved off it.
+        /// </summary>
+        /// <remarks>
+        /// This is how a band table is pinned without pinning its wording. Rewriting any adjective
+        /// leaves every assertion standing; a duplicated row, a swapped pair or a threshold that
+        /// stopped being monotonic does not, because the sweep would hand back a phrase it had already
+        /// left. Combined with <see cref="AssertThresholds"/> - which says where the changes happen -
+        /// that is the whole of what a band table promises.
+        /// </remarks>
+        private static List<string> BandRuns(double[] ascending, System.Func<double, string> line)
+        {
+            var runs = new List<string>();
+            for (int i = 0; i < ascending.Length; i++)
+            {
+                string phrase = line(ascending[i]);
+                if (runs.Count > 0 && runs[runs.Count - 1] == phrase) continue;
+
+                Assert.DoesNotContain(phrase, runs);
+                runs.Add(phrase);
+            }
+            return runs;
+        }
+
+        /// <summary>
+        /// Each pair brackets one threshold: the phrase must change across it, which is what fails
+        /// when a boundary is moved, and the two arrays are the last value in one band and the first
+        /// value in the next.
+        /// </summary>
+        private static void AssertThresholds(System.Func<double, string> line, double[] below, double[] atOrAbove)
+        {
+            Assert.Equal(below.Length, atOrAbove.Length);
+            for (int i = 0; i < below.Length; i++)
+            {
+                Assert.NotEqual(line(below[i]), line(atOrAbove[i]));
+            }
+        }
+
+        [Fact]
+        public void TaxRatesAndUnlockedFeatures_NeverReachTheModel()
+        {
+            // Both are lists of ids rather than a state of the city, and leaving them out is a
+            // decision recorded in the builder's own comment. Pinned so that a later pass adding
+            // them has to delete this test on purpose rather than discover the omission and "fix" it:
+            // forty resource names would outweigh every other line in the city block put together.
+            var request = Request(districts: 3, districtIdLength: 12);
+            request.Snapshot.UnlockedFeatureIds.Add("Feature_Zoning_Signature");
+            request.Snapshot.IndustryTaxRates.Add(
+                new ResourceTaxRate(TaxArea.Office, 21, "Software", 0.11));
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.DoesNotContain("Feature_Zoning_Signature", prompt);
+            Assert.DoesNotContain("Software", prompt);
+        }
+
+        [Fact]
+        public void TheCityBlock_CarriesNoFigureAtAll()
+        {
+            // The other direction of non-negotiable #1, and the reason every line above is a band: a
+            // model never shown a figure cannot quote one back slightly wrong. Swept over the whole
+            // city block rather than the four new lines, because the cheapest way for a future field
+            // to arrive as a number is for it to be appended next to them.
+            var request = Request(districts: 0, districtIdLength: 12);
+            request.Snapshot.Statistics = new CityStatistics(900, 0.06, 200, 1_400, 900, 300, 250, 4_000.0);
+            request.Snapshot.Tourism = new TourismLevels(36_000, 120, 950, 1_000);
+            request.Snapshot.Progression = new ProgressionState(12, 40_000, 0.4);
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            // Districts are excluded from the fixture rather than from the slice: their ids and names
+            // are engine-authored and are the one thing in this block that is allowed to carry digits.
+            int start = prompt.IndexOf("THE CITY (qualitative only", System.StringComparison.Ordinal);
+            Assert.True(start >= 0);
+            int end = prompt.IndexOf("PARTIES (partyId", System.StringComparison.Ordinal);
+            Assert.True(end > start);
+
+            Assert.Equal(new List<string>(), DigitRuns(prompt.Substring(start, end - start)));
+        }
+
         // ---- the numeric sweep ------------------------------------------------------------------
 
         [Theory]

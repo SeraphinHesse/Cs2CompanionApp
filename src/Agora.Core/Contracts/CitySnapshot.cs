@@ -195,6 +195,232 @@ namespace Agora.Core.Contracts
     }
 
     /// <summary>
+    /// City-wide statistics read from the game's own city statistics screen
+    /// (<c>Game.Simulation.CityStatisticsSystem</c>), plus homelessness from
+    /// <c>CountHouseholdDataSystem</c> and the garbage production rate from
+    /// <c>GarbageAccumulationSystem</c>.
+    ///
+    /// <para>
+    /// <b>Every field here is city-only, and that is a property of the game rather than of this
+    /// sensor pass.</b> <c>CityStatisticsSystem.StatisticsKey</c> is <c>(StatisticType, int
+    /// parameter)</c> — two fields, no district, no area, no entity — and there is no district
+    /// statistics system anywhere in the game (scout 0004 §1.4). So this block is deliberately
+    /// <i>not</i> mirrored onto <see cref="DistrictSnapshot"/>: a district copy would be the city
+    /// number under a name claiming it was local, which is the failure
+    /// <see cref="DistrictSnapshot.CityFallbackFields"/> exists to prevent.
+    /// </para>
+    /// </summary>
+    public readonly struct CityStatistics
+    {
+        /// <summary>Homeless residents. <c>StatisticType.HomelessCount</c>.</summary>
+        public int Homeless { get; }
+
+        /// <summary>
+        /// Homeless share of the moved-in population, <b>0–1</b>.
+        /// </summary>
+        /// <remarks>
+        /// The game's <c>CountHouseholdDataSystem.HomelessnessRate</c> is a percentage 0–100; this is
+        /// that number divided by 100, on the same convention that makes
+        /// <see cref="TaxRates"/> fractions. The conversion is load-bearing — a threshold authored
+        /// against the unconverted figure fires at a hundred times the intended homelessness.
+        /// </remarks>
+        public double HomelessShare { get; }
+
+        /// <summary>
+        /// Citizens who moved into the city. <c>StatisticType.CitizensMovedIn</c>.
+        /// </summary>
+        /// <remarks>
+        /// A head <i>count</i>, not a rate, despite what the neighbouring game enum members are
+        /// called. Named for what it is so that an event's prose cannot promise a percentage the
+        /// number never was.
+        /// </remarks>
+        public int CitizensMovedIn { get; }
+
+        /// <summary>Citizens who left the city. <c>StatisticType.CitizensMovedAway</c>. A count.</summary>
+        public int CitizensMovedAway { get; }
+
+        /// <summary>
+        /// Citizens who left specifically because they were unhappy —
+        /// <c>StatisticType.MovedAwayReason</c> keyed by <c>(int)MoveAwayReason.NotHappy</c>.
+        /// </summary>
+        /// <remarks>
+        /// Separated from <see cref="CitizensMovedAway"/> because the two mean opposite things
+        /// politically: people leaving because there is nowhere to live is a housing story, and
+        /// people leaving because they are miserable is a government story.
+        /// </remarks>
+        public int MovedAwayUnhappy { get; }
+
+        /// <summary>Births. <c>StatisticType.BirthRate</c>. A count, not a per-mille rate.</summary>
+        /// <remarks>
+        /// Readable, and always was. <c>docs/scout/0001-api-index.md</c> §3 records birth rate as
+        /// unreachable, but that finding was about <c>CityModifierType</c> — nothing can *modify* the
+        /// birth rate, which is a different claim from being unable to *read* it (scout 0004 §4).
+        /// </remarks>
+        public int Births { get; }
+
+        /// <summary>Deaths. <c>StatisticType.DeathRate</c>. A count.</summary>
+        public int Deaths { get; }
+
+        /// <summary>
+        /// Garbage <b>produced per day</b>, from <c>GarbageAccumulationSystem.garbageAccumulation</c>.
+        /// </summary>
+        /// <remarks>
+        /// <b>Not a stockpile.</b> The game's own binding for this exact value is named
+        /// <c>productionRate</c> (scout 0004 §7.1), and it does not fall when collection improves —
+        /// only when the city produces less. Garbage that is piling up uncollected is
+        /// <see cref="CitySnapshot.UncollectedGarbage"/>, which is a different number and the only
+        /// one of the two that has a district breakdown.
+        /// </remarks>
+        public double GarbageProductionRate { get; }
+
+        public CityStatistics(int homeless, double homelessShare, int citizensMovedIn,
+                              int citizensMovedAway, int movedAwayUnhappy, int births, int deaths,
+                              double garbageProductionRate)
+        {
+            Homeless = homeless;
+            HomelessShare = homelessShare;
+            CitizensMovedIn = citizensMovedIn;
+            CitizensMovedAway = citizensMovedAway;
+            MovedAwayUnhappy = movedAwayUnhappy;
+            Births = births;
+            Deaths = deaths;
+            GarbageProductionRate = garbageProductionRate;
+        }
+    }
+
+    /// <summary>
+    /// Tourism and visitor pressure. City-only, for the reason given on <see cref="CityStatistics"/>;
+    /// the two genuinely per-district figures live on the snapshots themselves as
+    /// <see cref="CitySnapshot.AttractionCount"/> and
+    /// <see cref="CitySnapshot.SignatureBuildingCount"/>.
+    /// </summary>
+    public readonly struct TourismLevels
+    {
+        /// <summary>Tourists currently in the city. <c>StatisticType.TouristCount</c>.</summary>
+        public int Tourists { get; }
+
+        /// <summary>
+        /// The city's attractiveness index, from <c>Game.City.Tourism.m_Attractiveness</c> on the city
+        /// entity.
+        /// </summary>
+        /// <remarks>
+        /// <b>A dimensionless index, not a percentage</b>, and deliberately stored raw rather than
+        /// normalised: it is the exact quantity the shipped <c>city-attractiveness</c> effect moves,
+        /// which makes trigger and effect two ends of one number. Normalising it against an invented
+        /// reference maximum would break that correspondence silently.
+        /// </remarks>
+        public int Attractiveness { get; }
+
+        /// <summary>Hotel rooms occupied. <c>StatisticType.LodgingUsed</c>.</summary>
+        public int LodgingUsed { get; }
+
+        /// <summary>Hotel rooms available. <c>StatisticType.LodgingTotal</c>. Zero in a city with no hotels.</summary>
+        public int LodgingTotal { get; }
+
+        public TourismLevels(int tourists, int attractiveness, int lodgingUsed, int lodgingTotal)
+        {
+            Tourists = tourists;
+            Attractiveness = attractiveness;
+            LodgingUsed = lodgingUsed;
+            LodgingTotal = lodgingTotal;
+        }
+    }
+
+    /// <summary>
+    /// The city's progression through the milestone track. City-only by nature — a district has no
+    /// level.
+    /// </summary>
+    public readonly struct ProgressionState
+    {
+        /// <summary>
+        /// The achieved milestone, from the <c>Game.City.MilestoneLevel</c> singleton.
+        /// </summary>
+        /// <remarks>
+        /// <b>This is also "city level".</b> CS2 has no separate level counter — the two names in the
+        /// rework plan are one number (scout 0004 §6.1), and carrying both would guarantee they
+        /// eventually disagreed.
+        /// </remarks>
+        public int MilestoneLevel { get; }
+
+        /// <summary>
+        /// <b>Lifetime</b> experience, from <c>CitySystem.XP</c> (the <c>Game.City.XP.m_XP</c>
+        /// accumulator).
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not <c>MilestoneSystem.currentXP</c>, which looks like the same number and is
+        /// not: <c>MilestoneSystem.cs:90</c> computes it as <c>CitySystem.XP - max(0, lastRequired)</c>,
+        /// so it is XP *since the last milestone* and it **drops back toward zero every time the city
+        /// achieves one**. That matters here because this field is recorded into the metric history
+        /// and wave 3 may author a <c>delta</c> trigger against it — and a resetting counter would fire
+        /// "experience collapsed" at the exact moment the city succeeded, an event whose prose the
+        /// simulation contradicts. A lifetime total is monotonic, so a delta on it always means what
+        /// it says. Within-milestone position is <see cref="MilestoneProgress"/>, which is the honest
+        /// place for it.
+        /// </remarks>
+        public int Experience { get; }
+
+        /// <summary>Progress toward the next milestone, 0–1. <c>MilestoneSystem.progress</c>.</summary>
+        /// <remarks>
+        /// Sanitised by the sensor rather than trusted raw. <c>MilestoneSystem.progress</c> is
+        /// <c>currentXP / requiredXP</c> with no guard of its own, and at the top of the milestone
+        /// tree the denominator can reach zero — which would put an infinity or a NaN into this field
+        /// and serialise <c>snapshot.json</c> as invalid JSON.
+        /// </remarks>
+        public double MilestoneProgress { get; }
+
+        public ProgressionState(int milestoneLevel, int experience, double milestoneProgress)
+        {
+            MilestoneLevel = milestoneLevel;
+            Experience = experience;
+            MilestoneProgress = milestoneProgress;
+        }
+    }
+
+    /// <summary>Which taxable area a per-resource tax rate belongs to. Mirrors the three area types
+    /// that <c>TaxSystem</c> exposes a per-resource reader for.</summary>
+    public enum TaxArea
+    {
+        Commercial = 0,
+        Industrial = 1,
+        Office = 2
+    }
+
+    /// <summary>
+    /// One resource's tax rate within one area — enough for an event to trigger on "office software
+    /// subsidised while farming is taxed".
+    /// </summary>
+    public readonly struct ResourceTaxRate
+    {
+        public TaxArea Area { get; }
+
+        /// <summary>
+        /// The game's own stable key, <c>EconomyUtils.GetResourceIndex</c> — a small dense integer,
+        /// not the <c>Resource</c> flag value.
+        /// </summary>
+        /// <remarks>
+        /// The flag enum is a bitfield up to <c>1 &lt;&lt; 40</c> and would be a poor sort key; the
+        /// index is what the game itself lays its internal tax array out by. Sorting
+        /// <see cref="CitySnapshot.IndustryTaxRates"/> by <c>(Area, ResourceIndex)</c> is what keeps
+        /// this list free of the collection-order determinism bug.
+        /// </remarks>
+        public int ResourceIndex { get; }
+
+        /// <summary>The resource's stable name, from <c>EconomyUtils.GetName</c>. The id content authors write.</summary>
+        public string ResourceName { get; }
+
+        /// <summary>The rate as a fraction, e.g. 0.10 for 10%. The game reports whole percentage points.</summary>
+        public double Rate { get; }
+
+        public ResourceTaxRate(TaxArea area, int resourceIndex, string resourceName, double rate)
+        {
+            Area = area;
+            ResourceIndex = resourceIndex;
+            ResourceName = resourceName ?? "";
+            Rate = rate;
+        }
+    }
+
+    /// <summary>
     /// The measured state of the city at one moment — the engine's only view of the game, and the
     /// body of <c>snapshot.json</c> (<c>politicsmodplan.md</c> §6).
     ///
@@ -214,13 +440,25 @@ namespace Agora.Core.Contracts
     public sealed class CitySnapshot
     {
         /// <summary>
-        /// 3 as of the household-budget pass. v1 carried only population, happiness, unemployment and
+        /// 4 as of the city-statistics pass. v1 carried only population, happiness, unemployment and
         /// money; v2 was the M2 contract freeze; v3 adds the four cost lines the game's own district
         /// panel shows — <see cref="AverageHouseholdUpkeep"/>,
         /// <see cref="AverageHouseholdResourceSpend"/>, <see cref="AverageHouseholdFees"/> — and the
-        /// <see cref="DisposableMargin"/> they add up to.
+        /// <see cref="DisposableMargin"/> they add up to. v4 adds what the game's own city statistics
+        /// screen can see: <see cref="Statistics"/>, <see cref="Tourism"/>,
+        /// <see cref="Progression"/>, <see cref="UnlockedFeatureIds"/>,
+        /// <see cref="IndustryTaxRates"/>, and the three genuinely per-district counts.
         /// </summary>
-        public int SchemaVersion { get; set; } = 3;
+        /// <remarks>
+        /// <b>This contract is not a sidecar document and has no migration table.</b>
+        /// <c>SidecarDocument</c> has five members and none of them is the snapshot: a
+        /// <see cref="CitySnapshot"/> is measured afresh every capture and is never loaded back off
+        /// disk, so a version bump here is a <c>/schema-change</c> steps 1, 3 and 4 change — contract,
+        /// prompt and <c>data/schemas/snapshot.schema.json</c> — with no step 2 to write. An older
+        /// <c>snapshot.json</c> on disk is a debugging artifact, not state. The rework plan's Part IV
+        /// lists a v3 → v4 migration for this document; there is nothing for it to migrate.
+        /// </remarks>
+        public int SchemaVersion { get; set; } = 4;
 
         public SimDate Date { get; set; }
 
@@ -340,6 +578,76 @@ namespace Agora.Core.Contracts
         /// <summary>Road congestion, 0 (free-flowing) – 1 (gridlock).</summary>
         public double TrafficCongestion { get; set; }
 
+        /// <summary>
+        /// What the game's city statistics screen shows: homelessness, migration, births, deaths and
+        /// the garbage production rate. City-only — see the type's own remarks.
+        /// </summary>
+        public CityStatistics Statistics { get; set; }
+
+        /// <summary>Tourists, attractiveness and lodging. City-only.</summary>
+        public TourismLevels Tourism { get; set; }
+
+        /// <summary>Milestone level, experience and progress. City-only.</summary>
+        public ProgressionState Progression { get; set; }
+
+        /// <summary>
+        /// Garbage sitting uncollected at producers, summed from
+        /// <c>Game.Buildings.GarbageProducer.m_Garbage</c>.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <see cref="CityStatistics.GarbageProductionRate"/>, and the distinction is
+        /// the whole political point: production is what the city makes, this is what nobody has come
+        /// to collect. Buildings carry <c>CurrentDistrict</c>, so unlike every statistic in
+        /// <see cref="Statistics"/> this one is genuinely per-district. It is <i>not</i> the
+        /// "stored garbage" figure the game's infoview shows — that comes from a private job — so
+        /// prose written against it must say "uncollected", never "landfill".
+        /// </remarks>
+        public double UncollectedGarbage { get; set; }
+
+        /// <summary>
+        /// Buildings contributing attractiveness, counted from
+        /// <c>Game.Buildings.AttractivenessProvider</c>. Genuinely per-district.
+        /// </summary>
+        public int AttractionCount { get; set; }
+
+        /// <summary>
+        /// Signature buildings, counted from the <c>Game.Buildings.Signature</c> tag. Genuinely
+        /// per-district.
+        /// </summary>
+        /// <remarks>
+        /// This is what the rework plan called <c>LandmarkCount</c>. <b>There is no landmark concept
+        /// in the game</b> — the only two occurrences of the word in <c>Game.dll</c> are DLC id lines
+        /// (scout 0004 §5.3) — so the field is named for what is actually counted rather than
+        /// shipping a plausible name over a different quantity.
+        /// </remarks>
+        public int SignatureBuildingCount { get; set; }
+
+        /// <summary>
+        /// Unlocked feature prefab names, sorted ordinal ascending.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A feature carries no id of its own — <c>Game.Prefabs.FeatureData</c> is a zero-field tag —
+        /// so the identity is the prefab and the only stable, sortable, serializable id is
+        /// <c>PrefabSystem.GetPrefabName</c>. There is no <c>FeatureType</c> enum and no hash
+        /// (scout 0004 §6.3).
+        /// </para>
+        /// <para>
+        /// A list, not a scalar, and therefore <b>not recorded in the metric history</b>: a trigger
+        /// may test whether a feature is present today, but there is no historical series behind it
+        /// and so no honest <c>delta</c> or <c>windowMonths</c> read. Same for
+        /// <see cref="IndustryTaxRates"/>.
+        /// </para>
+        /// </remarks>
+        public List<string> UnlockedFeatureIds { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Per-resource tax rates for the three areas that expose one, sorted by
+        /// <c>(Area, ResourceIndex)</c>. City-only: <c>TaxSystem</c> has no per-district,
+        /// per-resource overload.
+        /// </summary>
+        public List<ResourceTaxRate> IndustryTaxRates { get; set; } = new List<ResourceTaxRate>();
+
         /// <summary>Active policy ids, sorted ascending. Stable ids, not display names.</summary>
         public List<string> ActivePolicyIds { get; set; } = new List<string>();
 
@@ -435,6 +743,27 @@ namespace Agora.Core.Contracts
 
         /// <summary>0–1.</summary>
         public double TrafficCongestion { get; set; }
+
+        /// <summary>
+        /// Garbage sitting uncollected in this district. See
+        /// <see cref="CitySnapshot.UncollectedGarbage"/>.
+        /// </summary>
+        public double UncollectedGarbage { get; set; }
+
+        /// <summary>Buildings contributing attractiveness in this district.</summary>
+        public int AttractionCount { get; set; }
+
+        /// <summary>Signature buildings in this district.</summary>
+        public int SignatureBuildingCount { get; set; }
+
+        // Deliberately absent: Statistics, Tourism, Progression and the two id lists. Every value in
+        // them is city-only at source — CityStatisticsSystem is keyed by (StatisticType, parameter)
+        // with no district dimension, Tourism exists only on the city entity, and a district has no
+        // milestone (scout 0004 §1.4, §5.2, §9). Mirroring them here would mean writing the city's
+        // number onto every district and marking the whole block as a fallback on every capture
+        // forever, which is noise that teaches a reader nothing. The three counts above are mirrored
+        // precisely because they are the ones the game really does resolve per district: their
+        // buildings carry Game.Areas.CurrentDistrict.
 
         /// <summary>
         /// True when one or more fields on this district fell back to a city-wide value because the
