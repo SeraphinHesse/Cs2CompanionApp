@@ -1498,7 +1498,7 @@ namespace Agora.Core.Tuning
         /// contradicted its own worked example by exactly one month. The example is the authority and
         /// always was: the cycle is the *period*, and a resolution lands one month after the draft.
         /// </para>
-        /// <remarks>
+        /// <para>
         /// <b>Not a day count, and there is no day-15 alternative.</b> CS2 ships
         /// <c>m_DaysPerYear = 12</c>, so one in-game day is one calendar month and
         /// <c>SimClockMath.ToSimDate</c> returns a literal <c>Day = 1</c>. A mid-month read would
@@ -1506,11 +1506,40 @@ namespace Agora.Core.Tuning
         /// check provably unmeasurable; forcing a fresh sample instead would make the reading depend
         /// on which 128-frame tick crossed the threshold, which is a non-deterministic input and so
         /// forbidden by non-negotiable #3. The full argument is in the rework plan.
+        /// </para>
         /// </remarks>
         public int CycleMonths { get; internal set; } = 2;
 
         /// <summary>Slots that must be met for a full story to succeed — the "2 of 3" rule.</summary>
         public int SuccessThreshold { get; internal set; } = 2;
+
+        /// <summary>
+        /// How much older than <c>today - WindowMonths</c> a delta's earlier sample may be before the
+        /// reading is refused as <c>Unmeasurable</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Without a bound, a <c>Delta</c> spec takes the newest sample <i>at or before</i> its target
+        /// month however far before that is — so a history holding one sample six months old answers
+        /// a two-month window with the six-month change, and reports it as the two-month change. That
+        /// is the same harm as a window outrunning the history, reached by a different route: the
+        /// window does not outrun anything, the history is merely sparse. It costs the player power in
+        /// both directions, which is what makes it worth a dial rather than a comment.
+        /// </para>
+        /// <para>
+        /// Samples are monthly, so a slack of 2 tolerates an ordinary gap — a month the save was not
+        /// played, a capture that fell to a blind sensor — while refusing an answer built on a
+        /// genuinely stale reading.
+        /// </para>
+        /// <para>
+        /// <b>This deliberately does not change <c>MetricHistory.TrendOver</c></b>, which widens
+        /// without bound and should keep doing so. The two have different consumers and the
+        /// difference is the point: a trend line wants the best available evidence and is drawn for a
+        /// human to read, whereas a threshold here decides whether the player is charged. Evidence
+        /// good enough to sketch a direction is not evidence good enough to take somebody's money.
+        /// </para>
+        /// </remarks>
+        public int DeltaWindowSlackMonths { get; internal set; } = 2;
 
         /// <summary>
         /// Severity at or above which an event is Mandatory. Inclusive lower bound.
@@ -1626,6 +1655,7 @@ namespace Agora.Core.Tuning
             EventsPerStory = r.Int("eventsPerStory", d.EventsPerStory),
             CycleMonths = r.Int("cycleMonths", d.CycleMonths),
             SuccessThreshold = r.Int("successThreshold", d.SuccessThreshold),
+            DeltaWindowSlackMonths = r.Int("deltaWindowSlackMonths", d.DeltaWindowSlackMonths),
             MandatorySeverityThreshold = r.Int("mandatorySeverityThreshold", d.MandatorySeverityThreshold),
             MajorSeverityThreshold = r.Int("majorSeverityThreshold", d.MajorSeverityThreshold),
             MissStreakWeightStep = r.Num("missStreakWeightStep", d.MissStreakWeightStep),

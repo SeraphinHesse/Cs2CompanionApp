@@ -225,6 +225,44 @@ the lane's.
    moved city on replay — a determinism hole, closed now rather than in wave 4, which is what would
    have built on it. Lookups must match on both fields.
 
+4. **Re-use is gated on a cooldown, not on the archive** — `EventPoolEntry.LastDraftedMonth` against
+   `stories.reuseCooldownMonths` (6), with `stories.maxMandatoryPerCycle` (2) bounding the events
+   that are exempt from it. Excluding anything the archive remembered emptied a ~40-event catalog by
+   month 14 into an absorbing state: nothing drafted, so nothing resolved, so nothing archived, so
+   nothing was ever released. Archive-based exclusion is sound only while
+   `archiveRetention × eventsPerStory < liveCatalogSize`; at 40 and 3 it names 120 slots over 40
+   events.
+
+5. **A drawn entry STAYS in the pool. This reverses "clear the pool afterwards" in row 2b above,
+   and that row is now wrong where it says otherwise.** The cooldown stamp lives on the entry, so the
+   entry has to survive the months it is counting: a drawn entry is retained with `MissStreak` reset
+   and `LastDraftedMonth` stamped, and it is kept through the cycle its story is live and through any
+   month its trigger lapses. Drop it instead and it is re-admitted next cycle with
+   `LastDraftedMonth = -1`, at which point the cooldown does nothing whatsoever.
+
+   An entry sitting out its cooldown is **not** aged — it was never offered, so it was never passed
+   over, and ageing it would hand it a pity bonus for time it did not spend waiting.
+
+   Anything asserting that a drawn id is *absent* from `UpdatedPool` must instead assert it is
+   **present, streak 0, stamped**.
+
+6. **Per-save settings win over the tuning key of the same name** when set (`> 0`), tuning being the
+   fallback — non-negotiable #10, following `TickPlanner.SnapshotsToPrune`. Applies to
+   `StoriesPerCycle` and `EventsPerStory`.
+
+### Known-unreachable, recorded so it is not mistaken for tested behaviour
+
+`PoliticalPower.AwardFor(NotMet, tier, manualDeclared: true)` cannot be reached from the resolution
+path: a *declared* `Manual` slot always yields `Met`, so a failing `Manual` slot always carries
+`manualDeclared == false`. The penalty half of the one-sided cap is therefore defensive contract
+rather than live behaviour today. It is kept because wave 4's `DeclareManualOutcome` is where a
+self-declared *failure* would become expressible.
+
+The residue this leaves is accepted and not closable in arithmetic: a player may always declare
+success for the minor award rather than take an honest failure at the real tier. Closing it belongs
+at the response layer — making `Manual` unavailable when a slot's check is measurable — not in the
+award schedule.
+
 ---
 
 ## What no lane may do
