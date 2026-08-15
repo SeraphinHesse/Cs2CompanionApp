@@ -311,6 +311,30 @@ the lane's.
     failed on the umbrella and none could have failed anywhere earlier, because neither lane could see
     the other.
 
+12. **Promotion fires only when the cycle had no major at all — never on one exhausted by earlier
+    leads.** Leads were drawn one per story across the whole cycle, so `majors` emptied mid-loop and
+    a later story promoted a minor while a real major had simply been taken by an earlier one. With
+    one major and one minor that produced two one-slot stories plus a `minor-promoted` degradation
+    **that says something untrue about the pool** — a major was left; it was merely spoken for.
+
+    It is not cosmetic. A one-slot story is all-or-nothing under ruling on the resolution threshold
+    (fewer scored slots than drafted needs *all* of them), so splitting one two-slot story into two
+    one-slot stories doubles the all-or-nothing verdicts a player faces and changes what the cycle
+    pays. A one-slot ordinary story is also the shape reserved for a mandatory event, so producing
+    one by accident blurs a distinction the UI and the power economy both read.
+
+    **The rule: the number of stories opened is bounded by the real majors available, capped at
+    `storiesPerCycle`. Promotion is permitted only when no major was available at the start of the
+    cycle** — in which case it may still open up to `storiesPerCycle` stories, since the condition
+    holds throughout. When majors existed and ran out, stop opening stories and log the exhaustion as
+    what it is, not as a promotion.
+
+    **The stronger invariant "fill one story before opening another" is rejected**, and the reason is
+    worth recording because it is the tempting fix. With two majors and two minors it produces one
+    full three-slot story and one one-slot story, where spreading produces two two-slot stories —
+    which is better on exactly the all-or-nothing grounds above. Greedy lead allocation is right; what
+    was wrong is manufacturing a lead by promotion when the shortage was self-inflicted.
+
 ### Known-unreachable, recorded so it is not mistaken for tested behaviour
 
 `PoliticalPower.AwardFor(NotMet, tier, manualDeclared: true)` cannot be reached from the resolution
