@@ -16,9 +16,10 @@ namespace Agora.Core.Tests
     /// district dimension, so everything in <see cref="CityStatistics"/>, <see cref="TourismLevels"/>
     /// and <see cref="ProgressionState"/> is city-only at source; the three counts below are mirrored
     /// precisely because their buildings carry <c>CurrentDistrict</c>. The marking in
-    /// <see cref="DistrictSnapshot.CityFallbackFields"/> is what stops the dashboard rendering a city
+    /// <see cref="DistrictSnapshot.CityFallbackFields"/> is what stops the dashboard rendering a
     /// number as a local fact and stops the mandate packet scoring a district against a figure that
-    /// was never measured there.
+    /// was never measured there. All three are sums, so unlike every averaged field on the district
+    /// they fall back to zero rather than to the city figure — see the remarks on the test below.
     /// </para>
     ///
     /// <para>
@@ -54,8 +55,35 @@ namespace Agora.Core.Tests
 
         // ---- the three genuinely per-district counts ----------------------------------------------
 
+        /// <summary>
+        /// An unmeasured count reads zero — <b>not</b> the city figure — and is still named in
+        /// <see cref="DistrictSnapshot.CityFallbackFields"/>. Both halves, and the test fails if
+        /// either is missing.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// These three are the only fields on the district that fall back to zero rather than to the
+        /// city value, and the difference is that they are <i>sums</i>. For an average or a share the
+        /// city figure is a genuine estimate of a district's figure, which is what makes the ordinary
+        /// fallback honest. For a sum it is not an estimate of the part at all — it is an upper bound
+        /// that is wrong for every district simultaneously, and a district reporting the city's entire
+        /// attraction count reads as completely ordinary in a log.
+        /// </para>
+        /// <para>
+        /// Zero is wrong too. The difference is what each wrong answer costs: since the sensors seed
+        /// every known district at zero, this path fires only when a sensor has gone blind, and that
+        /// is precisely when a large credible-looking number is most harmful — the city's whole
+        /// uncollected-garbage figure copied onto all sixty districts would fire a wave-3 "too much
+        /// garbage here" trigger across the entire city at once. A zero cannot.
+        /// </para>
+        /// <para>
+        /// The marker is the other half and is not redundant with it: wave 2's <c>Unmeasurable</c>
+        /// state reads the marker, so a sensor gap never costs the player political power, while the
+        /// zero protects every consumer that does not check the marker at all.
+        /// </para>
+        /// </remarks>
         [Fact]
-        public void ADistrictWithNoCountsMeasured_TakesTheCityFiguresAndSaysSo()
+        public void ADistrictWithNoCountsMeasured_ReadsZeroRatherThanTheCityFigure_AndIsStillMarked()
         {
             var city = new CityReading
             {
@@ -69,9 +97,16 @@ namespace Agora.Core.Tests
 
             DistrictSnapshot district = snapshot.Districts[0];
 
-            Assert.Equal(8_000.0, district.UncollectedGarbage, 12);
-            Assert.Equal(40, district.AttractionCount);
-            Assert.Equal(6, district.SignatureBuildingCount);
+            Assert.Equal(0.0, district.UncollectedGarbage, 12);
+            Assert.Equal(0, district.AttractionCount);
+            Assert.Equal(0, district.SignatureBuildingCount);
+
+            // Stated separately from the equalities above so the failure message says which of the two
+            // rules broke: a district that quietly took the city's sums would satisfy neither, but a
+            // district that took them while still being marked would look like a marking bug.
+            Assert.NotEqual(city.UncollectedGarbage.Value, district.UncollectedGarbage);
+            Assert.NotEqual(city.AttractionCount.Value, district.AttractionCount);
+            Assert.NotEqual(city.SignatureBuildingCount.Value, district.SignatureBuildingCount);
 
             Assert.True(district.HasCityFallbacks);
             for (int i = 0; i < PerDistrictCountFields.Length; i++)
