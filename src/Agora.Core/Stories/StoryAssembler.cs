@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Agora.Core.Contracts;
@@ -257,13 +257,23 @@ namespace Agora.Core.Stories
             }
 
             // eventsPerStory has no upper bound — it can arrive from a hand-edited sidecar — and
-            // unlike storiesPerCycle it is not self-limiting, because the story loop breaks on an
-            // empty pool whereas this one would allocate first and fail to fill afterwards. Bound it
-            // by the minors that actually exist: with M minors left, no story can hold more than M of
-            // them, so a slot index above M is unfillable for every story at once whatever the fill
-            // order turns out to be. Dropping those pairs is therefore outcome-neutral — which
-            // matters, because truncating a pair that *could* have been filled would hand "which
-            // story goes short" to loop order instead of to the seeded fill order.
+            // unlike storiesPerCycle it is not self-limiting: the story loop breaks on an empty pool,
+            // whereas this one would allocate open.Count × eventsPerStory pairs before failing to
+            // fill them. So the list is bounded by the minors that actually exist.
+            //
+            // This CHANGES RESULTS, and an earlier version of this comment claimed it did not.
+            // SlotFill.Slot constrains no position — Finish re-sorts the slots by role then id, and
+            // the index only discriminates the RngFor key — so a pair with a high slot index is not
+            // unfillable, merely keyed differently, and can draw the last remaining minor if the
+            // shuffle puts it first. The pairs are then shuffled globally across all slot indices,
+            // and Fisher-Yates over a shorter list is not a prefix of the same shuffle over a longer
+            // one. Measured rather than argued: 529 of 4320 configurations diverge from the unbounded
+            // version, and at shipped values with three minors left it flips which story receives the
+            // scarce minor and therefore which one is reported short.
+            //
+            // Accepted with that understood, because the assignment stays a *seeded* decision rather
+            // than falling to loop order — which is the property actually worth protecting — and the
+            // alternative is an unbounded allocation. Binding condition: minors.Count < eventsPerStory - 1.
             int fillSlots = eventsPerStory;
             if (fillSlots > minors.Count + 1) fillSlots = minors.Count + 1;
 
@@ -342,7 +352,7 @@ namespace Agora.Core.Stories
             for (int i = 0; i < pool.Count; i++)
             {
                 EventPoolEntry entry = pool[i];
-                if (OnCooldown(entry, today, stories)) survivors.Add(entry);
+                if (IsCooling(entry, eventsById, today, stories)) survivors.Add(entry);
                 else trimmable.Add(entry);
             }
 
@@ -615,8 +625,30 @@ namespace Agora.Core.Stories
         }
 
         /// <summary>
+        /// Whether an entry carries a stamp that still means something: inside its re-use cooldown,
+        /// and of a tier the cooldown applies to. Both callers go through the tier check — the
+        /// refresh has the tier in hand already, the trim looks it up here.
+        /// </summary>
+        /// <remarks>
+        /// A mandatory event's stamp is never read, because mandatory is exempt from the cooldown, so
+        /// protecting it from the trim would consume cap room and could trip
+        /// <c>pool-cap-exceeded</c> for nothing.
+        /// </remarks>
+        private static bool IsCooling(EventPoolEntry entry, Dictionary<string, CivicEvent> eventsById,
+                                      SimDate today, StoriesTuning stories)
+        {
+            CivicEvent ev;
+            if (!eventsById.TryGetValue(entry.EventId, out ev)) return false;
+
+            StoryTier tier = ev.TierUnder(stories.MandatorySeverityThreshold,
+                                          stories.MajorSeverityThreshold);
+            return tier != StoryTier.Mandatory && OnCooldown(entry, today, stories);
+        }
+
+        /// <summary>
         /// Whether an entry is still inside its re-use cooldown. Never true for a mandatory event —
-        /// the caller checks the tier first, because a mandatory trigger describes the city now.
+        /// every caller checks the tier first (see <see cref="IsCooling"/>), because a mandatory
+        /// trigger describes the city now.
         /// </summary>
         private static bool OnCooldown(EventPoolEntry entry, SimDate today, StoriesTuning stories)
         {
