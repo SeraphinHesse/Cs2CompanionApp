@@ -34,6 +34,7 @@ namespace Agora.Mod.Sensors
         private EntityQuery _featureQuery;
 
         private MilestoneSystem _milestones;
+        private CitySystem _citySystem;
         private PrefabSystem _prefabs;
         private TaxSystem _taxes;
         private ResourceSystem _resources;
@@ -46,6 +47,7 @@ namespace Agora.Mod.Sensors
         protected override void CreateQueries()
         {
             _milestones = World.GetOrCreateSystemManaged<MilestoneSystem>();
+            _citySystem = World.GetOrCreateSystemManaged<CitySystem>();
             _prefabs = World.GetOrCreateSystemManaged<PrefabSystem>();
             _taxes = World.GetOrCreateSystemManaged<TaxSystem>();
 
@@ -96,9 +98,19 @@ namespace Agora.Mod.Sensors
             int milestone = _milestoneLevelQuery.GetSingleton<MilestoneLevel>().m_AchievedMilestone;
 
             // "City level" and "milestone" are one number in CS2; there is no second counter to read.
+            //
+            // Experience is the lifetime total, CitySystem.XP — deliberately not
+            // MilestoneSystem.currentXP, which is XP *since the last milestone*
+            // (MilestoneSystem.cs:90 computes it as XP minus the last milestone's requirement) and so
+            // falls back toward zero every time the city achieves one. This scalar is recorded into
+            // MetricHistory, and a counter that resets would hand wave 3 a large negative delta at the
+            // precise moment the city succeeded. The lifetime accumulator is monotonic and cannot.
+            //
+            // MilestoneProgress keeps the within-milestone position, which is where that information
+            // honestly belongs.
             _city.Progression = new ProgressionState(
                 milestone,
-                _milestones.currentXP,
+                _citySystem.XP,
                 Fraction(_milestones.progress));
         }
 
