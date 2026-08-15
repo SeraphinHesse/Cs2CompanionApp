@@ -156,15 +156,36 @@ A lane must not have to guess at a name another lane owns.
 
 ### The metric vocabulary, and why it is two copies
 
-`MetricRegistry` (Core) and `Agora.Mod.Sensors.MetricNames` (Mod) must carry the **same strings**, and
-`Agora.Core` may never reference `Agora.Mod` — so there is necessarily a second copy, and two copies
-drift. **The pin is a test, and lane 2e owns it:** the suite compile-links `MetricHistory.cs`, so it
-can compare the two lists directly.
+`MetricRegistry` (Core) and the metric-name constants in `Agora.Mod` must carry the **same strings**,
+and `Agora.Core` may never reference `Agora.Mod` — so there is necessarily a second copy, and two
+copies drift. **The pin is a test, and lane 2e owns it:** the suite compile-links `MetricHistory.cs`,
+so it can compare the two sets directly.
 
-The vocabulary is 18 city-scope names and 3 district-scope ones, listed in
-`docs/plans/0004-wave-1-lanes.md` row 1d and implemented verbatim in `MetricHistory.cs`. A name may
-be **added but never renamed** — the sidecar fingerprint is taken over them sorted, the same rule
-that governs a seed stream name.
+> **Corrected mid-wave — the first version of this section was wrong twice**, and both errors were
+> mine rather than a lane's:
+>
+> - **There is no `MetricNames` class.** The constants are `public const string` members on
+>   **`MetricHistory` itself** (`src/Agora.Mod/Sensors/MetricHistory.cs`). Exclude
+>   `CityScope = "city"`, which is a scope segment and not a metric name.
+> - **"18 city-scope and 3 district-scope" is not the total.** Those count only wave 1's
+>   city-statistics additions — which is what the block comment at `MetricHistory.cs:598` is
+>   counting. The full vocabulary also carries the pre-existing group (`landValue`, `rent`,
+>   `population`, five `education.*`, three `wealth.*`, `happiness`, `unemployment`, `crimeRate`,
+>   `pollution`, `serviceCoverage`, `commuteMinutes`, `trafficCongestion`), making the registry
+>   **36 city-scope / 19 district-scope**.
+>
+> The pin must assert **neither** figure: derive both sides reflectively and compare the sets, so a
+> failure names the missing string rather than a count. A test that memorises 36/19 rots on the next
+> sensor.
+
+A name may be **added but never renamed** — the sidecar fingerprint is taken over them sorted, the
+same rule that governs a seed stream name.
+
+**A third string vocabulary exists and is pinned by nothing.** `DistrictSnapshot.CityFallbackFields`
+holds *property* names, not metric ids (`"AverageRent"` versus `"rent"`), and the education and
+wealth ids each collapse onto one marker because the sensor falls back on a whole distribution.
+`MetricRegistry.FallbackFieldFor` carries that mapping. `commuteMinutes` and `trafficCongestion` are
+**city-only**, per `MetricHistory`'s own recorder comment.
 
 ---
 
@@ -178,7 +199,31 @@ that governs a seed stream name.
 | Is there a day-15 resolution? | **No. There are no days.** | `StoriesTuning.CycleMonths` doc comment |
 | What order do pool draws use? | weight desc, `MissStreak` desc, `EventId` asc | `EventPoolWeighting.Compare` doc comment |
 | Can a `Delta` name `unlockedFeatureIds`? | **No — no historical series exists.** | `TriggerSpec.WindowMonths` doc comment |
-| Is the manual award capped? | **Yes, at the minor rate.** | `PoliticalPower.AwardFor` doc comment |
+| Is the manual award capped? | **Yes, at the minor rate — the AWARD only.** A self-declared failure pays the real tier. | `PoliticalPowerState` remarks |
+| What does silence score? | **Not-met.** `Unaddressed`, and `Manual` still undeclared at resolution, both score as failure. | `SlotResponse` remarks |
+| Is silence "unmeasurable"? | **No.** `Unmeasurable` means the engine could not read the city, and nothing else. | `SlotOutcome.Unmeasurable` remarks |
+| How long is a cycle? | `CycleMonths` is the **period**; draft-to-resolution is `CycleMonths - 1`. | `StoriesTuning.CycleMonths` doc comment |
+
+### Rulings taken mid-wave, after the lanes reported
+
+These **supersede** anything above that disagrees, and two of them reverse an instruction a lane was
+originally given. Where a lane built the earlier rule faithfully, that is the brief's defect and not
+the lane's.
+
+1. **Silence scores as failure** (owner decision). An unaddressed slot, and a `Manual` slot still
+   undeclared when its story resolves, both score `NotMet`. The earlier rule — score them
+   `Unmeasurable` — made doing nothing strictly cheaper than every response that could fail: `Ignore`
+   cost 25 on a mandatory event while never opening the story cost nothing, so the rational play on
+   anything you expected to lose was to leave it alone. That inverts the premise of the whole
+   feature. The accepted cost is that a player who never saw the card is charged for it, which leans
+   on wave 6's story modal actually rendering.
+2. **The manual cap is one-sided.** Award capped at minor; penalty at the real tier. Capping both
+   handed an 80% discount on every mandatory failure to anyone who preferred the Manual button, with
+   no lying required.
+3. **`MetricReading` gains `DistrictId`.** A reading is identified by metric **and** district
+   together. Without it, a district-scoped check resolved early recorded nothing and re-measured a
+   moved city on replay — a determinism hole, closed now rather than in wave 4, which is what would
+   have built on it. Lookups must match on both fields.
 
 ---
 

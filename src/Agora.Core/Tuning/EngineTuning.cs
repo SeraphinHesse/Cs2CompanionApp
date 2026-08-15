@@ -1488,8 +1488,16 @@ namespace Agora.Core.Tuning
         public int EventsPerStory { get; internal set; } = 3;
 
         /// <summary>
-        /// Months from draft to resolution. 2 means "draft on M, resolve on M+1, next batch at M+2".
+        /// The length of one full cycle in months. 2 means "draft on M, resolve on M+1, next batch
+        /// at M+2" — so the draft-to-resolution gap is <c>CycleMonths - 1</c>, not
+        /// <see cref="CycleMonths"/>.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The summary of this field previously read "months from draft to resolution", which
+        /// contradicted its own worked example by exactly one month. The example is the authority and
+        /// always was: the cycle is the *period*, and a resolution lands one month after the draft.
+        /// </para>
         /// <remarks>
         /// <b>Not a day count, and there is no day-15 alternative.</b> CS2 ships
         /// <c>m_DaysPerYear = 12</c>, so one in-game day is one calendar month and
