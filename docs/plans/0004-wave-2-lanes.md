@@ -271,7 +271,17 @@ the lane's.
    `poolMaxSize` being set above the catalog size is a correctness property delegated to a dial and a
    data file, which is how the archive rule went wrong one level up.
 
-10. **The fill-list bound is outcome-affecting, and is accepted as such.** `StoryAssembler` bounds its
+10. **SUPERSEDED by ruling 12a — the fill list no longer exists.** Replacing the shuffled
+    `(story, slot)` pair list with a breadth-first round-robin removed the materialised list
+    altogether: the loop stops on the first round the pool cannot answer, so nothing is allocated and
+    `eventsPerStory` being per-save and unbounded costs nothing. The 529-of-4320 divergence below is
+    therefore **gone**, not merely accepted.
+
+    Worth keeping the record, because the sequence is the lesson: a false neutrality claim was
+    accepted, disproved by execution, accepted honestly as a real cost — and then made moot by a
+    change taken for an entirely unrelated reason. The original entry follows.
+
+    ~~**The fill-list bound is outcome-affecting, and is accepted as such.**~~ `StoryAssembler` bounds its
     slot-fill list rather than allocating `open.Count × eventsPerStory` pairs, because
     `eventsPerStory` is per-save and a hand-edited sidecar can otherwise allocate without limit.
 
