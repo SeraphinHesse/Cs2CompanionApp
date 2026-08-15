@@ -26,9 +26,17 @@ namespace Agora.Core.Stories
         /// <para>
         /// <b>The number of ordinary stories is bounded by the majors the pool actually held</b>,
         /// capped at <c>stories.storiesPerCycle</c>. Promotion is permitted only when the cycle began
-        /// with no major, in which case it may open the full <c>storiesPerCycle</c> because the
-        /// condition holds throughout. Majors that existed and ran out stop the drafting instead, and
-        /// are logged as exhaustion rather than as a promotion.
+        /// with no major, and then it opens <b>exactly one</b> story: a degraded cycle is better
+        /// served by one coherent story than by several thin ones, and the minors left over age in
+        /// the pool. Majors that existed and ran out stop the drafting instead, and are logged as
+        /// exhaustion rather than as a promotion.
+        /// </para>
+        /// <para>
+        /// <b>Minors fill breadth-first</b> — every open story takes one before any takes a second —
+        /// so the seeded order decides which minor is placed next rather than which story is starved.
+        /// Between these two rules a one-slot ordinary story is reachable only when the pool is
+        /// genuinely out of events, which matters because that shape is reserved for a mandatory
+        /// story and both the UI and the power economy read it.
         /// </para>
         /// <para>
         /// After the draw, every entry that was passed over has its <c>MissStreak</c> incremented.
@@ -239,7 +247,8 @@ namespace Agora.Core.Stories
             var open = new List<Story>();
             for (int i = 0; i < storiesPerCycle; i++)
             {
-                Candidate? lead = Draw(majors, saveGuid, today, "major:" + Index(i));
+                Candidate? lead = Draw(majors, saveGuid, today, StreamNames.StoryPool,
+                                       "major:" + Index(i));
                 bool promoted = false;
 
                 if (lead == null)
@@ -281,52 +290,60 @@ namespace Agora.Core.Stories
                 story.Slots.Add(NewSlot(lead.Event, SlotRole.Major, context));
                 drawn.Add(lead.Entry.EventId);
 
+                open.Add(story);
+
                 if (promoted)
                 {
                     result.Degradations.Add("minor-promoted: '" + lead.Entry.EventId
-                                            + "' leads story " + story.Id);
+                                            + "' leads story " + story.Id
+                                            + "; a promoted cycle opens one story");
+
+                    // Promotion opens exactly one story, whatever storiesPerCycle says. The plan's
+                    // wording is singular — "no major left ⇒ promote a minor and take 3 minors" — and
+                    // a degraded cycle is better served by one coherent story than by several thin
+                    // ones: with three minors, opening two produces [promoted, minor] + [promoted],
+                    // and that singleton is the exact shape promotion exists to avoid. The minors not
+                    // used age in the pool, which is what the pity weighting is for.
+                    break;
+                }
+            }
+
+            // Minors fill BREADTH-FIRST: every open story takes one before any takes a second. The
+            // seeded order decides which minor is placed next; it does not decide which story
+            // receives it.
+            //
+            // The earlier version shuffled (story, slot) pairs and let the permutation answer both
+            // questions at once, which can concentrate — measured across six save GUIDs, two of them
+            // gave [major, minor, minor] plus a bare [major], so the singleton shape was reachable
+            // with two real majors and nothing wrong. Round-robin is no less deterministic than a
+            // shuffle; it just moves the seeded choice onto the question that benefits from being
+            // seeded and off the one that does not, and it removes that failure class rather than
+            // leaving it to the seed.
+            //
+            // It also disposes of an allocation problem the shuffle had: eventsPerStory is per-save
+            // and unbounded, so materialising open.Count × eventsPerStory pairs was a hand-edited
+            // sidecar away from being enormous. Nothing is materialised now — the loop stops on the
+            // first round the pool cannot answer.
+            int minorSlots = eventsPerStory - 1;
+
+            for (int round = 0; open.Count > 0 && round < minorSlots; round++)
+            {
+                bool placedAny = false;
+
+                for (int s = 0; s < open.Count; s++)
+                {
+                    Candidate? minor = Draw(minors, saveGuid, today, StreamNames.StoryDraft,
+                                            "minor:" + Index(s) + ":" + Index(round + 1));
+                    if (minor == null) break;
+
+                    open[s].Slots.Add(NewSlot(minor.Event, SlotRole.Minor, context));
+                    drawn.Add(minor.Entry.EventId);
+                    placedAny = true;
                 }
 
-                open.Add(story);
-            }
-
-            // eventsPerStory has no upper bound — it can arrive from a hand-edited sidecar — and
-            // unlike storiesPerCycle it is not self-limiting: the story loop breaks on an empty pool,
-            // whereas this one would allocate open.Count × eventsPerStory pairs before failing to
-            // fill them. So the list is bounded by the minors that actually exist.
-            //
-            // This CHANGES RESULTS, and an earlier version of this comment claimed it did not.
-            // SlotFill.Slot constrains no position — Finish re-sorts the slots by role then id, and
-            // the index only discriminates the RngFor key — so a pair with a high slot index is not
-            // unfillable, merely keyed differently, and can draw the last remaining minor if the
-            // shuffle puts it first. The pairs are then shuffled globally across all slot indices,
-            // and Fisher-Yates over a shorter list is not a prefix of the same shuffle over a longer
-            // one. Measured rather than argued: 529 of 4320 configurations diverge from the unbounded
-            // version, and at shipped values with three minors left it flips which story receives the
-            // scarce minor and therefore which one is reported short.
-            //
-            // Accepted with that understood, because the assignment stays a *seeded* decision rather
-            // than falling to loop order — which is the property actually worth protecting — and the
-            // alternative is an unbounded allocation. Binding condition: minors.Count < eventsPerStory - 1.
-            int fillSlots = eventsPerStory;
-            if (fillSlots > minors.Count + 1) fillSlots = minors.Count + 1;
-
-            var fills = new List<SlotFill>();
-            for (int slot = 1; slot < fillSlots; slot++)
-            {
-                for (int i = 0; i < open.Count; i++) fills.Add(new SlotFill { Story = i, Slot = slot });
-            }
-            SeedStreams.Rng(saveGuid, today, StreamNames.StoryDraft).Shuffle(fills);
-
-            for (int i = 0; i < fills.Count; i++)
-            {
-                SlotFill fill = fills[i];
-                Candidate? minor = Draw(minors, saveGuid, today,
-                                        "minor:" + Index(fill.Story) + ":" + Index(fill.Slot));
-                if (minor == null) continue;
-
-                open[fill.Story].Slots.Add(NewSlot(minor.Event, SlotRole.Minor, context));
-                drawn.Add(minor.Entry.EventId);
+                // The minors ran out mid-round. Every story that could be served has been, in order,
+                // so there is nothing for a further round to do.
+                if (!placedAny || minors.Count == 0) break;
             }
 
             for (int i = 0; i < open.Count; i++)
@@ -434,11 +451,17 @@ namespace Agora.Core.Stories
         /// Takes one candidate, weighted, from an ordered pool. Removes it, so a later draw in the
         /// same cycle cannot land on it twice.
         /// </summary>
+        /// <param name="stream">
+        /// <c>StoryPool</c> for a lead — that is the weighted draw over the eligible pool the stream
+        /// is named for — and <c>StoryDraft</c> for a minor, which is "the order their slots are
+        /// filled". An exact tie goes to <c>StoryTiebreak</c> either way.
+        /// </param>
         /// <param name="key">
         /// The sub-stream key. Per-slot rather than one generator walked in a loop, so inserting a
         /// story does not silently change every later slot's draw.
         /// </param>
-        private static Candidate? Draw(List<Candidate> candidates, Guid saveGuid, SimDate today, string key)
+        private static Candidate? Draw(List<Candidate> candidates, Guid saveGuid, SimDate today,
+                                       string stream, string key)
         {
             if (candidates.Count == 0) return null;
 
@@ -458,7 +481,7 @@ namespace Agora.Core.Stories
             }
             else
             {
-                double roll = SeedStreams.RngFor(saveGuid, today, StreamNames.StoryPool, key)
+                double roll = SeedStreams.RngFor(saveGuid, today, stream, key)
                                          .NextDouble() * total;
 
                 index = candidates.Count - 1;
@@ -751,13 +774,6 @@ namespace Agora.Core.Stories
             public EventPoolEntry Entry = new EventPoolEntry();
             public CivicEvent Event = new CivicEvent();
             public double Weight;
-        }
-
-        /// <summary>One slot waiting to be filled, as a (story, slot) pair the fill order shuffles.</summary>
-        private sealed class SlotFill
-        {
-            public int Story;
-            public int Slot;
         }
     }
 }
