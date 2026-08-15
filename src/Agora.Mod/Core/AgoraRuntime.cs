@@ -87,7 +87,10 @@ namespace Agora.Mod.Core
     /// throw here takes the player's game down.
     /// </para>
     /// </summary>
-    public static class AgoraRuntime
+    // `partial` so later waves add AgoraRuntime.Stories.cs, .StoryCommands.cs and .Power.cs as NEW
+    // files rather than queueing on this one. At 3000+ lines this is the hottest file in the repo and
+    // every wave wants it; splitting is what keeps parallel lanes from colliding here.
+    public static partial class AgoraRuntime
     {
         /// <summary>
         /// Guards the lifecycle entry points — <see cref="Attach"/>, <see cref="Detach"/>,

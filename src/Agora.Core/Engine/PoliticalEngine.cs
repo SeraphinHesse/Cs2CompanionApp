@@ -13,6 +13,7 @@ using Agora.Core.Engine.Parties;
 using Agora.Core.Engine.Polling;
 using Agora.Core.Engine.Turnout;
 using Agora.Core.Events.Scheduler;
+using Agora.Core.Stories;
 using Agora.Core.Tuning;
 using Mandate = Agora.Core.Contracts.Mandate;
 
@@ -1066,10 +1067,43 @@ namespace Agora.Core.Engine
                 NextElectionDate = source.NextElectionDate,
                 IsCampaignSeason = source.IsCampaignSeason,
                 MayorPartyId = source.MayorPartyId,
-                LastFlavorDate = source.LastFlavorDate
+                LastFlavorDate = source.LastFlavorDate,
+
+                // Story state. LiveStories, EventPool and Power are DEEP-copied because all three are
+                // mutated during a tick — a story's slots take the player's response and its outcome,
+                // a pool entry ages its MissStreak, the power ledger grows — and an alias would let a
+                // speculative advance write into the prior state the caller still holds. That is the
+                // hazard ActiveEvents above still carries, since it is only a shallow list copy.
+                //
+                // StoryArchive and PlayerCommands are shallow, deliberately and for the same reason
+                // ElectionHistory is: both are append-only records of things that already happened,
+                // and deep-copying a century of them every month would be waste.
+                LiveStories = CloneStories(source.LiveStories),
+                StoryArchive = new List<Story>(source.StoryArchive ?? new List<Story>()),
+                EventPool = ClonePool(source.EventPool),
+                Power = (source.Power ?? new PoliticalPowerState()).Clone(),
+                PlayerCommands = new List<PlayerCommand>(source.PlayerCommands ?? new List<PlayerCommand>()),
+                LastStoryDraftMonth = source.LastStoryDraftMonth,
+                LastStoryResolveMonth = source.LastStoryResolveMonth
             };
 
             return clone;
+        }
+
+        private static List<Story> CloneStories(List<Story>? source)
+        {
+            var result = new List<Story>();
+            if (source == null) return result;
+            for (int i = 0; i < source.Count; i++) result.Add(source[i].Clone());
+            return result;
+        }
+
+        private static List<EventPoolEntry> ClonePool(List<EventPoolEntry>? source)
+        {
+            var result = new List<EventPoolEntry>();
+            if (source == null) return result;
+            for (int i = 0; i < source.Count; i++) result.Add(source[i].Clone());
+            return result;
         }
 
         private static Coalition? CloneCoalition(Coalition? source)

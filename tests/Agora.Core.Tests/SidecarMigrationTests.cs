@@ -280,6 +280,18 @@ namespace Agora.Core.Tests
             root.Remove("fringe");
             root.Remove("lastCompletedTickMonth");
 
+            // v5 -> v6: the story collections, the power state and the two story watermarks. All
+            // written EMPTY — nothing here backfills a story, because a story invented for a month
+            // the player already played is fiction, and this test is what proves the step adds
+            // nothing beyond the paths named here.
+            root.Remove("liveStories");
+            root.Remove("storyArchive");
+            root.Remove("eventPool");
+            root.Remove("playerCommands");
+            root.Remove("power");
+            root.Remove("lastStoryDraftMonth");
+            root.Remove("lastStoryResolveMonth");
+
             JObject settings = Obj(root, "settings");
             settings.Remove(SidecarSchema.VersionProperty);
             settings.Remove("themeLocked");
@@ -288,6 +300,12 @@ namespace Agora.Core.Tests
             settings.Remove("voteSharpness");
             settings.Remove("newsInfluence");
             settings.Remove("brandDiscipline");
+            settings.Remove("storiesEnabled");
+            settings.Remove("storiesPerCycle");
+            settings.Remove("eventsPerStory");
+            settings.Remove("politicalPowerEnabled");
+            settings.Remove("powerIntensity");
+            settings.Remove("storyDifficulty");
 
             foreach (JToken party in Arr(root, "parties"))
             {
@@ -856,19 +874,57 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// The whole chain, not just the step it was written for. A v1 document reaches v5 with the
-        /// watermark seeded from its own date — which is only true if the new step runs last and sees
-        /// a <c>date</c> none of the earlier steps disturbed.
+        /// The whole chain, not just the step it was written for. A v1 document reaches the current
+        /// version with the watermark seeded from its own date — which is only true if the watermark
+        /// step sees a <c>date</c> none of the other steps disturbed.
         /// </summary>
+        /// <remarks>
+        /// Deliberately version-<i>relative</i>. This test used to assert
+        /// <c>Assert.Equal(5, CurrentStateVersion)</c>, which memorised a number that has nothing to
+        /// do with what the test guards: it went red on the next bump for a reason unrelated to the
+        /// watermark, and a reader had no way to tell whether the seeding had actually broken.
+        /// <c>CurrentStateVersion_MatchesTheContractDefault</c> is where the version number itself is
+        /// pinned, and it is pinned to the contract rather than to a literal.
+        /// </remarks>
         [Fact]
-        public void Migrate_StateV1_ReachesVersionFiveWithTheWatermarkSeeded()
+        public void Migrate_StateV1_ReachesTheCurrentVersionWithTheWatermarkSeeded()
         {
             MigrationResult result;
             JObject root = Migrate(StateV1(elections: OneElection()), out result);
 
             Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
-            Assert.Equal(5, SidecarSchema.CurrentStateVersion);
+            Assert.Equal(SidecarSchema.CurrentStateVersion, Int(root, SidecarSchema.VersionProperty));
             Assert.Equal(new SimDate(1994, 3, 1).TotalMonths, Int(root, "lastCompletedTickMonth"));
+        }
+
+        /// <summary>
+        /// The v5 -> v6 step writes the story collections EMPTY and never backfills one.
+        /// </summary>
+        /// <remarks>
+        /// A story invented for a month the player already played is history they never got to
+        /// participate in, and it would move the state hash for something that is not a real
+        /// difference in the city. The two watermarks and <c>power.lastAccrualMonth</c> seed to -1
+        /// ("never"), which is true rather than merely safe: the first cycle boundary after the
+        /// upgrade genuinely is this save's first draft.
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV5_AddsEmptyStoryStateAndBackfillsNothing()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV1(elections: OneElection()), out result);
+
+            Assert.Empty(Arr(root, "liveStories"));
+            Assert.Empty(Arr(root, "storyArchive"));
+            Assert.Empty(Arr(root, "eventPool"));
+            Assert.Empty(Arr(root, "playerCommands"));
+
+            Assert.Equal(-1, Int(root, "lastStoryDraftMonth"));
+            Assert.Equal(-1, Int(root, "lastStoryResolveMonth"));
+
+            JObject power = Obj(root, "power");
+            Assert.Equal(0, Int(power, "balance"));
+            Assert.Equal(-1, Int(power, "lastAccrualMonth"));
+            Assert.Empty(Arr(power, "ledger"));
         }
 
         /// <summary>
@@ -882,6 +938,22 @@ namespace Agora.Core.Tests
         public void CurrentStateVersion_MatchesTheContractDefault()
         {
             Assert.Equal(SidecarSchema.CurrentStateVersion, new PoliticalState().SchemaVersion);
+        }
+
+        /// <summary>
+        /// The same weld for settings, which had none.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="AgoraSettings"/> carries its own <c>SchemaVersion</c> default and
+        /// <c>Agora.Core</c> cannot reference <c>SidecarSchema</c> to read the constant, so the two
+        /// can drift exactly as the state pair once did — and a freshly constructed settings object
+        /// claiming a version it has never been is what lets a step run against fields it never
+        /// wrote. The state half of this pin was added only after that had already happened once.
+        /// </remarks>
+        [Fact]
+        public void CurrentSettingsVersion_MatchesTheContractDefault()
+        {
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, new AgoraSettings().SchemaVersion);
         }
 
         // --- 6. Idempotency ---------------------------------------------------------------------------

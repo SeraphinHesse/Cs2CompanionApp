@@ -96,7 +96,7 @@ namespace Agora.Mod.Persistence
     /// </para>
     ///
     /// <para>
-    /// State is at version 5; settings and the flavor cache are at 3 and 2; timeline progress and the
+    /// State is at version 6; settings is at 4 and the flavor cache at 2; timeline progress and the
     /// metric history are still at 1, so their tables are empty. So is the flavor cache's, which is
     /// not an omission: nothing routes
     /// <c>flavor_cache.json</c> through <see cref="Migrate"/> at all — <c>Agora.Mod/Llm</c> upgrades
@@ -126,9 +126,9 @@ namespace Agora.Mod.Persistence
         /// the default sat at 3 while this was 4 — and a freshly constructed state consequently
         /// claimed a version it had never been. <c>SidecarMigrationTests</c> pins them together.
         /// </summary>
-        public const int CurrentStateVersion = 5;
+        public const int CurrentStateVersion = 6;
 
-        public const int CurrentSettingsVersion = 3;
+        public const int CurrentSettingsVersion = 4;
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
         public const int CurrentTimelineProgressVersion = 1;
@@ -228,8 +228,110 @@ namespace Agora.Mod.Persistence
             if (settings["newsInfluence"] == null) settings["newsInfluence"] = "Default";
             if (settings["brandDiscipline"] == null) settings["brandDiscipline"] = "Default";
 
+            settings[VersionProperty] = 3;
+        }
+
+        /// <summary>
+        /// Brings one settings object from v3 to v4: the story and political-power tunables.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Frozen local constants, never a live tuning read — <c>/schema-change</c>'s rule and the
+        /// reason <see cref="NaMajorCount"/> is a constant too. A step must reproduce what the file
+        /// was written with, and reading <c>stories.storiesPerCycle</c> here would let a balance pass
+        /// two years from now retroactively change what an old save migrates into.
+        /// </para>
+        /// <para>
+        /// <see cref="StoriesEnabledAtV4"/> is <c>true</c>, so an existing save gets the story layer
+        /// switched on and starts drafting at the next cycle boundary. It gets no <i>history</i>:
+        /// nothing here backfills a story, because a story invented for a month the player already
+        /// played would be fiction they never got to participate in, and it would desync the state
+        /// hash besides. The empty collections are written by the state step, not here.
+        /// </para>
+        /// <para>
+        /// Idempotent, like every step in this table: a property already present is left alone, so
+        /// re-running the chain cannot overwrite a choice the player has since made.
+        /// </para>
+        /// </remarks>
+        internal static void UpgradeSettingsObjectToV4(JObject settings)
+        {
+            if (settings == null) return;
+
+            if (settings["storiesEnabled"] == null) settings["storiesEnabled"] = StoriesEnabledAtV4;
+            if (settings["storiesPerCycle"] == null) settings["storiesPerCycle"] = StoriesPerCycleAtV4;
+            if (settings["eventsPerStory"] == null) settings["eventsPerStory"] = EventsPerStoryAtV4;
+            if (settings["politicalPowerEnabled"] == null)
+                settings["politicalPowerEnabled"] = PoliticalPowerEnabledAtV4;
+
+            // Enum NAMES rather than ordinals, for the reason given on UpgradeSettingsObjectToV3: a
+            // save file is read by a human when something goes wrong, and an ordinal silently means
+            // something else the moment a member is inserted above it.
+            if (settings["powerIntensity"] == null) settings["powerIntensity"] = "Default";
+            if (settings["storyDifficulty"] == null) settings["storyDifficulty"] = "Default";
+
             settings[VersionProperty] = CurrentSettingsVersion;
         }
+
+        /// <summary>
+        /// State v5 to v6: the story collections, the power state, and the two story watermarks.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Everything is written empty, and no story is ever generated retroactively.</b> An
+        /// existing save has never had a story, so it has no story history; inventing one would
+        /// invent a month of politics the player never played and would change the state hash for a
+        /// reason that is not a real difference in the city.
+        /// </para>
+        /// <para>
+        /// The two watermarks seed to <c>-1</c> ("never"), which is correct rather than merely safe:
+        /// the first cycle boundary after the upgrade is genuinely the first draft this save has ever
+        /// run, and any other value would claim a cycle happened. That is the opposite of wave 0's
+        /// <c>lastCompletedTickMonth</c>, which had to be seeded from the document's own date
+        /// <i>because</i> a state file is by definition the record of a month that finished — there
+        /// is no equivalent evidence here, because there is nothing that finished.
+        /// </para>
+        /// <para>
+        /// <c>power.lastAccrualMonth</c> is <c>-1</c> for the same reason, and it matters more than
+        /// it looks: seeding it to the current month would silently deny the save its first accrual,
+        /// while seeding it to 0 on a thirty-year save would not grant thirty years of back pay
+        /// either — the accrual is a single per-month grant, not an integral. -1 is simply "no
+        /// accrual has happened", which is true.
+        /// </para>
+        /// </remarks>
+        private static void MigrateStateV5ToV6(JObject root)
+        {
+            if (root["liveStories"] == null) root["liveStories"] = new JArray();
+            if (root["storyArchive"] == null) root["storyArchive"] = new JArray();
+            if (root["eventPool"] == null) root["eventPool"] = new JArray();
+            if (root["playerCommands"] == null) root["playerCommands"] = new JArray();
+
+            if (root["power"] == null)
+            {
+                root["power"] = new JObject
+                {
+                    ["balance"] = 0,
+                    ["lifetimeEarned"] = 0,
+                    ["lifetimeSpent"] = 0,
+                    ["lastAccrualMonth"] = -1,
+                    ["ledger"] = new JArray()
+                };
+            }
+
+            if (root["lastStoryDraftMonth"] == null) root["lastStoryDraftMonth"] = -1;
+            if (root["lastStoryResolveMonth"] == null) root["lastStoryResolveMonth"] = -1;
+
+            var settings = root["settings"] as JObject;
+            if (settings != null) UpgradeSettingsObjectToV4(settings);
+        }
+
+        /// <summary>
+        /// Mirrors <c>AgoraSettings</c>'s own defaults at the version this step was written for.
+        /// Frozen local constants, never live reads — see <see cref="UpgradeSettingsObjectToV4"/>.
+        /// </summary>
+        private const bool StoriesEnabledAtV4 = true;
+        private const int StoriesPerCycleAtV4 = 2;
+        private const int EventsPerStoryAtV4 = 3;
+        private const bool PoliticalPowerEnabledAtV4 = true;
 
         /// <summary>
         /// State v1 to v2: <c>parties[].playerOverrides</c>, plus the settings block nested at
@@ -570,7 +672,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(3, "added the three voter-model levels to the nested settings block",
                 MigrateStateV3ToV4),
             new MigrationStep(4, "added lastCompletedTickMonth, seeded from the state's own date",
-                MigrateStateV4ToV5)
+                MigrateStateV4ToV5),
+            new MigrationStep(5, "added the empty story collections, the power state and the story watermarks",
+                MigrateStateV5ToV6)
         };
 
         private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>
@@ -578,7 +682,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(1, "added themeLocked, pauseOnMajorNews, showAllReports",
                 root => UpgradeSettingsObjectToV2(root)),
             new MigrationStep(2, "added voteSharpness, newsInfluence, brandDiscipline",
-                root => UpgradeSettingsObjectToV3(root))
+                root => UpgradeSettingsObjectToV3(root)),
+            new MigrationStep(3, "added the story and political-power tunables",
+                root => UpgradeSettingsObjectToV4(root))
         };
 
         private static readonly List<MigrationStep> TimelineProgressSteps = new List<MigrationStep>();

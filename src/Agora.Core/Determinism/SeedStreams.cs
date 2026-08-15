@@ -155,5 +155,29 @@ namespace Agora.Core.Determinism
 
         /// <summary>Unrest roll after a defied mandate.</summary>
         public const string UnrestTrigger = "event.unrest";
+
+        // Added by the story system. Adding a stream is sanctioned; RENAMING one is not — a stream
+        // name is folded into the hash, so changing it rewrites every existing save's history. Note
+        // also that none of these reuses EventProcedural or EventJitter: borrowing a neighbouring
+        // stream "would couple two unrelated systems' outcomes", as the block above says, so drafting
+        // a story would silently change which timeline events fire.
+
+        /// <summary>Which stories a cycle drafts, and the order their slots are filled.</summary>
+        public const string StoryDraft = "story.draft";
+
+        /// <summary>The weighted draw over the eligible event pool.</summary>
+        public const string StoryPool = "story.pool";
+
+        /// <summary>
+        /// Breaks an exact tie in the pool draw. Never a coin flip in place — same discipline as
+        /// <see cref="ElectionTieBreak"/>.
+        /// </summary>
+        public const string StoryTiebreak = "story.tiebreak";
+
+        /// <summary>Which district a district-scoped story event lands hardest on.</summary>
+        public const string StoryDistrictTarget = "story.district.target";
+
+        /// <summary>Monthly political-power accrual.</summary>
+        public const string PowerAccrual = "power.accrual";
     }
 }
