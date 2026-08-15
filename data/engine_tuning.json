@@ -333,7 +333,7 @@
     "indicesTickMonths": 1,
     "mandateMonitorIntervalMonths": 1,
 
-    "pollTickIntervalDays": 7,
+    "pollTickIntervalMonths": 1,
     "campaignStartMonthsBeforeElection": 2,
 
     "llmWakeYearly": true,

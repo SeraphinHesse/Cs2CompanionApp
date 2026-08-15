@@ -33,10 +33,18 @@ namespace Agora.Core.Events.Scheduler
         public bool IsMandateMonitor { get; }
 
         /// <summary>
-        /// Day-of-month cadence for polling (<c>pollTickIntervalDays</c>). Deliberately <b>not</b>
-        /// gated on <see cref="IsCampaignSeason"/> — polling packets that only publish during a
-        /// campaign should AND the two themselves, rather than have that policy baked in here.
+        /// Publish a poll (<c>pollTickIntervalMonths</c>). Deliberately <b>not</b> gated on
+        /// <see cref="IsCampaignSeason"/> — polling packets that only publish during a campaign
+        /// should AND the two themselves, rather than have that policy baked in here.
         /// </summary>
+        /// <remarks>
+        /// Months, not days, and there is no day cadence to be had: CS2 ships
+        /// <c>TimeSettingsData.m_DaysPerYear = 12</c>, so one in-game day is one calendar month and
+        /// <c>SimClockMath.ToSimDate</c> returns a <see cref="SimDate"/> whose <c>Day</c> is a literal
+        /// <c>1</c>. The old <c>pollTickIntervalDays</c> was read as <c>((date.Day - 1) % days) == 0</c>,
+        /// i.e. <c>0 % days == 0</c> — true on every date, for every setting. The dial was inert, not
+        /// wrong, and it is now a month count because a month is the only unit this calendar has.
+        /// </remarks>
         public bool IsPollTick { get; }
 
         /// <summary>Enough metric history has accumulated to schedule an election (<c>warmupMonths</c>).</summary>
@@ -116,8 +124,9 @@ namespace Agora.Core.Events.Scheduler
             bool indices = engineTick && OnInterval(elapsed, s.IndicesTickMonths);
             bool mandates = engineTick && OnInterval(elapsed, s.MandateMonitorIntervalMonths);
 
-            int pollDays = s.PollTickIntervalDays <= 0 ? 1 : s.PollTickIntervalDays;
-            bool pollTick = elapsed >= 0 && ((date.Day - 1) % pollDays) == 0;
+            // Gated on engineTick like every other cadence here: a poll published on a month the
+            // engine did not advance would report shares nothing had recomputed.
+            bool pollTick = engineTick && OnInterval(elapsed, s.PollTickIntervalMonths);
 
             bool warmupComplete = elapsed >= (s.WarmupMonths < 0 ? 0 : s.WarmupMonths);
 

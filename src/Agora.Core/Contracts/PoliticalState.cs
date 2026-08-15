@@ -316,7 +316,19 @@ namespace Agora.Core.Contracts
 
     public sealed class PoliticalState
     {
-        public int SchemaVersion { get; set; } = 3;
+        /// <summary>
+        /// Must equal <c>Agora.Mod.Persistence.SidecarSchema.CurrentStateVersion</c>. Written as a
+        /// literal because <c>Agora.Core</c> cannot reference <c>Agora.Mod</c>, and kept honest by
+        /// <c>SidecarMigrationTests</c>.
+        /// </summary>
+        /// <remarks>
+        /// This default was <c>3</c> while <c>CurrentStateVersion</c> was already <c>4</c>, so a
+        /// freshly constructed state claimed a version it had never been. That is not cosmetic: the
+        /// migration chain dispatches on this number, so a v4 -> v5 step would have run against an
+        /// object that was never v4 and "upgraded" fields it had never written. Whoever bumps
+        /// <c>CurrentStateVersion</c> bumps this in the same commit.
+        /// </remarks>
+        public int SchemaVersion { get; set; } = 5;
 
         /// <summary>
         /// Agora's own save identity (§5). Written into the save via the serialization hooks, never
@@ -327,6 +339,34 @@ namespace Agora.Core.Contracts
 
         /// <summary>Sim date this state describes. From <c>AgoraTimeService</c> only (#8).</summary>
         public SimDate Date { get; set; }
+
+        /// <summary>
+        /// The last month whose political tick ran to completion, as <see cref="SimDate.TotalMonths"/>.
+        /// <c>-1</c> means no month has completed yet. A month may run only when
+        /// <c>today.TotalMonths &gt; LastCompletedTickMonth</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Persisted, and that is the whole point.</b> The runtime used to decide "the month
+        /// changed" from session-local fields that <c>ResetForNewSave</c> clears, and the replay path
+        /// that would otherwise have set them runs only when reconciliation reports months to replay
+        /// — which a mid-month save, quit and reload never produces. So every reload re-ran the month
+        /// it had already advanced through, and <c>PoliticalEngine.Advance</c> has no same-month guard
+        /// of its own. Keeping the watermark in the sidecar is what makes the guard survive the
+        /// session boundary that defeated the old one.
+        /// </para>
+        /// <para>
+        /// A month count rather than a <see cref="SimDate"/>: the political calendar is month-granular
+        /// (a sim "day" is a calendar month), and storing a date would invite two values that differ
+        /// only in their day to read as two distinct months.
+        /// </para>
+        /// <para>
+        /// The damage was a duplicated poll and a double-counted
+        /// <see cref="FringeWatch.MonthsObserved"/>. It stops being cosmetic the moment a tick carries
+        /// a scoring accumulator, which is why this lands before the story system rather than with it.
+        /// </para>
+        /// </remarks>
+        public int LastCompletedTickMonth { get; set; } = -1;
 
         public AgoraSettings Settings { get; set; } = new AgoraSettings();
 

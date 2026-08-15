@@ -493,7 +493,7 @@
       "required": [
         "tickIntervalMonths", "snapshotIntervalMonths", "snapshotRetention",
         "eventScanIntervalMonths", "maxEventsPerTick", "lifecycleTickMonths", "indicesTickMonths",
-        "mandateMonitorIntervalMonths", "pollTickIntervalDays", "campaignStartMonthsBeforeElection",
+        "mandateMonitorIntervalMonths", "pollTickIntervalMonths", "campaignStartMonthsBeforeElection",
         "llmWakeYearly", "llmWakeOnElection", "llmWakeManualEnabled", "llmWakeMonth",
         "catchUpMaxMonths", "warmupMonths"
       ],
@@ -509,7 +509,10 @@
         "lifecycleTickMonths": { "$ref": "#/$defs/positiveInt" },
         "indicesTickMonths": { "$ref": "#/$defs/positiveInt" },
         "mandateMonitorIntervalMonths": { "$ref": "#/$defs/positiveInt" },
-        "pollTickIntervalDays": { "$ref": "#/$defs/positiveInt" },
+        "pollTickIntervalMonths": {
+          "$ref": "#/$defs/positiveInt",
+          "$comment": "Months between poll publications. Was pollTickIntervalDays, which was inert: a sim day IS a calendar month, so SimDate.Day is always 1 and the day cadence had nothing to count."
+        },
         "campaignStartMonthsBeforeElection": { "$ref": "#/$defs/nonNegativeInt" },
         "llmWakeYearly": { "type": "boolean" },
         "llmWakeOnElection": { "type": "boolean" },

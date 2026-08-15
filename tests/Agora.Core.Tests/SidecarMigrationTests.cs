@@ -265,11 +265,20 @@ namespace Agora.Core.Tests
                         "Migration changed something outside the paths Strip lists as permitted.");
         }
 
-        /// <summary>Removes the paths v1 → v2 is permitted to change, from either side.</summary>
+        /// <summary>
+        /// Removes every path the v1 → current chain is permitted to change, from either side.
+        /// </summary>
+        /// <remarks>
+        /// This list grows with each step, and forgetting to grow it is what the calling test is for:
+        /// a step that writes a field nobody listed here shows up as "migration changed something it
+        /// should not have". That is the intended failure — but it is only useful if the list is
+        /// maintained in the same commit as the step, which the v3 → v4 settings levels were not.
+        /// </remarks>
         private static void Strip(JObject root)
         {
             root.Remove(SidecarSchema.VersionProperty);
             root.Remove("fringe");
+            root.Remove("lastCompletedTickMonth");
 
             JObject settings = Obj(root, "settings");
             settings.Remove(SidecarSchema.VersionProperty);
