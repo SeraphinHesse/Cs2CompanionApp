@@ -50,6 +50,13 @@ namespace Agora.Mod.Sensors
         private const string FieldAverageCommuteMinutes = "AverageCommuteMinutes";
         private const string FieldTrafficCongestion = "TrafficCongestion";
 
+        // The three v4 fields that are genuinely per-district. Nothing else from the city-statistics
+        // pass gets a constant here, because nothing else is mirrored onto DistrictSnapshot at all —
+        // a district cannot fall back on a figure it has no property for.
+        private const string FieldUncollectedGarbage = "UncollectedGarbage";
+        private const string FieldAttractionCount = "AttractionCount";
+        private const string FieldSignatureBuildingCount = "SignatureBuildingCount";
+
         /// <summary>
         /// Builds the snapshot. <paramref name="city"/> and <paramref name="districts"/> may be
         /// null or empty — a capture taken before a save is loaded produces an empty but valid
@@ -90,11 +97,24 @@ namespace Agora.Mod.Sensors
                 TransitRidership = city.TransitRidership ?? 0.0,
                 AverageCommuteMinutes = city.AverageCommuteMinutes ?? 0.0,
                 TrafficCongestion = city.TrafficCongestion ?? 0.0,
+
+                // The city-statistics pass. An unmeasured block resolves to its all-zero form for the
+                // same reason every scalar above resolves to 0: the city snapshot has nowhere further
+                // to fall back to. The struct is what the LLM prompt and the dashboard read, and a
+                // null one would make every consumer branch on a state only this file can see.
+                Statistics = city.Statistics ?? new CityStatistics(0, 0.0, 0, 0, 0, 0, 0, 0.0),
+                Tourism = city.Tourism ?? new TourismLevels(0, 0, 0, 0),
+                Progression = city.Progression ?? new ProgressionState(0, 0, 0.0),
+                UncollectedGarbage = city.UncollectedGarbage ?? 0.0,
+                AttractionCount = city.AttractionCount ?? 0,
+                SignatureBuildingCount = city.SignatureBuildingCount ?? 0,
             };
 
             snapshot.BudgetBalance = snapshot.Income - snapshot.Expenses;
             snapshot.ActivePolicyIds = SortedCopy(city.ActivePolicyIds);
             snapshot.RecentDisasterIds = SortedCopy(city.RecentDisasterIds);
+            snapshot.UnlockedFeatureIds = SortedCopy(city.UnlockedFeatureIds);
+            snapshot.IndustryTaxRates = SortedRates(city.IndustryTaxRates);
 
             // InProgressMandateIds is owned by the engine, not by a sensor: the mod cannot see a
             // mandate. Left empty for the caller that does know.
@@ -130,6 +150,25 @@ namespace Agora.Mod.Sensors
             return copy;
         }
 
+        /// <summary>
+        /// Per-resource tax rates in the contract's order, <c>(Area, ResourceIndex)</c>. Sorted here
+        /// as well as in the sensor, because a sensor that hands over collection order is relying on a
+        /// sort no consumer can see — and <c>TaxSystem</c> is read through a native array whose layout
+        /// is not the engine's business.
+        /// </summary>
+        private static List<ResourceTaxRate> SortedRates(List<ResourceTaxRate> source)
+        {
+            var copy = source == null ? new List<ResourceTaxRate>() : new List<ResourceTaxRate>(source);
+            copy.Sort(CompareRate);
+            return copy;
+        }
+
+        private static int CompareRate(ResourceTaxRate a, ResourceTaxRate b)
+        {
+            int area = ((int)a.Area).CompareTo((int)b.Area);
+            return area != 0 ? area : a.ResourceIndex.CompareTo(b.ResourceIndex);
+        }
+
         private static DistrictSnapshot BuildDistrict(DistrictReading reading, CitySnapshot city)
         {
             var fallbacks = new List<string>();
@@ -162,6 +201,14 @@ namespace Agora.Mod.Sensors
             district.TransitRidership = Resolve(reading.TransitRidership, city.TransitRidership, FieldTransitRidership, fallbacks);
             district.AverageCommuteMinutes = Resolve(reading.AverageCommuteMinutes, city.AverageCommuteMinutes, FieldAverageCommuteMinutes, fallbacks);
             district.TrafficCongestion = Resolve(reading.TrafficCongestion, city.TrafficCongestion, FieldTrafficCongestion, fallbacks);
+
+            // The city figure these fall back on is a city-wide total, not an average, so a district
+            // that fell back reads as if it held every attraction in the city. That is deliberately
+            // loud rather than plausible: the fallback is recorded alongside it, and a total is the
+            // only city value there is to fall back on.
+            district.UncollectedGarbage = Resolve(reading.UncollectedGarbage, city.UncollectedGarbage, FieldUncollectedGarbage, fallbacks);
+            district.AttractionCount = Resolve(reading.AttractionCount, city.AttractionCount, FieldAttractionCount, fallbacks);
+            district.SignatureBuildingCount = Resolve(reading.SignatureBuildingCount, city.SignatureBuildingCount, FieldSignatureBuildingCount, fallbacks);
 
             fallbacks.Sort(StringComparer.Ordinal);
             district.CityFallbackFields = fallbacks;
