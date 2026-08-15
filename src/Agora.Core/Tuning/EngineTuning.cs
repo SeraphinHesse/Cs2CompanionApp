@@ -1539,6 +1539,45 @@ namespace Agora.Core.Tuning
         /// <summary>Entries the pool may hold. Beyond this the lowest-weighted are dropped.</summary>
         public int PoolMaxSize { get; internal set; } = 60;
 
+        /// <summary>
+        /// Months an event must wait after being told before it may be drawn again.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A duration, deliberately — not "everything the archive remembers".</b> The archive
+        /// rule looks equivalent and is not: it couples re-use to
+        /// <c>archiveRetention × eventsPerStory</c>, which at the shipped 40 and 3 names 120 slots
+        /// over a live catalog of roughly 40, so every event is excluded several times over and the
+        /// pool empties for good. A duration cannot exhaust a finite catalog however long the save
+        /// runs. See <see cref="EventPoolEntry.LastDraftedMonth"/> for the full arithmetic.
+        /// </para>
+        /// <para>
+        /// Keep it well under
+        /// <c>liveCatalogSize ÷ (storiesPerCycle × eventsPerStory) × cycleMonths</c> — about 13
+        /// months at shipped values. 6 leaves roughly half the catalog drawable at any moment, which
+        /// is variety without starvation. Raising it toward that ceiling starves the pool gradually
+        /// rather than suddenly, which is the harder failure to notice.
+        /// </para>
+        /// <para>
+        /// <b>Mandatory events ignore this entirely.</b> A mandatory trigger is a statement about the
+        /// city right now; suppressing it because the same event was told two years ago would drop a
+        /// genuine crisis silently, with no story, no power movement and no prose.
+        /// </para>
+        /// </remarks>
+        public int ReuseCooldownMonths { get; internal set; } = 6;
+
+        /// <summary>
+        /// Most mandatory stories one cycle may open, over and above <see cref="StoriesPerCycle"/>.
+        /// </summary>
+        /// <remarks>
+        /// Mandatory stories are delivered rather than drawn, so without a cap a citywide crisis
+        /// firing five severity-5 triggers in one month hands the player five unavoidable stories on
+        /// top of the ordinary two — at 50 power each on success and 25 on failure, which is a swing
+        /// no other single month can produce. Excess mandatory events stay in the pool and age
+        /// normally, so they arrive next cycle rather than being dropped.
+        /// </remarks>
+        public int MaxMandatoryPerCycle { get; internal set; } = 2;
+
         /// <summary>Resolved stories kept in <c>PoliticalState.StoryArchive</c>.</summary>
         public int ArchiveRetention { get; internal set; } = 40;
 
@@ -1592,6 +1631,8 @@ namespace Agora.Core.Tuning
             MissStreakWeightStep = r.Num("missStreakWeightStep", d.MissStreakWeightStep),
             MaxMissStreak = r.Int("maxMissStreak", d.MaxMissStreak),
             PoolMaxSize = r.Int("poolMaxSize", d.PoolMaxSize),
+            ReuseCooldownMonths = r.Int("reuseCooldownMonths", d.ReuseCooldownMonths),
+            MaxMandatoryPerCycle = r.Int("maxMandatoryPerCycle", d.MaxMandatoryPerCycle),
             ArchiveRetention = r.Int("archiveRetention", d.ArchiveRetention),
             MinorPromotionEnabled = r.Flag("minorPromotionEnabled", d.MinorPromotionEnabled),
             MaxStoryEffectsPerModifier = r.Int("maxStoryEffectsPerModifier", d.MaxStoryEffectsPerModifier),

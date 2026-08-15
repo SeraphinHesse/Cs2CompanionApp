@@ -484,6 +484,10 @@
     "archiveRetention": 40,
     "minorPromotionEnabled": true,
 
+    "_reuseComment": "reuseCooldownMonths is a DURATION and must stay well under liveCatalogSize / (storiesPerCycle * eventsPerStory) * cycleMonths — about 13 months at these values. Re-use was originally gated on 'anything the archive remembers', which is only sound while archiveRetention * eventsPerStory < liveCatalogSize; at 40 and 3 that names 120 slots over a ~40-event live catalog, so the pool emptied around month 14 and then never refilled — nothing drafted, so nothing resolved, so nothing archived, so nothing was ever released. Mandatory events ignore the cooldown: a mandatory trigger is a statement about the city right now.",
+    "reuseCooldownMonths": 6,
+    "maxMandatoryPerCycle": 2,
+
     "_breadthComment": "effects.stackingMode is 'sum' with maxStackedPerModifier 4, so six story events several of which share a modifier would hit that limit and SILENTLY DROP the fifth. Capping breadth at draft time enforces it where it can be reasoned about rather than discovered in the ledger. Keep this below effects.maxStackedPerModifier.",
     "maxStoryEffectsPerModifier": 3,
 
