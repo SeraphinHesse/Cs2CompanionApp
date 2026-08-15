@@ -293,6 +293,24 @@ the lane's.
     the orchestrator, and none of that made it true. No save depends on it yet, which is the only
     reason taking the decision now is cheap.
 
+11. **A `Manual`-triggered event is not a pool member.** The refresh neither admits one nor retains
+    one already carried — it is skipped before eligibility is considered — so no such event reaches a
+    story in wave 2. Delivery belongs to whatever system introduces it, the first being wave 3's
+    timeline adapter.
+
+    **"Manual" and "mandatory" are orthogonal**, and my own doc comment on `TriggerKind.Manual`
+    conflated them by naming "a mandatory civic event" as a use for the kind. Mandatory is a *tier*
+    derived from severity; Manual is a *trigger kind* describing how an event is introduced. A
+    mandatory-severity event still needs a real trigger to be pooled and delivered.
+
+    **This surfaced only at the merge**, which is the point of merging: lane 2b skipped Manual events
+    on the strength of "never fires from the city", and lane 2e defaulted its whole fixture catalog
+    to Manual on the strength of the same sentence — reasoning, quite reasonably, that a trigger which
+    never fires lets a drafting test state its pool outright and assert about the draw rather than
+    about the evaluator. Both readings were faithful; the contract was ambiguous. Fourteen tests
+    failed on the umbrella and none could have failed anywhere earlier, because neither lane could see
+    the other.
+
 ### Known-unreachable, recorded so it is not mistaken for tested behaviour
 
 `PoliticalPower.AwardFor(NotMet, tier, manualDeclared: true)` cannot be reached from the resolution

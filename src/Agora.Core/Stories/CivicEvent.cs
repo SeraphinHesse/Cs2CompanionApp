@@ -31,8 +31,26 @@ namespace Agora.Core.Stories
 
         /// <summary>
         /// Never fires from the city. Reserved for events the engine or the player introduces
-        /// directly — a wrapped timeline event, or a mandatory civic event.
+        /// directly — a wrapped timeline event, for instance.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A <see cref="Manual"/> event is not a pool member at all.</b> The pool refresh neither
+        /// admits one nor retains one already carried: it is skipped before eligibility is even
+        /// considered. There is therefore no path by which such an event reaches a story in wave 2 —
+        /// delivery is the introducing system's job, and the first of those arrives with wave 3's
+        /// timeline adapter.
+        /// </para>
+        /// <para>
+        /// <b>"Manual" and "mandatory" are orthogonal, and an earlier version of this comment
+        /// conflated them.</b> Mandatory is a <i>tier</i>, derived from severity through
+        /// <see cref="StoryTiers"/>; Manual is a <i>trigger kind</i>, describing how an event is
+        /// introduced. A mandatory-severity event still needs a real trigger to be pooled and
+        /// delivered — giving it a Manual trigger removes it from the pool entirely and it will
+        /// never produce a story. Two lanes read the earlier wording and drew opposite conclusions
+        /// from it, which is how this came to be written down.
+        /// </para>
+        /// </remarks>
         Manual = 5
     }
 
