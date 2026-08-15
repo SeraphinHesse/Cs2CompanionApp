@@ -127,7 +127,7 @@
   },
 
   "affinity": {
-    "_comment": "Packet 4. Affinity = issue proximity + incumbency + mandate performance + event modifiers + habitual loyalty + seeded noise. Noise is clamped so one tail draw cannot decide an election. habitualLoyalty was cut with the move to 1-year terms: loyalty decays from the last election at loyaltyDecayPerMonth, so over 12 months it now only falls to ~0.79 of its value instead of ~0.38 over four years, and the old 0.35 made the electorate far too sticky.",
+    "_comment": "Packet 4. Affinity = issue proximity + incumbency + mandate performance + event modifiers + habitual loyalty + seeded noise. Noise is clamped so one tail draw cannot decide an election. habitualLoyalty was cut with the move to 1-year terms: loyalty decays from the last election at loyaltyDecayPerMonth, so over 12 months it now only falls to ~0.79 of its value instead of ~0.38 over four years, and the old 0.35 made the electorate far too sticky. softmaxTemperature came down from 0.35 because it, not the lived-metric pipeline, was what made every district vote the same: two districts set as far apart as the sensors can see them swung 4.8 points at 0.35 and 11.0 at 0.15, and a middle-income mid-education bloc had an ideological range of only 0.126 points across the whole nine-party field. Nothing crosses electionsPr.thresholdShare or parties.deathVoteShareThreshold at the new value, and the lowest share any bloc gives any party is 2.4%, well clear of minPartyShare. eventModifierWeight came down with it: temperature amplifies every term equally, and at 0.25 one aligned severity-5 event was already worth about twice a centrist bloc's entire ideological span, so sharpening without trimming would have made the centre chase headlines and nothing else.",
     "distanceKernel": "linear",
     "distanceKernelSigma": 0.60,
     "issueWeight": 1.00,
@@ -137,7 +137,7 @@
     "incumbencyDiscontentPenalty": 0.10,
     "mandatePerformanceWeight": 0.15,
     "mandateFailurePenalty": 0.20,
-    "eventModifierWeight": 0.25,
+    "eventModifierWeight": 0.18,
     "eventModifierDecayHalfLifeMonths": 9,
     "localGrievanceWeight": 0.20,
     "nationalMoodWeight": 0.10,
@@ -146,7 +146,7 @@
 
     "noiseSigma": 0.03,
     "noiseClamp": 0.10,
-    "softmaxTemperature": 0.35,
+    "softmaxTemperature": 0.15,
     "minPartyShare": 0.001,
     "tacticalVotingThresholdFptp": 0.05
   },

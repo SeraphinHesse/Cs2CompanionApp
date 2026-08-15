@@ -21,7 +21,11 @@ namespace Agora.Core.Tests
     /// </summary>
     public class FringeCeilingTests
     {
-        private const double T = 0.35;   // affinity.softmaxTemperature, shipped
+        // An arbitrary fixed temperature, deliberately not read from tuning. Every test below
+        // softmaxes with the same T it hands to ApplyToRow and asserts a relation between the two,
+        // so the value only has to be positive — which is what keeps these tests meaningful when
+        // affinity.softmaxTemperature is retuned, as it was from 0.35 to 0.15.
+        private const double T = 0.35;
 
         // ------------------------------------------------------------------------------------------
         // Fixtures

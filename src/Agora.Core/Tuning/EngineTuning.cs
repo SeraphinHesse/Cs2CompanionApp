@@ -412,7 +412,7 @@ namespace Agora.Core.Tuning
         public double MandatePerformanceWeight { get; internal set; } = 0.15;
         public double MandateFailurePenalty { get; internal set; } = 0.20;
 
-        public double EventModifierWeight { get; internal set; } = 0.25;
+        public double EventModifierWeight { get; internal set; } = 0.18;
         public int EventModifierDecayHalfLifeMonths { get; internal set; } = 9;
 
         public double LocalGrievanceWeight { get; internal set; } = 0.20;
@@ -434,7 +434,7 @@ namespace Agora.Core.Tuning
         public double NoiseClamp { get; internal set; } = 0.10;
 
         /// <summary>Temperature of the softmax that turns affinities into vote shares.</summary>
-        public double SoftmaxTemperature { get; internal set; } = 0.35;
+        public double SoftmaxTemperature { get; internal set; } = 0.15;
 
         /// <summary>Shares below this are zeroed and redistributed, so rounding noise is not reported.</summary>
         public double MinPartyShare { get; internal set; } = 0.001;
