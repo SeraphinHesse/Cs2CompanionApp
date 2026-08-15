@@ -271,6 +271,28 @@ the lane's.
    `poolMaxSize` being set above the catalog size is a correctness property delegated to a dial and a
    data file, which is how the archive rule went wrong one level up.
 
+10. **The fill-list bound is outcome-affecting, and is accepted as such.** `StoryAssembler` bounds its
+    slot-fill list rather than allocating `open.Count × eventsPerStory` pairs, because
+    `eventsPerStory` is per-save and a hand-edited sidecar can otherwise allocate without limit.
+
+    **This changes results, and the argument that it does not is false.** It was accepted — by me —
+    on the claim that a slot index above the remaining minor count is unfillable for every story at
+    once, so dropping those pairs could not matter. It can: `SlotFill.Slot` is only a sub-stream
+    discriminator for `RngFor` and constrains no position, the pairs are shuffled **globally across
+    all slot indices**, and Fisher–Yates over a shorter list is not a prefix of the same shuffle over
+    a longer one. Measured, not argued: **529 of 4320 configurations diverge** (catalog 1–6,
+    `eventsPerStory` 1–6, `storiesPerCycle` 1–3, 40 seeds). At shipped values with three minors left,
+    which story receives the scarce minor — and therefore which is reported short — flips.
+
+    It is accepted anyway, because the assignment remains a **seeded** decision rather than falling to
+    loop order, and the alternative (a lazy partial Fisher–Yates over a virtual index range) is more
+    machinery than the case is worth. The binding condition is `minors.Count < eventsPerStory - 1`.
+
+    **The lesson is the one this section exists for:** a determinism argument that has not been
+    executed is a hypothesis. This one read as rigorous, was reported as verified, and was accepted by
+    the orchestrator, and none of that made it true. No save depends on it yet, which is the only
+    reason taking the decision now is cheap.
+
 ### Known-unreachable, recorded so it is not mistaken for tested behaviour
 
 `PoliticalPower.AwardFor(NotMet, tier, manualDeclared: true)` cannot be reached from the resolution
