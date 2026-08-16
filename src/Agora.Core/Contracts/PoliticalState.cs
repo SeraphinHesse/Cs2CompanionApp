@@ -72,7 +72,31 @@ namespace Agora.Core.Contracts
         Yearly = 1,
         Election = 2,
         Manual = 4,
-        Default = Yearly | Election | Manual
+
+        /// <summary>
+        /// Wake on the month a story drafts, so the stories a player is about to be shown are the
+        /// ones the model wrote about.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Far and away the most frequent cadence here: at the shipped <c>stories.cycleMonths</c> of
+        /// 2 this fires roughly six times a year, against the yearly wake's one. That is deliberate -
+        /// without it the model would author prose for about one story in six and the canned pool
+        /// would carry the rest - but it means this flag, not <see cref="Yearly"/>, is what decides
+        /// how often the mod starts a subprocess. It is gated twice, by
+        /// <c>llmWakeOnStoryDraft</c> in tuning and by this per-save flag, and turning either off
+        /// returns the save to the old rhythm with the pool writing every story.
+        /// </para>
+        /// <para>
+        /// This is persisted as a member <i>name</i> inside <c>wakeCadence</c>, so widening
+        /// <see cref="Default"/> reaches new saves only. <c>SidecarSchema.UpgradeSettingsObjectToV5</c>
+        /// is what reaches existing ones, and it deliberately does not override a player who had
+        /// already narrowed their cadence.
+        /// </para>
+        /// </remarks>
+        Story = 8,
+
+        Default = Yearly | Election | Manual | Story
     }
 
     /// <summary>
@@ -156,7 +180,7 @@ namespace Agora.Core.Contracts
     /// </summary>
     public sealed class AgoraSettings
     {
-        public int SchemaVersion { get; set; } = 4;
+        public int SchemaVersion { get; set; } = 5;
 
         /// <summary>Political start year. Default 1990, chosen at save creation, locked afterward (§3).</summary>
         public int StartYear { get; set; } = 1990;
@@ -408,7 +432,7 @@ namespace Agora.Core.Contracts
         /// object that was never v4 and "upgraded" fields it had never written. Whoever bumps
         /// <c>CurrentStateVersion</c> bumps this in the same commit.
         /// </remarks>
-        public int SchemaVersion { get; set; } = 6;
+        public int SchemaVersion { get; set; } = 7;
 
         /// <summary>
         /// Agora's own save identity (§5). Written into the save via the serialization hooks, never

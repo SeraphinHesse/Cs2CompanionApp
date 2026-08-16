@@ -31,7 +31,7 @@ namespace Agora.Mod.Llm
     public static class FlavorSchema
     {
         /// <summary>The <c>schemaVersion</c> this provider speaks.</summary>
-        public const int SupportedSchemaVersion = 2;
+        public const int SupportedSchemaVersion = 3;
 
         /// <summary>Repo-relative path of the authoritative file.</summary>
         public const string RepoRelativePath = "data/schemas/politics_flavor.schema.json";
@@ -49,7 +49,7 @@ namespace Agora.Mod.Llm
   ""required"": [""schemaVersion"", ""generatedAtSimDate""],
 
   ""properties"": {
-    ""schemaVersion"": { ""type"": ""integer"", ""const"": 2 },
+    ""schemaVersion"": { ""type"": ""integer"", ""const"": 3 },
     ""generatedAtSimDate"": { ""type"": ""string"", ""pattern"": ""^\\d{4}-\\d{2}-\\d{2}$"" },
 
     ""partyFlavor"": {
@@ -94,8 +94,8 @@ namespace Agora.Mod.Llm
         ""properties"": {
           ""id"": { ""type"": ""string"" },
           ""outlet"": { ""type"": ""string"", ""maxLength"": 60 },
-          ""headline"": { ""type"": ""string"", ""maxLength"": 90 },
-          ""body"": { ""type"": ""string"", ""maxLength"": 420 },
+          ""headline"": { ""type"": ""string"", ""maxLength"": 270 },
+          ""body"": { ""type"": ""string"", ""maxLength"": 1260 },
           ""tone"": { ""type"": ""string"", ""enum"": [""neutral"", ""supportive"", ""critical"", ""alarmed"", ""celebratory""] },
           ""refs"": {
             ""type"": ""object"",
@@ -119,6 +119,34 @@ namespace Agora.Mod.Llm
         ""properties"": {
           ""eventId"": { ""type"": ""string"" },
           ""localAngle"": { ""type"": ""string"", ""maxLength"": 900 }
+        }
+      }
+    },
+
+    ""stories"": {
+      ""type"": ""array"",
+      ""items"": {
+        ""type"": ""object"",
+        ""additionalProperties"": false,
+        ""required"": [""storyId"", ""headline"", ""article""],
+        ""properties"": {
+          ""storyId"": { ""type"": ""string"" },
+          ""headline"": { ""type"": ""string"", ""maxLength"": 270 },
+          ""article"": { ""type"": ""string"", ""maxLength"": 1260 }
+        }
+      }
+    },
+
+    ""resolutions"": {
+      ""type"": ""array"",
+      ""items"": {
+        ""type"": ""object"",
+        ""additionalProperties"": false,
+        ""required"": [""storyId"", ""headline"", ""article""],
+        ""properties"": {
+          ""storyId"": { ""type"": ""string"" },
+          ""headline"": { ""type"": ""string"", ""maxLength"": 270 },
+          ""article"": { ""type"": ""string"", ""maxLength"": 1260 }
         }
       }
     }

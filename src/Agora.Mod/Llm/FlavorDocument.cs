@@ -40,6 +40,26 @@ namespace Agora.Mod.Llm
         public List<ArticleEntry> Articles { get; private set; }
         public List<EventProseEntry> EventProse { get; private set; }
 
+        /// <summary>Opening prose for live stories.</summary>
+        public List<StoryProseEntry> Stories { get; private set; }
+
+        /// <summary>Closing prose for stories that have resolved.</summary>
+        public List<StoryProseEntry> Resolutions { get; private set; }
+
+        /// <summary>
+        /// Which writer produced this document. Stamped by the provider that built it, never read
+        /// from the JSON — the schema has no such field and the model is not asked to name itself.
+        /// </summary>
+        /// <remarks>
+        /// Defaults to <see cref="ProseSource.Cli"/> because <see cref="FromValidatedObject"/>'s
+        /// caller is the validator, and everything that reaches the validator came off the wire. The
+        /// canned pool builds its document through the same method and overwrites this immediately
+        /// afterwards; that asymmetry is deliberate, because a pool document mislabelled as the
+        /// model's would let canned text sit in the slot the model's prose is added to, whereas the
+        /// reverse merely loses a label.
+        /// </remarks>
+        public ProseSource Source { get; set; } = ProseSource.Cli;
+
         private FlavorDocument()
         {
             GeneratedAtSimDateText = string.Empty;
@@ -47,6 +67,8 @@ namespace Agora.Mod.Llm
             FactionFlavor = new List<FactionFlavorEntry>();
             Articles = new List<ArticleEntry>();
             EventProse = new List<EventProseEntry>();
+            Stories = new List<StoryProseEntry>();
+            Resolutions = new List<StoryProseEntry>();
         }
 
         /// <summary>
@@ -112,6 +134,26 @@ namespace Agora.Mod.Llm
                 });
             }
 
+            foreach (var item in Items(root["stories"]))
+            {
+                doc.Stories.Add(new StoryProseEntry
+                {
+                    StoryId = Str(item["storyId"]),
+                    Headline = Str(item["headline"]),
+                    Article = Str(item["article"])
+                });
+            }
+
+            foreach (var item in Items(root["resolutions"]))
+            {
+                doc.Resolutions.Add(new StoryProseEntry
+                {
+                    StoryId = Str(item["storyId"]),
+                    Headline = Str(item["headline"]),
+                    Article = Str(item["article"])
+                });
+            }
+
             return doc;
         }
 
@@ -119,10 +161,11 @@ namespace Agora.Mod.Llm
         /// Projects onto the frozen boundary contract.
         /// </summary>
         /// <remarks>
-        /// <c>factionFlavor</c> and <c>eventProse</c> have no home on <see cref="FlavorPayload"/>, so
-        /// they stay on this type and are reachable through
-        /// <c>ClaudeCliProvider.LastGoodDocument</c>. Adding <c>Factions</c> and <c>EventProse</c> to
-        /// the contract is a contract change and is reported rather than made here.
+        /// <c>factionFlavor</c> still has no home on <see cref="FlavorPayload"/>, so it stays on this
+        /// type and is reachable through <c>ClaudeCliProvider.LastGoodDocument</c>. Adding
+        /// <c>Factions</c> to the contract is a contract change and is reported rather than made
+        /// here. <c>eventProse</c> <b>did</b> get that treatment — it was stranded here for three
+        /// milestones and reached no surface at all — so it now crosses the boundary with the rest.
         /// </remarks>
         public FlavorPayload ToPayload(SimDate fallbackDate)
         {
@@ -162,11 +205,33 @@ namespace Agora.Mod.Llm
                 });
             }
 
+            for (int i = 0; i < Stories.Count; i++)
+            {
+                payload.Stories.Add(Stories[i].ToContract(Source));
+            }
+
+            for (int i = 0; i < Resolutions.Count; i++)
+            {
+                payload.Resolutions.Add(Resolutions[i].ToContract(Source));
+            }
+
+            for (int i = 0; i < EventProse.Count; i++)
+            {
+                var e = EventProse[i];
+                payload.EventProse.Add(new Agora.Core.Contracts.EventProse
+                {
+                    EventId = e.EventId,
+                    LocalAngle = e.LocalAngle,
+                    Source = Source
+                });
+            }
+
             return payload;
         }
 
         /// <summary>Total prose entries, for logging.</summary>
-        public int EntryCount => PartyFlavor.Count + FactionFlavor.Count + Articles.Count + EventProse.Count;
+        public int EntryCount => PartyFlavor.Count + FactionFlavor.Count + Articles.Count +
+                                 EventProse.Count + Stories.Count + Resolutions.Count;
 
         private static IEnumerable<JToken> Items(JToken token)
         {
@@ -258,5 +323,25 @@ namespace Agora.Mod.Llm
     {
         public string EventId = string.Empty;
         public string LocalAngle = string.Empty;
+    }
+
+    /// <summary>
+    /// One story's prose as it came off the wire. Shared by <c>stories</c> and <c>resolutions</c>,
+    /// which are the same shape carrying opposite ends of one narrative.
+    /// </summary>
+    public sealed class StoryProseEntry
+    {
+        public string StoryId = string.Empty;
+        public string Headline = string.Empty;
+        public string Article = string.Empty;
+
+        /// <summary>Projects onto the boundary contract, stamped with the document's source.</summary>
+        public StoryProse ToContract(ProseSource source) => new StoryProse
+        {
+            StoryId = StoryId,
+            Headline = Headline,
+            Article = Article,
+            Source = source
+        };
     }
 }

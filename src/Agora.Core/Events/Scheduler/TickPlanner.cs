@@ -237,6 +237,28 @@ namespace Agora.Core.Events.Scheduler
                 wake |= LlmWakeCadence.Manual;
             }
 
+            // On the DRAFT month, not the resolve month. The prose a story wake exists to fetch is
+            // the opening article for the stories drafted on this very tick, and the resolution piece
+            // for whatever resolved alongside them — both of which the draft tick has just produced.
+            // Waking on the resolve phase instead would ask the model to write about stories the
+            // player has already been reading for a full cycle, and at the shipped cadence of 2 the
+            // two phases are adjacent months, so the mistake would look like a one-month lag rather
+            // than like an error.
+            //
+            // Gated on the story layer being ON, and that gate is load-bearing rather than tidy.
+            // IsStoryDraft is pure phase arithmetic — it stays true every cycle on a save that has
+            // stories switched off, because the switch is honoured downstream in StoryCycle, which
+            // returns before drafting anything. So without this clause a player who turned stories
+            // off would have the mod start a subprocess every two months to fetch prose about
+            // stories that will never exist, which is both the most frequent wake in the build and
+            // the one they most clearly said no to.
+            bool storyLayerOn = tuning.Stories.Enabled && settings.StoriesEnabled;
+
+            if (storyDraft && storyLayerOn && s.LlmWakeOnStoryDraft && (allowed & LlmWakeCadence.Story) != 0)
+            {
+                wake |= LlmWakeCadence.Story;
+            }
+
             return new TickPlan(date, engineTick, eventScan, snapshot, lifecycle, indices, mandates,
                                 pollTick, storyDraft, storyResolve, warmupComplete, campaign, wake);
         }

@@ -40,6 +40,7 @@ namespace Agora.Core.Tests
             new[] { "party-riverside" },
             new string[0],
             new[] { "district-harbour" },
+            new string[0],
             new string[0]);
 
         private static FlavorValidator Validator() =>

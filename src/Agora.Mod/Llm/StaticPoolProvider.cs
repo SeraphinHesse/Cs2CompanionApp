@@ -134,6 +134,13 @@ namespace Agora.Mod.Llm
                 return null;
             }
 
+            // Stamped here rather than in FlavorDocument, which defaults to Cli because its only
+            // other caller is the validator and everything reaching the validator came off the wire.
+            // The label is what lets a consumer hold both writers' prose at once instead of one
+            // erasing the other (StoryProseLedger), so a pool document wearing the model's label
+            // would take the slot the model's prose is added to and keep it for the story's life.
+            result.Document.Source = ProseSource.Pool;
+
             return result.Document;
         }
 

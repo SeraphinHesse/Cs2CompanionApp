@@ -40,7 +40,8 @@ namespace Agora.Core.Tests
             new[] { "party-riverside" },
             new[] { "faction-riverside-left" },
             new[] { "district-harbour" },
-            new[] { "event-harbour-flood" });
+            new[] { "event-harbour-flood" },
+            new[] { "story-harbour-1997-06" });
 
         /// <summary>The schema the deployed mod validates against.</summary>
         private static JObject ShippedSchema() => FlavorSchema.Load(null, null);

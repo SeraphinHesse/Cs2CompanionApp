@@ -32,20 +32,23 @@ namespace Agora.Mod.Llm
         private readonly HashSet<string> _factionIds;
         private readonly HashSet<string> _districtIds;
         private readonly HashSet<string> _eventIds;
+        private readonly HashSet<string> _storyIds;
 
         /// <summary>A catalog that recognises nothing. Every referenced ID will be rejected.</summary>
-        public static readonly FlavorCatalog Empty = new FlavorCatalog(null, null, null, null);
+        public static readonly FlavorCatalog Empty = new FlavorCatalog(null, null, null, null, null);
 
         public FlavorCatalog(
             IEnumerable<string> partyIds,
             IEnumerable<string> factionIds,
             IEnumerable<string> districtIds,
-            IEnumerable<string> eventIds)
+            IEnumerable<string> eventIds,
+            IEnumerable<string> storyIds)
         {
             _partyIds = Build(partyIds);
             _factionIds = Build(factionIds);
             _districtIds = Build(districtIds);
             _eventIds = Build(eventIds);
+            _storyIds = Build(storyIds);
         }
 
         private static HashSet<string> Build(IEnumerable<string> ids)
@@ -66,10 +69,23 @@ namespace Agora.Mod.Llm
         public bool HasDistrict(string id) => !string.IsNullOrEmpty(id) && _districtIds.Contains(id);
         public bool HasEvent(string id) => !string.IsNullOrEmpty(id) && _eventIds.Contains(id);
 
+        /// <summary>
+        /// Whether <paramref name="id"/> names a story the request told the model about.
+        /// </summary>
+        /// <remarks>
+        /// Story ids are minted per save and per cycle, so this set turns over completely every few
+        /// months — unlike parties, which live for years. That makes it the entry most likely to be
+        /// answered with a plausible id from a stale cached document, and dropping such an entry is
+        /// the right outcome: the story it names has resolved and been archived, and prose attached
+        /// to it would be shown against whatever story now sits in that slot.
+        /// </remarks>
+        public bool HasStory(string id) => !string.IsNullOrEmpty(id) && _storyIds.Contains(id);
+
         public int PartyCount => _partyIds.Count;
         public int FactionCount => _factionIds.Count;
         public int DistrictCount => _districtIds.Count;
         public int EventCount => _eventIds.Count;
+        public int StoryCount => _storyIds.Count;
 
         /// <summary>
         /// The IDs in ordinal-ascending order, for the prompt.
@@ -83,6 +99,7 @@ namespace Agora.Mod.Llm
         public IReadOnlyList<string> SortedFactionIds() => Sorted(_factionIds);
         public IReadOnlyList<string> SortedDistrictIds() => Sorted(_districtIds);
         public IReadOnlyList<string> SortedEventIds() => Sorted(_eventIds);
+        public IReadOnlyList<string> SortedStoryIds() => Sorted(_storyIds);
 
         private static IReadOnlyList<string> Sorted(HashSet<string> set)
         {

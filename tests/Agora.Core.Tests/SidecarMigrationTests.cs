@@ -307,6 +307,12 @@ namespace Agora.Core.Tests
             settings.Remove("powerIntensity");
             settings.Remove("storyDifficulty");
 
+            // v6 -> v7 (state) / v4 -> v5 (settings): the story LLM wake, appended to the cadence.
+            // The only field in this whole list whose value the chain REWRITES rather than adds, so
+            // it is the one whose removal here hides the most. Migrate_SettingsV4_AppendsTheStoryWake
+            // is what asserts the rewrite is the one intended, and it must be read alongside this.
+            settings.Remove("wakeCadence");
+
             foreach (JToken party in Arr(root, "parties"))
             {
                 ((JObject)party).Remove("playerOverrides");
@@ -1486,6 +1492,103 @@ namespace Agora.Core.Tests
         private static bool Bool(JToken parent, string name)
         {
             return Get(parent, name).Value<bool>();
+        }
+
+        // --- 5c. v4 → v5: the story LLM wake ---------------------------------------------------------
+
+        /// <summary>
+        /// A save that never touched its cadence is given the story wake; one that narrowed it keeps
+        /// exactly what it chose.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Widening <c>LlmWakeCadence.Default</c> reaches new saves only — the value is persisted as
+        /// a list of member <i>names</i>, so an existing file says "Yearly, Election, Manual"
+        /// whatever the enum later comes to mean. This step is the only thing that reaches the saves
+        /// that already exist, and without it every one of them would silently never wake on a
+        /// story: no error, no log line, just a feature that works for new cities and not for old
+        /// ones.
+        /// </para>
+        /// <para>
+        /// The second half matters more than the first. Turning a wake back on for a player who
+        /// turned it off would be the mod overriding a decision about how often it is allowed to
+        /// start a subprocess — and the story wake is the most frequent one in the build.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("Yearly, Election, Manual", "Yearly, Election, Manual, Story")]
+        [InlineData("Yearly, Election", "Yearly, Election")]
+        [InlineData("None", "None")]
+        [InlineData("Yearly, Election, Manual, Story", "Yearly, Election, Manual, Story")]
+        public void Migrate_SettingsV4_AppendsTheStoryWake_OnlyToAnUntouchedCadence(string before, string after)
+        {
+            var settings = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 4,
+                ["startYear"] = 1990,
+                ["theme"] = "Eu",
+                ["system"] = "Proportional",
+                ["wakeCadence"] = before
+            };
+
+            MigrationResult result = SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
+            Assert.Equal(after, (string)settings["wakeCadence"]!);
+
+            // Idempotent: the chain re-run over its own output changes nothing.
+            SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+            Assert.Equal(after, (string)settings["wakeCadence"]!);
+        }
+
+        /// <summary>
+        /// Every settings upgrade helper stamps the literal version it produces, never the current
+        /// one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>UpgradeSettingsObjectToV4</c> stamped <c>CurrentSettingsVersion</c> rather than a
+        /// literal <c>4</c>. That was indistinguishable from correct for as long as 4 was current,
+        /// and it did not bite when 5 arrived either — for the standalone settings document the
+        /// migration loop rewrites the version after every step and quietly corrects it, and for the
+        /// nested block the very next state step happened to re-stamp it. So this is a trap being
+        /// closed rather than a bug being fixed, and it is worth closing because both of those
+        /// rescues are coincidences of the current step list: the moment
+        /// <c>CurrentSettingsVersion</c> moves without a matching state step,
+        /// <c>MigrateStateV5ToV6</c> stamps a nested block with a version whose fields it has never
+        /// written, and nothing corrects or reports it.
+        /// </para>
+        /// <para>
+        /// Asserted against the helpers rather than against the step table because they are what a
+        /// future author copies, and because a helper is also called directly from the state chain,
+        /// where the loop's own stamp does not reach.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EverySettingsUpgradeHelper_StampsItsOwnLiteralVersion()
+        {
+            // Bare objects: every helper is written as "if the property is absent, write the
+            // default", so this exercises the stamp without reproducing a document per version.
+            var toV2 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV2(toV2);
+            Assert.Equal(2, (int)toV2[SidecarSchema.VersionProperty]!);
+
+            var toV3 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV3(toV3);
+            Assert.Equal(3, (int)toV3[SidecarSchema.VersionProperty]!);
+
+            var toV4 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV4(toV4);
+            Assert.Equal(4, (int)toV4[SidecarSchema.VersionProperty]!);
+
+            var toV5 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV5(toV5);
+            Assert.Equal(5, (int)toV5[SidecarSchema.VersionProperty]!);
+
+            // The last helper in the chain is the one that must agree with the constant. If this
+            // fails, a version was bumped without a helper to reach it.
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)toV5[SidecarSchema.VersionProperty]!);
         }
 
         // --- Temp directories --------------------------------------------------------------------------

@@ -236,9 +236,7 @@ namespace Agora.Core.Tests
             // "{district} says it has been waiting long enough" came out ending "...waiting long e".
             // The rule now is to drop the placeholder rather than cut a name, so the article gets a
             // clean generic headline instead of a mangled specific one.
-            string name = "The Old Harbourside Wharves and Cooperage Quarter Conservation Area " +
-                          "Extension, North Bank";
-            Assert.True(name.Length > 60, "the fixture must be long enough to force the fallback.");
+            string name = NameThatOverflowsAHeadlineButNotABody();
 
             FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
                                             parties: 0, districts: 3);
@@ -566,9 +564,7 @@ namespace Agora.Core.Tests
             // already consumed a NextInt by the time the continue fires, so the stream is further on
             // than the number of published lines suggests. That is fine, and deterministic, but only
             // a same-seed comparison down the rejecting path can say so.
-            string name = "The Old Harbourside Wharves and Cooperage Quarter Conservation Area " +
-                          "Extension, North Bank";
-            Assert.True(name.Length > 60, "the fixture must be long enough to force the rejections.");
+            string name = NameThatOverflowsAHeadlineButNotABody();
 
             // Yearly, because only the district branch substitutes a name the player controls: an
             // election round at the default count is all party pieces, and a party name is ours and
@@ -595,6 +591,45 @@ namespace Agora.Core.Tests
         }
 
         // ---- fixtures and helpers -----------------------------------------------------------------
+
+        /// <summary>
+        /// A district name too long for a headline and comfortably short enough for a body — the
+        /// only band in which the headline's fallback fires and the body's does not.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Derived from the caps, never written out.</b> These two tests used to hold a
+        /// hand-written hundred-character name and assert only that it was longer than sixty. That
+        /// made them silently vacuous the moment the headline cap tripled from 90 to 270: the name
+        /// now fit, no candidate was ever rejected, and the tests were exercising the ordinary path
+        /// while claiming to prove the fallback. One of them said so out loud and went red; the
+        /// other would have gone on passing and proving nothing.
+        /// </para>
+        /// <para>
+        /// Built from real words rather than a run of <c>x</c>, because the headline rule is about
+        /// dropping a placeholder rather than cutting a name, and a name with no spaces in it cannot
+        /// tell a clean drop from a lucky cut at a word boundary.
+        /// </para>
+        /// </remarks>
+        private static string NameThatOverflowsAHeadlineButNotABody()
+        {
+            const string unit = "The Old Harbourside Wharves and Cooperage Quarter Conservation Area " +
+                                "Extension, North Bank; ";
+
+            var sb = new StringBuilder();
+            while (sb.Length <= FlavorCacheMigration.HeadlineMaxLength) sb.Append(unit);
+
+            string name = sb.ToString();
+
+            Assert.True(name.Length > FlavorCacheMigration.HeadlineMaxLength,
+                        "the fixture must overflow a headline or the fallback never fires.");
+            Assert.True(name.Length < FlavorCacheMigration.BodyMaxLength,
+                        "the fixture must fit a body, or this is the body-fallback case instead. " +
+                        "If the caps ever come close enough together to make that impossible, these " +
+                        "two tests need a different fixture, not a wider one.");
+
+            return name;
+        }
 
         private static FlavorRequest Request(SimDate date, FlavorWakeReason reason, RegionTheme theme,
                                              int parties, int districts)

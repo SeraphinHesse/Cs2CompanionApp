@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Agora.Core.Contracts;
 using Agora.Mod.Llm;
 using Xunit;
@@ -113,6 +114,7 @@ namespace Agora.Core.Tests
             Assert.Same(request.Parties, roster.Parties);
             Assert.Same(request.Factions, roster.Factions);
             Assert.Same(request.Events, roster.Events);
+            Assert.Same(request.Stories, roster.Stories);
 
             // And the request it was copied from is untouched — the CLI still asks for its extra
             // pieces. A fix that reset the count in place would pass every assertion above and lose
@@ -172,6 +174,88 @@ namespace Agora.Core.Tests
             // two, and it is the one the enlarged template lists have to keep earning.
             AssertNoRepeatedBody(fromCopy);
             AssertNoRepeatedBody(fromRequest);
+        }
+
+        /// <summary>
+        /// <c>RosterCopy</c> carries every property on <see cref="FlavorRequest"/>, discovered by
+        /// reflection rather than by the list a human happened to write.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>RosterCopy</c> is a hand-maintained field-by-field copy, and the failure mode of one of
+        /// those is not a compile error — it is a property arriving at its type default with
+        /// everything reporting success. Wave 5 added <c>Stories</c>, and a roster that dropped it
+        /// would leave the canned pool writing prose for no stories at all while the log said the
+        /// round succeeded; the pool is the everyday story voice, so that is the whole feature
+        /// missing on the path that matters most. The assertion above names <c>Stories</c>
+        /// explicitly, which fixes exactly that one property and nothing about the next one.
+        /// </para>
+        /// <para>
+        /// <b>Unrecognised types throw rather than being skipped.</b> A silent skip shrinks this
+        /// guard back to whatever it happened to cover on the day it was written, and it stops
+        /// failing without anyone noticing — the same rule <c>CloneStateCoverageTests</c> is written
+        /// under. It asserts only that a value was <i>carried</i>, never how: the collections are
+        /// deliberately shared rather than cloned, and pinning that here would forbid a later
+        /// decision to deep-copy them.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void RosterCopy_CarriesEveryPropertyExceptTheOneItIsFor()
+        {
+            // The single deliberate exception, and the reason RosterCopy exists at all: a raised
+            // article count is a prompt instruction for one round, not a fact about the save, and it
+            // must not leak into a roster that outlives the request.
+            var deliberatelyReset = new HashSet<string>(StringComparer.Ordinal) { "ArticleCount" };
+
+            var source = new FlavorRequest();
+            var seeded = new List<PropertyInfo>();
+
+            foreach (PropertyInfo property in typeof(FlavorRequest).GetProperties(
+                         BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!property.CanRead || !property.CanWrite) continue;
+                if (deliberatelyReset.Contains(property.Name)) continue;
+
+                property.SetValue(source, DistinctValueFor(property));
+                seeded.Add(property);
+            }
+
+            FlavorRequest copy = source.RosterCopy();
+
+            foreach (PropertyInfo property in seeded)
+            {
+                Assert.True(Equals(property.GetValue(source), property.GetValue(copy)),
+                            "FlavorRequest." + property.Name + " did not survive RosterCopy. Add it " +
+                            "to the copy, or — if it genuinely must be reset — add it to " +
+                            "deliberatelyReset with the reason. A dropped property arrives at its " +
+                            "type default and nothing anywhere reports it.");
+            }
+
+            Assert.Equal(FlavorRequest.DefaultArticleCount, copy.ArticleCount);
+        }
+
+        /// <summary>
+        /// A value distinguishable from the type's default, so "carried" and "defaulted" cannot look
+        /// alike. Throws on a type it has never seen — see the calling test's remarks.
+        /// </summary>
+        private static object DistinctValueFor(PropertyInfo property)
+        {
+            Type type = property.PropertyType;
+
+            if (type == typeof(SimDate)) return new SimDate(2044, 9, 1);
+            if (type == typeof(FlavorWakeReason)) return FlavorWakeReason.StoryDraft;
+            if (type == typeof(RegionTheme)) return RegionTheme.Na;
+            if (type == typeof(CitySnapshot)) return new CitySnapshot { Districts = new List<DistrictSnapshot>() };
+            if (type == typeof(FlavorCatalog)) return new FlavorCatalog(null, null, null, null, new[] { "story-x" });
+            if (type == typeof(List<PartyBrief>)) return new List<PartyBrief> { new PartyBrief() };
+            if (type == typeof(List<FactionBrief>)) return new List<FactionBrief> { new FactionBrief() };
+            if (type == typeof(List<EventBrief>)) return new List<EventBrief> { new EventBrief() };
+            if (type == typeof(List<StoryBrief>)) return new List<StoryBrief> { new StoryBrief() };
+
+            throw new Xunit.Sdk.XunitException(
+                "FlavorRequest." + property.Name + " is a " + type.Name + ", which this guard does " +
+                "not know how to seed. Teach it, rather than letting the property go unchecked — a " +
+                "skip here is how the guard quietly stops covering what it was written for.");
         }
 
         private static void AssertNoRepeatedBody(FlavorDocument document)
