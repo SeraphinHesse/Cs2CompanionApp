@@ -162,7 +162,14 @@ namespace Agora.Core.Stories
             // The effect pass, strictly after the stamping pass above. (active, resolution, debt) is
             // the order StoryCycleResult.EffectRequests declares. Every one of these is capped by the
             // resolver it came from; the sink clamps again regardless (non-negotiable #5).
-            result.EffectRequests.AddRange(StoryEffects.ForActive(state.LiveStories, catalog, tuning));
+            //
+            // One district for the whole tick, chosen once and used by both halves. A story's active
+            // effect and its consequence have to land in the same place or the narrative contradicts
+            // itself — the clinic crisis in one district, the failure it causes in another.
+            string districtId = TargetDistrict(context.Today);
+
+            result.EffectRequests.AddRange(
+                StoryEffects.ForActive(state.LiveStories, catalog, districtId, tuning));
 
             // Sorted before it is walked. The sweep and the ordinary pass each contribute in id
             // order, so concatenating them is deterministic already — but it is deterministic by an
@@ -179,7 +186,8 @@ namespace Agora.Core.Stories
                 if (verdict.Story.Outcome == StoryOutcome.Abandoned) continue;
 
                 result.EffectRequests.AddRange(
-                    StoryEffects.ForResolution(verdict.Story, verdict.SlotOutcomes, catalog, tuning));
+                    StoryEffects.ForResolution(verdict.Story, verdict.SlotOutcomes, catalog,
+                                               districtId, tuning));
             }
 
             AppendDebtPenalty(state, settings, tuning, result);
@@ -643,6 +651,107 @@ namespace Agora.Core.Stories
             {
                 result.EffectRequests.Add(request);
             }
+        }
+
+        // --- district targeting ---------------------------------------------------------------------
+
+        /// <summary>
+        /// The district a story's district-scoped effects land on: the most populous, tie-broken by
+        /// ordinal id. Empty when the city has no districts to target.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why the caller chooses at all.</b> A district-scoped <see cref="EffectRequest"/> needs a
+        /// target and no catalog entry names one — a civic event is written before the player's
+        /// districts exist, exactly as a timeline event is. Until the seam carried an id,
+        /// <see cref="StoryEffects"/> had nothing to build such a request from and skipped every one:
+        /// 102 of 277 authored effect references, and 47 authored effect phases that became entirely
+        /// empty, so an author wrote <c>failureEffects</c>, the story failed and nothing happened.
+        /// That is the inert-wrapper defect this wave exists to remove.
+        /// </para>
+        /// <para>
+        /// <b>A rule over the snapshot, not a seeded draw — and the precedent is why.</b>
+        /// <c>EffectResolution.PickDistrict</c> draws per effect, but note what it keys on: the
+        /// event's <i>authored</i> date rather than the tick date, precisely so that a catch-up tick
+        /// firing an event late picks the same district a live tick would. The property it is buying
+        /// with a seed is <b>stability against when the code happens to run</b>. A rule computed from
+        /// the snapshot has that property outright: the same snapshot yields the same district however
+        /// many times the month is entered, so it needs no seed, no stream name and no entry in the
+        /// seeded history that a later rename would migrate. Non-negotiable #2 governs draws, and the
+        /// cheapest way to satisfy it is not to draw.
+        /// </para>
+        /// <para>
+        /// <b>Why one district serves the whole tick.</b> <see cref="StoryEffects.ForActive"/> takes
+        /// every live story in one call because the breadth cap is computed across them —
+        /// <c>stories.maxStoryEffectsPerModifier</c> is meaningless if each story is capped
+        /// separately — so the seam carries one id per call by construction. Keying a draw on the
+        /// tick date instead would move every live story's effects to a new district every month, and
+        /// a consequence that wanders while the argument is still running is worse than a concentrated
+        /// one.
+        /// </para>
+        /// <para>
+        /// <b>Most populous, because the tie-break has to mean something.</b> A civic story is a
+        /// city-wide argument; when its consequence must be pinned to one place, the defensible place
+        /// is where the most citizens experience it, which is also where it carries the most political
+        /// weight. Ordinal id breaks exact ties so the rule is total, and is not the primary key
+        /// because "alphabetically first" would be an arbitrary district forever.
+        /// </para>
+        /// <para>
+        /// <b>The case that makes this wrong.</b> Two districts within a few citizens of each other,
+        /// crossing over between the month a story opens and the month it resolves: the active effect
+        /// lands in one and the consequence in the other, which is the incoherence the single shared
+        /// id exists to prevent, reached by the city moving rather than by the code. The standing cost
+        /// is concentration — the largest district absorbs every story's district-scoped effect for
+        /// the whole save while a small district never sees one. Both are the price of a seam that
+        /// carries one id per call; the fix for either is a per-story target, which needs a district
+        /// on <see cref="Story"/> and therefore a sidecar migration, and is explicitly a later wave's
+        /// decision.
+        /// </para>
+        /// <para>
+        /// <b>An empty id is a real answer, not a failure.</b> A city with no districts degrades to
+        /// the documented skip inside <see cref="StoryEffects"/> rather than throwing or naming a
+        /// phantom district — non-negotiable #4 forbids creating one, and #5's fallback rule is what
+        /// the skip is. Districts with an empty id are filtered out first, for the reason
+        /// <c>StoryResolution.SortedDistricts</c> gives: an empty district id is what marks a reading
+        /// city-wide, so treating one as a target would collide the two keyspaces on the one key that
+        /// has to stay unambiguous.
+        /// </para>
+        /// </remarks>
+        private static string TargetDistrict(CitySnapshot snapshot)
+        {
+            if (snapshot == null) return "";
+
+            List<DistrictSnapshot> districts = snapshot.Districts ?? new List<DistrictSnapshot>();
+            DistrictSnapshot? best = null;
+
+            for (int i = 0; i < districts.Count; i++)
+            {
+                DistrictSnapshot district = districts[i];
+                if (district == null || string.IsNullOrEmpty(district.Id)) continue;
+
+                if (best == null || IsBetterTarget(district, best)) best = district;
+            }
+
+            return best == null ? "" : best.Id;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="candidate"/> outranks <paramref name="incumbent"/> as a target:
+        /// more populous, or equally populous and lower by ordinal id.
+        /// </summary>
+        /// <remarks>
+        /// A total order over a list walked in the producer's sequence, so the winner does not depend
+        /// on that sequence. <see cref="CitySnapshot.Districts"/> is documented as ordered, but a rule
+        /// that only works if the producer honoured its documentation is not a rule.
+        /// </remarks>
+        private static bool IsBetterTarget(DistrictSnapshot candidate, DistrictSnapshot incumbent)
+        {
+            if (candidate.Population != incumbent.Population)
+            {
+                return candidate.Population > incumbent.Population;
+            }
+
+            return string.CompareOrdinal(candidate.Id, incumbent.Id) < 0;
         }
 
         // --- shared shapes -------------------------------------------------------------------------
