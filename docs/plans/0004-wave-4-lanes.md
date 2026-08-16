@@ -155,14 +155,15 @@ public static StoryCycleResult Run(StoryCycleInput input);
 
 ```csharp
 // src/Agora.Core/Stories/StoryEffects.cs
+// AMENDED MID-WAVE — districtId added. See "the district seam" below.
 public static List<EffectRequest> ForActive(IReadOnlyList<Story> live,
                                             IReadOnlyList<CivicEvent> catalog,
-                                            EngineTuning tuning);
+                                            string districtId, EngineTuning tuning);
 
 public static List<EffectRequest> ForResolution(Story story,
                                                 IReadOnlyList<SlotOutcome> outcomes,
                                                 IReadOnlyList<CivicEvent> catalog,
-                                                EngineTuning tuning);
+                                                string districtId, EngineTuning tuning);
 
 // src/Agora.Core/Stories/StoryPressure.cs
 public static List<StoryPressureContribution> For(IReadOnlyList<Story> live,
