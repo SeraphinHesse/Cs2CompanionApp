@@ -213,11 +213,19 @@ namespace Agora.Core.Stories
         /// <see cref="PlayerCommand.Sequence"/> as the highest yet issued in its month.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Inserted at position rather than appended-and-sorted. <c>List.Sort</c> is unstable, so
         /// re-sorting a log whose sequences are already correct could still permute equal keys and
         /// change the serialized bytes — a determinism failure with nothing wrong behind it.
+        /// </para>
+        /// <para>
+        /// <b>Both parameters are nullable because both are tolerated.</b> This runs from a command
+        /// handler on the UI thread, where an escaping exception costs far more than a dropped
+        /// record — the posture every other data path in the runtime takes. The signature says so
+        /// rather than leaving a caller to discover it from the body.
+        /// </para>
         /// </remarks>
-        public static void Append(List<PlayerCommand> log, PlayerCommand command)
+        public static void Append(List<PlayerCommand>? log, PlayerCommand? command)
         {
             if (log == null || command == null) return;
 
