@@ -83,6 +83,21 @@ namespace Agora.Core.Tests
         private static string Window(int preferred) =>
             SomeLegalWindow(preferred).ToString(CultureInfo.InvariantCulture);
 
+        /// <summary>
+        /// How long a story actually lives, and therefore the widest window a <c>check</c> may read
+        /// back over. <b><c>stories.cycleMonths</c> is the cadence, not the story's life</b>, and the
+        /// two differ by one: <c>StoryAssembler.NewStory</c> drafts at M and resolves at M+1. Derived
+        /// the way <see cref="MaxDeltaWindow"/> is derived from retention, so moving the cadence
+        /// re-checks the rule instead of rotting the fixtures.
+        /// </summary>
+        private static int StoryLifeMonths => Tuning.Stories.CycleMonths - 1 < 1
+            ? 1
+            : Tuning.Stories.CycleMonths - 1;
+
+        /// <summary>A check window a fixture uses when the window is not what is under test.</summary>
+        private static string CheckWindow(int preferred) =>
+            (preferred < StoryLifeMonths ? preferred : StoryLifeMonths).ToString(CultureInfo.InvariantCulture);
+
         /// <summary>The highest severity the catalog admits, read from tuning rather than typed as 5.</summary>
         private static int SeverityMax => Tuning.Catalog.SeverityMax;
 
@@ -618,7 +633,12 @@ namespace Agora.Core.Tests
         [InlineData("\"delta\"")]
         public void BaselineOnNonMetricCheck_IsNotRaisedOnAReadingShapedKind(string kind)
         {
-            string spec = string.CompareOrdinal(kind, "\"delta\"") == 0 ? DeltaSpec(SomeLegalWindow(3)) : ValidSpec;
+            // A check window, not a trigger window: the ceiling here is the story's life, not the
+            // snapshot retention, and the two are wildly different numbers.
+            string spec = string.CompareOrdinal(kind, "\"delta\"") == 0
+                ? SpecJson(kind: "\"delta\"", comparison: "\"lte\"", threshold: "-0.05",
+                           windowMonths: CheckWindow(3))
+                : ValidSpec;
 
             CivicEventCatalogLoadResult result = LoadOne(EventJson(
                 check: "{\"spec\":" + spec + ",\"relativeToBaseline\":true}"));
@@ -682,7 +702,7 @@ namespace Agora.Core.Tests
             // and only the provable impossibility is reported.
             string spec = SpecJson(kind: "\"delta\"", metricId: "\"" + MetricRegistry.CrimeRate + "\"",
                                    comparison: "\"lte\"", threshold: "-0.05",
-                                   windowMonths: Window(3), scope: "\"allDistricts\"");
+                                   windowMonths: CheckWindow(3), scope: "\"allDistricts\"");
 
             CivicEventCatalogLoadResult result =
                 LoadOne(EventJson(check: "{\"spec\":" + spec + ",\"relativeToBaseline\":true}"));
@@ -710,14 +730,19 @@ namespace Agora.Core.Tests
         {
             string metric = "\"" + MetricRegistry.CrimeRate + "\"";
 
+            // The check carries the trigger's own threshold, so this fixture isolates the scope defect
+            // and cannot also trip CheckThresholdLeavesTrapBand — that is a different rule with a
+            // different repair, and a fixture carrying both defects would not tell them apart.
             CivicEventCatalogLoadResult result = LoadOne(EventJson(
                 trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
                                   scope: triggerScope),
-                check: "{\"spec\":" + SpecJson(metricId: metric, scope: "\"anyDistrict\"") + "}"));
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"lt\"", threshold: "0.6",
+                                                scope: "\"anyDistrict\"") + "}"));
 
             Assert.Empty(result.Errors);
             Assert.Equal(0, result.RejectedEventCount);
             Assert.Contains(result.Warnings, w => w.Code == CatalogIssueCode.DistrictCheckNotBoundToTrigger);
+            Assert.DoesNotContain(result.Warnings, w => w.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
             Assert.Single(result.Catalog.Events);
         }
 
@@ -726,6 +751,12 @@ namespace Agora.Core.Tests
         /// real and rising ask — every district must clear the bar — so it must stay clean on the
         /// trigger's own metric.
         /// </summary>
+        /// <remarks>
+        /// The check takes the trigger's <i>own</i> threshold, and an earlier version of this fixture
+        /// did not — it asked for 0.4 against a trigger firing at 0.6, which is exactly the trap band
+        /// rule 119 was later written to find. A positive fixture that quietly carries the defect a
+        /// neighbouring rule exists to catch is worse than no fixture: it reads as a blessing.
+        /// </remarks>
         [Fact]
         public void AnAllDistrictsCheckOnTheTriggersOwnMetric_StaysClean()
         {
@@ -734,7 +765,8 @@ namespace Agora.Core.Tests
             AssertClean(LoadOne(EventJson(
                 trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
                                   scope: "\"anyDistrict\""),
-                check: "{\"spec\":" + SpecJson(metricId: metric, scope: "\"allDistricts\"") + "}")));
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"lt\"", threshold: "0.6",
+                                                scope: "\"allDistricts\"") + "}")));
         }
 
         /// <summary>
@@ -751,6 +783,32 @@ namespace Agora.Core.Tests
                                   comparison: "\"gte\"", threshold: "0.6", scope: "\"anyDistrict\""),
                 check: "{\"spec\":" + SpecJson(metricId: "\"" + MetricRegistry.Happiness + "\"",
                                                 scope: "\"anyDistrict\"") + "}")));
+        }
+
+        /// <summary>
+        /// <b>Two specs with no metric id at all are not "the same metric".</b> A <c>manual</c> trigger
+        /// and a <c>manual</c> check, both at <c>anyDistrict</c> scope, carry an empty
+        /// <c>MetricId</c> on both sides and sail through the equality test — so without the
+        /// emptiness guard the loader emits a warning naming <c>''</c>, against an event whose specs
+        /// read no metric at all.
+        /// </summary>
+        /// <remarks>
+        /// A finding that names nothing is worse than no finding: it costs an author a search through
+        /// a document for a metric that was never there, and the shipped gate holds catalogs to zero
+        /// warnings, so it would also block a merge for a defect that does not exist.
+        /// </remarks>
+        [Fact]
+        public void TwoSpecsWithNoMetricId_DoNotCountAsReadingTheSameMetric()
+        {
+            string manual = SpecJson(kind: "\"manual\"", metricId: null, comparison: null,
+                                     threshold: null, scope: "\"anyDistrict\"");
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: manual, check: "{\"spec\":" + manual + "}"));
+
+            Assert.DoesNotContain(result.Warnings,
+                w => w.Code == CatalogIssueCode.DistrictCheckNotBoundToTrigger);
+            AssertClean(result);
         }
 
         /// <summary>A city-scoped trigger cannot be unbound from anything; the rule must stay quiet.</summary>
@@ -852,6 +910,281 @@ namespace Agora.Core.Tests
             Assert.Equal(expected, flipped);
         }
 
+        // ================================================================== 119 CheckThresholdLeavesTrapBand
+
+        /// <summary>
+        /// <b>The band between the two thresholds is districts the player was never told about.</b> An
+        /// <c>allDistricts</c> check returns <c>NotMet</c> the instant one measured district fails, so
+        /// a trigger firing at <c>&gt;= 0.6</c> paired with a check demanding <c>&lt; 0.35</c> loses
+        /// the story over a district sitting at 0.37 — one that contributed nothing to the trigger and
+        /// appears nowhere in the prose.
+        /// </summary>
+        [Theory]
+        [InlineData("\"anyDistrict\"")]
+        [InlineData("\"allDistricts\"")]
+        public void CheckThresholdLeavesTrapBand_WhenTheCheckIsTighterThanTheTrigger(string checkScope)
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"lt\"", threshold: "0.35",
+                                                scope: checkScope) + "}"));
+
+            Assert.Empty(result.Errors);
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Contains(result.Warnings, w => w.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
+            Assert.Single(result.Catalog.Events);
+        }
+
+        /// <summary>
+        /// Mirrored, for a metric where low is the bad direction. The rule must not be written only
+        /// for the "too high" shape — half a rule reads as a whole one.
+        /// </summary>
+        [Fact]
+        public void CheckThresholdLeavesTrapBand_ForALowIsBadTrigger()
+        {
+            string metric = "\"" + MetricRegistry.Happiness + "\"";
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"lte\"", threshold: "0.3",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.5",
+                                                scope: "\"allDistricts\"") + "}"));
+
+            Assert.Contains(result.Warnings, w => w.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
+        }
+
+        /// <summary>
+        /// The positive pair, both ways round: an exact complement leaves no band whatever the
+        /// strictness of the two comparisons. The rule is about the band, not the boundary, so
+        /// <c>&gt;= T</c> against <c>&lt; T</c> and <c>&gt; T</c> against <c>&lt;= T</c> are both silent.
+        /// </summary>
+        [Theory]
+        [InlineData("\"gte\"", "\"lt\"")]
+        [InlineData("\"gt\"", "\"lte\"")]
+        public void AnExactComplement_LeavesNoTrapBand(string triggerComparison, string checkComparison)
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: triggerComparison, threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: checkComparison,
+                                                threshold: "0.6", scope: "\"allDistricts\"") + "}")));
+        }
+
+        /// <summary>
+        /// A check <i>looser</i> than its trigger traps nobody — every district that can fail the check
+        /// already fired the trigger — so the rule must not fire on a gap in the harmless direction.
+        /// </summary>
+        [Fact]
+        public void ACheckLooserThanItsTrigger_LeavesNoTrapBand()
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"lt\"", threshold: "0.8",
+                                                scope: "\"allDistricts\"") + "}")));
+        }
+
+        /// <summary>
+        /// Two specs pointing the same way are not a "fix it" pair at all, and the rule has no opinion
+        /// about them.
+        /// </summary>
+        [Fact]
+        public void ACheckPointingTheSameWayAsItsTrigger_IsNotATrapBand()
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.3",
+                                                scope: "\"allDistricts\"") + "}")));
+        }
+
+        /// <summary>
+        /// A <c>delta</c> pair is left alone: the two windows would have to be normalised before the
+        /// thresholds could be compared at all, and comparing them unnormalised would produce
+        /// confident nonsense. The gap here is large and deliberate, and must stay silent.
+        /// </summary>
+        [Fact]
+        public void ADeltaPair_IsNotComparedForATrapBand()
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(kind: "\"delta\"", metricId: metric, comparison: "\"gte\"",
+                                  threshold: "0.6", windowMonths: Window(6), scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(kind: "\"delta\"", metricId: metric, comparison: "\"lte\"",
+                                                threshold: "-0.35", windowMonths: CheckWindow(1),
+                                                scope: "\"allDistricts\"") + "}")));
+        }
+
+        /// <summary>
+        /// A relative check has no fixed band — the bar moves with the city — and the rule bows out.
+        /// The entry is still refused, by rule 116, because a district baseline is never captured; the
+        /// point here is that it is refused <b>once</b>, for the reason that is provable, without a
+        /// second finding about a band that does not exist.
+        /// </summary>
+        [Fact]
+        public void ARelativeCheck_IsNotJudgedForATrapBand()
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, comparison: "\"lt\"", threshold: "0.35",
+                                                scope: "\"allDistricts\"") + ",\"relativeToBaseline\":true}"));
+
+            AssertRejected(result, CatalogIssueCode.BaselineCheckAtDistrictScope);
+            Assert.DoesNotContain(result.Warnings, w => w.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
+        }
+
+        // ================================================================== 120 CheckWindowOutrunsStoryLife
+
+        /// <summary>
+        /// <b><c>stories.cycleMonths</c> is the cadence, not the story's life.</b>
+        /// <c>StoryAssembler.NewStory</c> drafts at M and resolves at M+1, so a check reading back
+        /// further than <c>cycleMonths - 1</c> scores the player on months that predate their
+        /// decision — and the further back it reads, the smaller their share of the verdict.
+        /// </summary>
+        [Fact]
+        public void CheckWindowOutrunsStoryLife_WhenTheCheckReadsBackFurtherThanTheStoryLived()
+        {
+            int beyond = StoryLifeMonths + 1;
+            Assert.True(beyond <= MaxDeltaWindow,
+                "the fixture needs a window that outruns the story's life while staying inside the " +
+                "retention bound, so that only rule 120 can be what fires");
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                check: "{\"spec\":" + SpecJson(kind: "\"delta\"", comparison: "\"lte\"",
+                                                threshold: "-0.05",
+                                                windowMonths: beyond.ToString(CultureInfo.InvariantCulture)) + "}"));
+
+            Assert.Empty(result.Errors);
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Contains(result.Warnings, w => w.Code == CatalogIssueCode.CheckWindowOutrunsStoryLife);
+            Assert.DoesNotContain(result.Warnings, w => w.Code == CatalogIssueCode.WindowMonthsOutOfRange);
+            Assert.Single(result.Catalog.Events);
+        }
+
+        /// <summary>The positive pair: a window of exactly the story's life is the whole of it.</summary>
+        [Fact]
+        public void ACheckWindowOfExactlyTheStorysLife_StaysClean()
+        {
+            AssertClean(LoadOne(EventJson(
+                check: "{\"spec\":" + SpecJson(kind: "\"delta\"", comparison: "\"lte\"",
+                                                threshold: "-0.05",
+                                                windowMonths: StoryLifeMonths.ToString(CultureInfo.InvariantCulture)) + "}")));
+        }
+
+        /// <summary>
+        /// <b>The rule is scoped to the check and must stay there.</b> A trigger asks what the city has
+        /// been doing for the last two years, which is a fair question the player is not being scored
+        /// on — it is bounded by <c>snapshotRetention</c>, not by the story's life, and the two bounds
+        /// differ by more than an order of magnitude at the shipped values.
+        /// </summary>
+        [Fact]
+        public void ALongTriggerWindow_DoesNotOutrunTheStorysLife()
+        {
+            Assert.True(MaxDeltaWindow > StoryLifeMonths,
+                "the two bounds must differ for this fixture to prove anything");
+
+            AssertClean(LoadOne(EventJson(trigger: DeltaSpec(MaxDeltaWindow))));
+        }
+
+        // ================================================================== 121 ThresholdAboveAttainableMaximum
+
+        /// <summary>
+        /// The two published ceilings, asserted as the arithmetic they are rather than as remembered
+        /// decimals: <c>serviceCoverage</c> is a mean over nine channels of which four are hard-zeroed,
+        /// and <c>pollution</c> a mean over four of which one is not measurable from the CPU.
+        /// </summary>
+        [Fact]
+        public void AttainableMaximum_PublishesTheTwoCeilingsAsFractions()
+        {
+            Assert.Equal(5.0 / 9.0, CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.ServiceCoverageMean));
+            Assert.Equal(3.0 / 4.0, CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.PollutionMean));
+
+            // Every other metric is unbounded as far as this loader knows, and silence is the answer.
+            Assert.Null(CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.Happiness));
+            Assert.Null(CivicEventCatalogLoader.AttainableMaximum("notAMetric"));
+        }
+
+        /// <summary>
+        /// A threshold above what the sensor can ever report says nothing about the city: a <c>gte</c>
+        /// can never be met, and a <c>lt</c> is met by every city always.
+        /// </summary>
+        [Theory]
+        [InlineData("serviceCoverage")]
+        [InlineData("pollution")]
+        public void ThresholdAboveAttainableMaximum_WarnsAboveTheCeiling(string metricId)
+        {
+            double ceiling = CivicEventCatalogLoader.AttainableMaximum(metricId)!.Value;
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: SpecJson(metricId: "\"" + metricId + "\"", comparison: "\"gte\"",
+                                  threshold: Number(ceiling + 0.01))));
+
+            Assert.Empty(result.Errors);
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Contains(result.Warnings, w => w.Code == CatalogIssueCode.ThresholdAboveAttainableMaximum);
+            Assert.Single(result.Catalog.Events);
+        }
+
+        /// <summary>
+        /// The positive pair, at and below the ceiling. Exactly at it is attainable — the boundary is
+        /// the one place an off-by-one in the comparison would show, and a threshold merely demanding
+        /// is a judgement this loader has no basis to make.
+        /// </summary>
+        [Theory]
+        [InlineData("serviceCoverage")]
+        [InlineData("pollution")]
+        public void AThresholdAtOrBelowTheCeiling_StaysClean(string metricId)
+        {
+            double ceiling = CivicEventCatalogLoader.AttainableMaximum(metricId)!.Value;
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: "\"" + metricId + "\"", comparison: "\"gte\"",
+                                  threshold: Number(ceiling)))));
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: "\"" + metricId + "\"", comparison: "\"gte\"",
+                                  threshold: Number(ceiling - 0.01)))));
+        }
+
+        /// <summary>
+        /// A metric with no published ceiling is not policed at all — the rule must not invent a 1.0
+        /// bound for metrics whose sensors are complete.
+        /// </summary>
+        [Fact]
+        public void AMetricWithNoPublishedCeiling_IsNotPoliced()
+        {
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: "\"" + MetricRegistry.Happiness + "\"",
+                                  comparison: "\"gte\"", threshold: "0.99"))));
+        }
+
+        /// <summary>
+        /// A <c>delta</c> is a change rather than a level, and a change may legitimately exceed the
+        /// level's ceiling — a swing of 0.9 on a metric that tops out at 0.5556 is impossible, but the
+        /// loader deliberately does not reason about that, and this pins the scoping so the rule is not
+        /// quietly widened to deltas where it would be wrong.
+        /// </summary>
+        [Fact]
+        public void ADeltaThreshold_IsNotComparedAgainstTheLevelCeiling()
+        {
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(kind: "\"delta\"", metricId: "\"" + MetricRegistry.PollutionMean + "\"",
+                                  comparison: "\"gte\"", threshold: "0.9", windowMonths: Window(6)))));
+        }
+
         // ============================================== the entry shape: codes 20-52, this loader's own
 
         /// <summary>
@@ -889,8 +1222,21 @@ namespace Agora.Core.Tests
         /// <summary>
         /// The positive sweep: <b>every</b> id in the shipped palette is nameable by an authored civic
         /// event. Paired with the theories above, so neither "refuse everything" nor "accept
-        /// everything" could pass both — and it is what fails on the run a palette entry is renamed.
+        /// everything" could pass both.
         /// </summary>
+        /// <remarks>
+        /// <b>This is not a rename tripwire, and an earlier version of this comment claimed it was.</b>
+        /// The ids and the loader's palette are drawn from the same <see cref="EngineTuning"/>
+        /// instance, so renaming an entry in <c>data/engine_tuning.json</c> moves both sides together
+        /// and this test stays green — verified by doing it. What it actually proves is that the
+        /// loader admits <i>every</i> id the registry carries, so it fails if the loader ever becomes
+        /// <b>narrower</b> than the palette: an id filtered out, a scope restriction added to
+        /// <c>ReadEffectList</c>, a validity rule applied to civic effects that timeline effects are
+        /// spared. The rename is caught by
+        /// <c>ShippedTuningTests.ShippedTuningFile_ShipsTheSameEffectPaletteAsTheBuiltInRegistry</c>
+        /// and its siblings, which compare the file against the built-in defaults — two independent
+        /// sources, which is what a tripwire needs and what this test does not have.
+        /// </remarks>
         [Fact]
         public void EveryPaletteEntry_IsNameableByAnAuthoredEvent()
         {
