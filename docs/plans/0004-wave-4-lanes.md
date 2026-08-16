@@ -265,6 +265,59 @@ Lanes 4a, 4c, 4d are pure `Agora.Core` and carry the full testing obligation.
 
 ---
 
+## RESUME STATE — wave 4 is NOT closed
+
+Written when a session limit cut three lanes off mid-work. **Read this before doing anything else.**
+The umbrella (`event-system/wave-4`) is clean and green at **2041 passed, 0 failed**; nothing below
+is broken, it is unfinished.
+
+### Merged and done
+
+| Lane | State |
+|---|---|
+| **4d** power ledger | ✅ merged (`5b2e3b8`). Blocked once, fixed: `>=` → `==` accrual guard, `Spend` → `TrySpend` |
+| **4f** global content | ✅ merged (`d1fa4c7`). Blocked once, fixed: six recessions had `growth` inverted |
+| **4g** EU content | ✅ merged (`c0c860c`). Approved first pass |
+| **4h** NA content | ✅ merged (`3afcf8b`). Approved first pass |
+
+All 90 wrapped timeline events now author an `issuePressure`. That gap is closed.
+
+### Outstanding, in the order to resume
+
+1. **4a — committed, reviewed, ONE ITEM STILL OWED.** Branch `event-system/w4-4a` at `2fbd5b5`,
+   clean. It fixed the forward-dated-story reap and reworded the `PoliticalPowerEnabled` comment.
+   **It has NOT done the district-id seam change** — that instruction was sent but the session ended
+   before it was acted on, and its report does not mention districts. Re-send: `ForActive` /
+   `ForResolution` gain a `string districtId`, and 4a chooses it deterministically from
+   `StoryCycleInput.Context.Today`. Do not merge 4a until 4c's seam matches.
+2. **4c — BLOCKED, fix in progress, uncommitted (3 files).** Branch still at the spine. The three
+   required changes are in the message history: the severity-ordering test (its tuning half is done,
+   commit `6ffec56`), reading `stories.resolutionEffectMonths` for the resolution duration (key added,
+   same commit), and the district-id seam widening. **This is the wave's most valuable outstanding
+   repair** — 102 of 277 authored effect references (36.8%) currently dispatch nothing, and 47 of 174
+   non-empty effect phases resolve to literally no effect.
+3. **4b — BLOCKED, fix NEVER DISPATCHED.** Branch still at the spine, one uncommitted file. My
+   omission, not the lane's: I did the two spine halves of its block (`PlayerCommand.DeclaredMet` and
+   `PlayerCommandLog.Append`, both merged) and then never sent the lane the remaining four. Still
+   owed by the lane: B2 (a paid `PowerOverride` can be overwritten free by `SetStoryResponse`, then
+   charged again — the review has the exact three-step sequence), B3 (binding names — its remarks say
+   `declareOutcome` where the plan says `declareManual`, and it invented a fourth binding
+   unilaterally), B5 (both catch blocks claim state is unchanged after it has already changed), plus
+   clearing `PlayerText` on a bought override and `CapFreeText`'s unbounded fall-through. It must also
+   switch to `PlayerCommandLog.Append` and `TrySpend`, and re-send its twelve manual gate rows — the
+   reviewer never received them and could not judge them.
+4. **4e — merged the umbrella, revision in progress, uncommitted (2 files).** Owes two added cases:
+   a story reached by both the sweep and the ordinary pass producing exactly **one** resolution, and
+   archive trim at exactly `retention`, at `retention + 1`, and at `retention <= 0`. **Merges last**,
+   and its failures are expected until 4a and 4c land — that is the design, not a defect.
+
+### Then
+
+Re-review 4a and 4c after their fixes, review 4b, merge in the order above, and only then
+`/commitpushpr`.
+
+---
+
 ## Merge order
 
 ```
