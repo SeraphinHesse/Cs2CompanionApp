@@ -1046,6 +1046,39 @@ namespace Agora.Core.Tests
             Assert.DoesNotContain(result.Warnings, w => w.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
         }
 
+        /// <summary>
+        /// <b>The twin of <see cref="TwoSpecsWithNoMetricId_DoNotCountAsReadingTheSameMetric"/>, and it
+        /// needs its own fixture.</b> That one uses <c>manual</c> specs, which bail out of this rule
+        /// several lines earlier; this one is <c>metric</c>-kind and district-scoped on both sides with
+        /// no <c>metricId</c> at all, so it reaches the emptiness guard rule 119 keeps for itself. Two
+        /// empty ids compare equal, the thresholds diverge, and without the guard the loader reports a
+        /// trap band on a metric named <c>''</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The entry is rejected regardless — <c>UnknownMetricId</c> — but that is not what suppresses
+        /// the warning and must not be mistaken for it: the warn hooks run unconditionally after
+        /// <c>ReadSpec</c>, so a rejected entry still emits findings. The guard is the only thing
+        /// standing between an author and a warning about nothing.
+        /// </para>
+        /// <para>
+        /// A finding that names nothing is worse than no finding — the same argument as the rule-117
+        /// case, and the reason both guards are worth a fixture rather than a comment.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void TwoMetricSpecsWithNoMetricId_DoNotOpenATrapBand()
+        {
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: SpecJson(metricId: null, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: null, comparison: "\"lt\"", threshold: "0.35",
+                                                scope: "\"allDistricts\"") + "}"));
+
+            AssertRejected(result, CatalogIssueCode.UnknownMetricId);
+            Assert.DoesNotContain(result.Warnings, w => w.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
+        }
+
         // ================================================================== 120 CheckWindowOutrunsStoryLife
 
         /// <summary>
