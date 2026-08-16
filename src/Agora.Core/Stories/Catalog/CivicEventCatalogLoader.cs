@@ -681,7 +681,7 @@ namespace Agora.Core.Stories.Catalog
 
                 case TriggerKind.Metric:
                 case TriggerKind.Delta:
-                    ValidateMetricSpec(spec, path, id, source, tuning, errors, warnings, ref ok);
+                    ValidateMetricSpec(spec, path, id, source, tuning, errors, ref ok);
                     break;
 
                 case TriggerKind.Unlock:
@@ -695,7 +695,7 @@ namespace Agora.Core.Stories.Catalog
                     // silent-forever-Met case this whole loader exists to refuse.
                     if (MetricRegistry.IsKnown(metricId, scope))
                     {
-                        ValidateMetricSpec(spec, path, id, source, tuning, errors, warnings, ref ok);
+                        ValidateMetricSpec(spec, path, id, source, tuning, errors, ref ok);
                     }
                     else
                     {
@@ -722,6 +722,27 @@ namespace Agora.Core.Stories.Catalog
                 else
                 {
                     spec.Threshold = thresholdNode.Number;
+
+                    // Checked HERE rather than in ValidateMetricSpec, which runs before this block
+                    // and would compare against a threshold still sitting at its default of zero.
+                    // (It did, briefly, and the test caught it.)
+                    //
+                    // A threshold above what the sensor can ever report says nothing about the city:
+                    // a gte can never be met, a lt is met always. Only a plain reading is checked —
+                    // a delta is a change, and a change may legitimately exceed the level's ceiling.
+                    if (kind == TriggerKind.Metric)
+                    {
+                        double? ceiling = AttainableMaximum(metricId);
+                        if (ceiling.HasValue && spec.Threshold > ceiling.Value)
+                        {
+                            warnings.Add(Warn(CatalogIssueCode.ThresholdAboveAttainableMaximum,
+                                source.Name, id, path + ".threshold",
+                                Describe(spec.Threshold) + " is above the highest value '" + metricId +
+                                "' can report (" + Describe(ceiling.Value) + "): its sensor " +
+                                "hard-zeroes the channels the game does not expose, so the mean " +
+                                "cannot reach 1.0"));
+                        }
+                    }
                 }
             }
 
@@ -882,8 +903,7 @@ namespace Agora.Core.Stories.Catalog
         /// </summary>
         private static void ValidateMetricSpec(TriggerSpec spec, string path, string id,
                                                CivicEventCatalogSource source, EngineTuning tuning,
-                                               List<CatalogIssue> errors, List<CatalogIssue> warnings,
-                                               ref bool ok)
+                                               List<CatalogIssue> errors, ref bool ok)
         {
             if (!MetricRegistry.IsKnown(spec.MetricId, spec.Scope))
             {
@@ -892,22 +912,6 @@ namespace Agora.Core.Stories.Catalog
                     ScopeKey(spec.Scope) + "; see MetricRegistry.CityMetricIds / DistrictMetricIds"));
                 ok = false;
                 return;
-            }
-
-            // A threshold above what the sensor can ever report says nothing about the city: a gte
-            // can never be met, a lt is met always. Only a Metric spec is checked — a delta is a
-            // change, and a change may legitimately exceed the level's ceiling.
-            if (spec.Kind == TriggerKind.Metric)
-            {
-                double? ceiling = AttainableMaximum(spec.MetricId);
-                if (ceiling.HasValue && spec.Threshold > ceiling.Value)
-                {
-                    warnings.Add(Warn(CatalogIssueCode.ThresholdAboveAttainableMaximum, source.Name, id,
-                        path + ".threshold",
-                        Describe(spec.Threshold) + " is above the highest value '" + spec.MetricId +
-                        "' can report (" + Describe(ceiling.Value) + "): its sensor hard-zeroes the " +
-                        "channels the game does not expose, so the mean cannot reach 1.0"));
-                }
             }
 
             // The census gate. Delta is permitted, absolute is not — the units are unresolved, and a
