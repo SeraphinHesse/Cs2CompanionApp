@@ -100,7 +100,44 @@ namespace Agora.Core.Contracts
         /// with <see cref="CommandOutcomes.IsAccepted"/>, never with <c>== Ok</c>.
         /// </para>
         /// </summary>
-        OkColorInUse = 10
+        OkColorInUse = 10,
+
+        /// <summary>
+        /// The balance does not cover the political-power override that was asked for.
+        ///
+        /// <para>
+        /// Distinct from <see cref="BadValue"/>, and the distinction is what the player acts on: the
+        /// request was well-formed and named a slot that really can be bought off, they simply cannot
+        /// afford it yet. A generic rejection would read as "this button does not work" rather than
+        /// "come back in two months". Debt is <b>not</b> this outcome — a negative balance still buys
+        /// anything it covers, per <c>Agora.Core.Stories.PoliticalPower.CanAfford</c>.
+        /// </para>
+        /// </summary>
+        InsufficientPower = 11,
+
+        /// <summary>
+        /// The story has already reached its verdict, so there is nothing left to decide about it.
+        ///
+        /// <para>
+        /// Separate from <see cref="NotFound"/> on purpose: the story exists and the player can still
+        /// read it in the archive. It is the <i>window</i> that closed, not the record. Merging the
+        /// two would tell a player their own resolved story never happened.
+        /// </para>
+        /// </summary>
+        AlreadyResolved = 12,
+
+        /// <summary>
+        /// The political-power economy is switched off for this save, so nothing may be bought at
+        /// any price.
+        ///
+        /// <para>
+        /// Not <see cref="InsufficientPower"/>, which would be a lie: with <c>power.enabled</c> off
+        /// the balance cannot grow either, so "you cannot afford it" points the player at a number
+        /// they can never reach and gives them nothing to do about it. This says the feature is off,
+        /// which is actionable — it is a per-save setting.
+        /// </para>
+        /// </summary>
+        PowerDisabled = 13
     }
 
     /// <summary>The wire form of a <see cref="CommandOutcome"/>.</summary>

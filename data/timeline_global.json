@@ -29,6 +29,10 @@
         }
       ],
       "headlineBrief": "Iraq occupies Kuwait; crude roughly doubles by October. Fuel, freight and heating bills rise within weeks. Governments open strategic reserves and debate fuel duty. Contested locally: whether to shield households or hold the budget line.",
+      "issuePressure": {
+        "costOfLiving": 0.35,
+        "transit": 0.1
+      },
       "tags": [
         "oil",
         "energy",
@@ -65,6 +69,10 @@
         }
       ],
       "headlineBrief": "Coalition forces begin Operation Desert Storm; ground war ends 28 February. Defence spending crowds out civil budgets, oil falls back after the initial spike. Local fault line: war levies and deferred infrastructure.",
+      "issuePressure": {
+        "services": 0.2,
+        "heritageOrder": 0.12
+      },
       "tags": [
         "war",
         "oil",
@@ -100,6 +108,11 @@
         }
       ],
       "headlineBrief": "The USSR formally dissolves on 26 December 1991. Fifteen successor states open to trade and migration; defence industries retrench. Political angle: a peace dividend that is claimed by everyone and spent once.",
+      "issuePressure": {
+        "services": 0.2,
+        "growth": 0.15,
+        "heritageOrder": -0.12
+      },
       "tags": [
         "geopolitics",
         "trade",
@@ -199,6 +212,10 @@
         }
       ],
       "headlineBrief": "Thailand floats the baht; currency and banking crises spread across East Asia and into Russia and Brazil. Export demand contracts, credit tightens, IMF conditionality becomes a political word. Capital mobility moves onto the ballot.",
+      "issuePressure": {
+        "costOfLiving": 0.2,
+        "growth": -0.1
+      },
       "tags": [
         "finance",
         "recession",
@@ -304,6 +321,10 @@
         }
       ],
       "headlineBrief": "The Nasdaq peaks on 10 March 2000 and loses most of its value over two years. Technology employers cut staff, speculative office and fibre projects stall. Cities that granted incentives face empty buildings and a public accounting.",
+      "issuePressure": {
+        "costOfLiving": 0.1,
+        "growth": -0.1
+      },
       "tags": [
         "technology",
         "recession",
@@ -345,6 +366,10 @@
         }
       ],
       "headlineBrief": "Coordinated attacks kill nearly 3,000 people; aviation, freight and public buildings are resecured worldwide. Surveillance powers expand quickly and permanently. Local argument: policing budgets and civil liberties in the same vote.",
+      "issuePressure": {
+        "services": 0.15,
+        "heritageOrder": 0.45
+      },
       "tags": [
         "security",
         "terrorism",
@@ -380,6 +405,10 @@
         }
       ],
       "headlineBrief": "SARS spreads from Guangdong through Hong Kong, Toronto and Singapore; roughly 8,000 cases and 774 deaths. Travel and hospitality contract sharply for two quarters. First real test of quarantine powers in a modern city.",
+      "issuePressure": {
+        "services": 0.25,
+        "heritageOrder": 0.1
+      },
       "tags": [
         "health",
         "epidemic",
@@ -415,6 +444,10 @@
         }
       ],
       "headlineBrief": "The invasion begins on 20 March 2003 after the largest coordinated anti-war demonstrations on record. Occupation costs run for years and oil stays elevated. Splits governing parties as much as it splits electorates.",
+      "issuePressure": {
+        "costOfLiving": 0.15,
+        "heritageOrder": -0.15
+      },
       "tags": [
         "war",
         "oil",
@@ -479,6 +512,10 @@
         }
       ],
       "headlineBrief": "BNP Paribas suspends three funds on 9 August 2007 and central banks inject emergency liquidity. Mortgage credit tightens and construction pipelines stall. Councils discover how much of their capital plan depended on cheap debt.",
+      "issuePressure": {
+        "costOfLiving": 0.2,
+        "growth": 0.15
+      },
       "tags": [
         "finance",
         "credit",
@@ -520,6 +557,10 @@
         }
       ],
       "headlineBrief": "Brent and WTI peak above $145 a barrel on 11 July 2008. Fuel protests, haulage disputes and a measurable shift to transit and cycling follow. Fuel duty becomes the most sensitive line in the budget.",
+      "issuePressure": {
+        "costOfLiving": 0.3,
+        "transit": 0.3
+      },
       "tags": [
         "oil",
         "energy",
@@ -567,6 +608,11 @@
         }
       ],
       "headlineBrief": "Lehman Brothers files for bankruptcy on 15 September 2008; interbank lending stops and bank rescues follow within weeks. Output, tax receipts and construction fall together. Bailouts versus services becomes the defining local argument for a decade.",
+      "issuePressure": {
+        "services": 0.45,
+        "costOfLiving": 0.25,
+        "growth": 0.15
+      },
       "tags": [
         "finance",
         "recession",
@@ -667,6 +713,10 @@
         }
       ],
       "headlineBrief": "Uprisings across North Africa and the Middle East halt Libyan output; Brent passes $100 in February 2011. Fuel and food prices rise together. Energy security returns as an argument for domestic supply and for demand reduction at once.",
+      "issuePressure": {
+        "costOfLiving": 0.3,
+        "environment": 0.12
+      },
       "tags": [
         "oil",
         "energy",
@@ -708,6 +758,10 @@
         }
       ],
       "headlineBrief": "A magnitude 9.0 earthquake and tsunami kill about 18,000 people and cause meltdowns at Fukushima Daiichi. Several countries reverse nuclear policy; component supply chains break for months. Nuclear power becomes a live local question again.",
+      "issuePressure": {
+        "services": 0.15,
+        "environment": 0.4
+      },
       "tags": [
         "disaster",
         "nuclear",
@@ -778,6 +832,10 @@
         }
       ],
       "headlineBrief": "OPEC declines to cut production on 27 November 2014; crude falls from about $110 to under $30 by early 2016. Fuel is cheap, transit ridership softens, oil-linked budgets crack. Cheap petrol undercuts the case for modal shift.",
+      "issuePressure": {
+        "environment": -0.15,
+        "transit": -0.25
+      },
       "tags": [
         "oil",
         "energy",
@@ -819,6 +877,10 @@
         }
       ],
       "headlineBrief": "Regulators find defeat devices in diesel cars on 18 September 2015. Real-world nitrogen oxide emissions turn out far above test figures; low-emission zones and diesel bans follow. Air quality becomes an enforcement question, not an aspiration.",
+      "issuePressure": {
+        "environment": 0.4,
+        "transit": 0.2
+      },
       "tags": [
         "environment",
         "air-quality",
@@ -895,6 +957,10 @@
         }
       ],
       "headlineBrief": "Ransomware spreads to roughly 200,000 machines across 150 countries on 12 May 2017, cancelling hospital appointments and halting factories. Unpatched public systems are the common factor. Deferred IT maintenance becomes visible as a service failure.",
+      "issuePressure": {
+        "services": 0.3,
+        "heritageOrder": 0.1
+      },
       "tags": [
         "technology",
         "cyberattack",
@@ -930,6 +996,10 @@
         }
       ],
       "headlineBrief": "Tariffs take effect on 6 July 2018 and escalate through 2019. Input costs rise, supply chains start relocating, and export-facing employers hedge. Protection versus prices returns as a mainstream economic argument.",
+      "issuePressure": {
+        "costOfLiving": 0.25,
+        "growth": 0.1
+      },
       "tags": [
         "trade",
         "tariffs",
@@ -965,6 +1035,10 @@
         }
       ],
       "headlineBrief": "Coordinated strikes on 20 September 2019 bring an estimated four million people onto the streets, mostly under 25. Councils declare climate emergencies with varying substance behind them. Opens a generational split inside existing parties.",
+      "issuePressure": {
+        "environment": 0.35,
+        "transit": 0.15
+      },
       "tags": [
         "climate",
         "protest",
@@ -1000,6 +1074,10 @@
         }
       ],
       "headlineBrief": "An extreme fire season burns tens of millions of acres and blankets major cities in hazardous smoke for weeks. Air quality indices go off scale and schools close. Climate adaptation stops being abstract for urban voters.",
+      "issuePressure": {
+        "services": 0.2,
+        "environment": 0.4
+      },
       "tags": [
         "climate",
         "disaster",
@@ -1047,6 +1125,11 @@
         }
       ],
       "headlineBrief": "COVID-19 is declared a pandemic on 11 March 2020; most of the world enters lockdown within a fortnight. Hospitals, transit and hospitality are hit at once and emergency powers are used at scale. Restrictions, compliance and compensation dominate every other issue.",
+      "issuePressure": {
+        "services": 0.45,
+        "costOfLiving": 0.15,
+        "heritageOrder": 0.2
+      },
       "tags": [
         "health",
         "pandemic",
@@ -1089,6 +1172,9 @@
         }
       ],
       "headlineBrief": "Office attendance stays far below 2019 levels after the first lockdowns end. Central business districts lose weekday footfall, transit fare revenue collapses, and outer districts gain daytime population. Where offices sit is now a fiscal question.",
+      "issuePressure": {
+        "transit": -0.2
+      },
       "tags": [
         "work",
         "transit",
@@ -1165,6 +1251,10 @@
         }
       ],
       "headlineBrief": "Container rates rise roughly tenfold, ports queue for weeks and chip shortages idle factories and vehicle lines through 2021 and 2022. Delivery times stretch across every sector. Reshoring and stockpiling move from theory to procurement policy.",
+      "issuePressure": {
+        "costOfLiving": 0.3,
+        "growth": 0.12
+      },
       "tags": [
         "supply-chain",
         "industry",
@@ -1206,6 +1296,10 @@
         }
       ],
       "headlineBrief": "Headline inflation reaches 5 to 7 percent across major economies late in 2021 and keeps rising. Wages lag, service contracts reprice, and municipal running costs jump mid-budget. Indexation of pay, rents and fares becomes the central distributive fight.",
+      "issuePressure": {
+        "services": 0.15,
+        "costOfLiving": 0.45
+      },
       "tags": [
         "inflation",
         "cost-of-living",
@@ -1253,6 +1347,11 @@
         }
       ],
       "headlineBrief": "The invasion begins on 24 February 2022. Sanctions, an energy and grain shock and the largest European refugee movement since 1945 follow within weeks. Defence, energy sourcing and refugee reception all land on local government at once.",
+      "issuePressure": {
+        "services": 0.25,
+        "costOfLiving": 0.25,
+        "heritageOrder": 0.2
+      },
       "tags": [
         "war",
         "geopolitics",
@@ -1289,6 +1388,10 @@
         }
       ],
       "headlineBrief": "Policy rates rise from near zero through 2022 and 2023 in the sharpest tightening since the early 1980s. Mortgage costs, municipal borrowing and development finance all reprice. Capital programmes are rescheduled or cancelled outright.",
+      "issuePressure": {
+        "costOfLiving": 0.25,
+        "growth": 0.15
+      },
       "tags": [
         "interest-rates",
         "finance",
@@ -1330,6 +1433,10 @@
         }
       ],
       "headlineBrief": "Pipeline gas to Europe is cut and benchmark prices peak in late August 2022, pulling LNG and power prices up worldwide. Energy-intensive plants curtail output; households face doubled bills. Subsidy, rationing and insulation compete for the same money.",
+      "issuePressure": {
+        "costOfLiving": 0.4,
+        "environment": 0.2
+      },
       "tags": [
         "energy",
         "cost-of-living",
@@ -1371,6 +1478,10 @@
         }
       ],
       "headlineBrief": "A public chat interface to a large language model reaches a hundred million users within two months; enterprise adoption follows through 2023. Clerical and creative work is automated unevenly. Displacement and retraining arrive before any regulation does.",
+      "issuePressure": {
+        "services": 0.2,
+        "growth": 0.15
+      },
       "tags": [
         "technology",
         "automation",
@@ -1412,6 +1523,10 @@
         }
       ],
       "headlineBrief": "Global mean temperature sets successive daily records from early July 2023; heatwaves, wildfire smoke and flooding hit populated regions in the same season. Cooling demand strains grids. Shade, water and cooled public buildings become council obligations.",
+      "issuePressure": {
+        "services": 0.25,
+        "environment": 0.35
+      },
       "tags": [
         "climate",
         "heat",
@@ -1453,6 +1568,10 @@
         }
       ],
       "headlineBrief": "Computing demand drives record data centre construction and multi-year grid connection queues; several utilities defer retirements to meet load. Cities weigh rateable value and jobs against power, water and land taken out of other uses.",
+      "issuePressure": {
+        "environment": 0.25,
+        "growth": 0.15
+      },
       "tags": [
         "technology",
         "energy",
@@ -1494,6 +1613,10 @@
         }
       ],
       "headlineBrief": "Direct strikes on Iran from 13 June 2025 and threats to the Strait of Hormuz lift crude and freight insurance sharply before a ceasefire unwinds most of the spike. Roughly a fifth of world oil transits the strait. Fuel relief and strategic reserves return within days.",
+      "issuePressure": {
+        "costOfLiving": 0.35,
+        "transit": 0.12
+      },
       "tags": [
         "oil",
         "energy",

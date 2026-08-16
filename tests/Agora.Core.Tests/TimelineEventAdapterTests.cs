@@ -369,30 +369,24 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// <b>The shipped catalogs make every adapted event politically inert, and that is recorded
-        /// here rather than left to be discovered.</b> No timeline event authors an
-        /// <c>issuePressure</c>, so a wrapped event presses no issue and — by the double-application
-        /// decision — requests no effect either.
+        /// A wrapped event with no authored pressure is inert, and inert has a precise meaning: it
+        /// presses no issue and — by the double-application decision — requests no effect either.
         /// </summary>
         /// <remarks>
-        /// AGORA-WAVE4(timeline issuePressure). The repair is an authoring pass over
-        /// <c>timeline_*.json</c>, frozen this wave, and the mapping already picks the numbers up the
-        /// moment they exist. <b>This test is written to fail when that lands</b>: the assertion is
-        /// that the catalogs contain no <c>issuePressure</c> at all, so adding one turns the reminder
-        /// red instead of leaving it quietly true forever.
+        /// This is the unit half of what used to be a whole-catalog tripwire. Wave 3 asserted that no
+        /// shipped <c>timeline_*.json</c> contained the string <c>issuePressure</c> anywhere, written
+        /// deliberately to <b>fail</b> when the authoring pass landed rather than to stay quietly true
+        /// forever. It has now landed — wave 4's lanes 4f/4g/4h author a pressure on all ninety
+        /// wrapped events — so the catalog-wide half is replaced by
+        /// <see cref="WrappedShippedEvents_AuthorAPressure"/>, which asserts the opposite. The
+        /// behaviour under an <i>absent</i> pressure still matters: a future entry may legitimately
+        /// carry none, and it has to stay inert rather than pick up a default.
         /// </remarks>
         [Fact]
-        public void ShippedTimelineEvents_AuthorNoPressure_SoWrappedEventsAreInertForNow()
+        public void WrappedEventWithNoAuthoredPressure_IsInert()
         {
-            string[] files = { "timeline_global.json", "timeline_eu.json", "timeline_na.json" };
-            foreach (string file in files)
-            {
-                string json = File.ReadAllText(Path.Combine(RepoRoot(), "data", file));
-                Assert.DoesNotContain("issuePressure", json, StringComparison.Ordinal);
-            }
-
             TimelineEvent source = SampleEvent();
-            source.IssuePressure = IssuePosition.Centre; // what every shipped event actually carries
+            source.IssuePressure = IssuePosition.Centre;
             CivicEvent civic = TimelineEventAdapter.Wrap(source, Tuning());
 
             for (int i = 0; i < Issues.All.Count; i++)
@@ -404,6 +398,27 @@ namespace Agora.Core.Tests
 
             Assert.Empty(civic.ActiveEffects);
         }
+
+        /// <summary>
+        /// The shipped catalogs' pressures are gated <b>per file, by the lane that owns that file</b>
+        /// — `TimelineGlobalPressureTests`, `TimelineEuPressureTests`, `TimelineNaPressureTests`.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Recorded here because this is where a reader looks for it, having just read the test above.
+        /// The catalog-wide version of the gate belongs in the spine by instinct and cannot live
+        /// there: it is red until all ninety events are authored, so landing it in the spine would
+        /// ship a red spine commit and every lane's first build would inherit a failure that is not
+        /// its own. Splitting it three ways puts each third beside the content it guards, and each
+        /// lands green with that content.
+        /// </para>
+        /// <para>
+        /// The union of the three is the whole gate. If a fourth <c>timeline_*.json</c> is ever
+        /// added, it needs its own — there is deliberately no aggregate test that would have caught
+        /// the omission, because an aggregate test is exactly the file two lanes would have to share.
+        /// </para>
+        /// </remarks>
+        private const string PressureGatesLiveWithTheirCatalogs = "";
 
         /// <summary>Severity outside the tuned range is clamped rather than carried through.</summary>
         [Fact]

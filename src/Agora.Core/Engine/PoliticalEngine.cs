@@ -51,6 +51,8 @@ namespace Agora.Core.Engine
     public static class PoliticalEngine
     {
         private static readonly TimelineEvent[] NoEvents = new TimelineEvent[0];
+        private static readonly CivicEvent[] NoCivicEvents = new CivicEvent[0];
+        private static readonly CitySnapshot[] NoSnapshots = new CitySnapshot[0];
 
         // ------------------------------------------------------------------ save creation
 
@@ -358,6 +360,55 @@ namespace Agora.Core.Engine
                 for (int i = 0; i < events.Fired.Count; i++) eventSeverities.Add(events.Fired[i].Severity);
             }
 
+            // --- 3b. Stories. After the event scan and before affinity, so this cycle's active
+            // effects and issue pressures are visible to the voter model on the same tick — which is
+            // how timeline events have always worked, and the reason a verdict is felt in the month
+            // it lands rather than the month after. Resolution runs in this same slot on the resolve
+            // month, before the pressures it changes are read.
+            //
+            // The whole cycle lives in Agora.Core rather than in AgoraRuntime, deliberately: the
+            // idempotence guards and the stranded sweep are exactly the arithmetic that has to be
+            // provable, and AgoraRuntime compiles into no test.
+            var storyPressures = new List<StoryPressureContribution>();
+
+            if (snapshot != null)
+            {
+                var storyInput = new StoryCycleInput
+                {
+                    State = state,
+                    Catalog = input.CivicCatalog ?? NoCivicEvents,
+                    Context = new StoryReadContext
+                    {
+                        Today = snapshot,
+                        History = input.SnapshotHistory ?? NoSnapshots
+                    },
+                    SaveGuid = saveGuid,
+                    Today = date,
+                    IsStoryDraft = plan.IsStoryDraft,
+                    IsStoryResolve = plan.IsStoryResolve,
+                    IsReplay = input.IsReplay,
+                    GoverningVoteShare = GoverningVoteShare(state),
+                    Tuning = tuning
+                };
+
+                StoryCycleResult stories = StoryCycle.Run(storyInput);
+
+                result.DraftedStories.AddRange(stories.DraftedStories);
+                result.ResolvedStories.AddRange(stories.ResolvedStories);
+                result.EffectRequests.AddRange(stories.EffectRequests);
+                result.Warnings.AddRange(stories.Warnings);
+                result.PowerDelta = stories.PowerDelta;
+                storyPressures = stories.Pressures;
+            }
+            else
+            {
+                // No reading means no trigger can be evaluated and no check can be scored. Skipping
+                // the cycle entirely is the honest answer: drafting against a zeroed CitySnapshot
+                // would hand the player obligations derived from a city nobody measured, and every
+                // one of them would resolve against a different city next month.
+                result.Warnings.Add("story cycle skipped at " + date + ": the sensors reported nothing.");
+            }
+
             // --- 4. Derived indices. Before affinity: the incumbency penalty reads city discontent,
             // and reading last month's would make the penalty lag the events that caused it.
             if (plan.IsIndices && snapshot != null)
@@ -430,6 +481,7 @@ namespace Agora.Core.Engine
                 ActiveEvents = state.ActiveEvents,
                 Government = state.Government,
                 Indices = state.Indices,
+                StoryPressures = storyPressures,
                 LastElectionDate = LastElectionDate(state)
             };
 
@@ -1249,6 +1301,52 @@ namespace Agora.Core.Engine
 
             merged.Sort(CompareOrdinal);
             return merged;
+        }
+
+        /// <summary>
+        /// The share of the vote the government currently commands, 0–1. Zero when nobody is
+        /// governing, which <see cref="PoliticalPower.AccrualFor"/> reads as "no accrual" rather than
+        /// as a penalty.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A coalition's share is the sum of its members', not the lead party's alone: political
+        /// power is what the government can spend, and a minority lead party propped up by two
+        /// partners governs on all three parties' votes. Summed in the state's own declared list
+        /// order rather than over a lookup, so the figure does not depend on collection order.
+        /// </para>
+        /// <para>
+        /// Falls back to <see cref="PoliticalState.MayorPartyId"/> when there is no coalition — an
+        /// FPTP save has a mayor and no government object, and reading only the coalition would tell
+        /// every such save that nobody governs and freeze the currency for the whole game.
+        /// </para>
+        /// </remarks>
+        private static double GoverningVoteShare(PoliticalState state)
+        {
+            List<PartyVoteShare> shares = state.CurrentVoteShares;
+            if (shares == null || shares.Count == 0) return 0.0;
+
+            Coalition? government = state.Government;
+            List<string>? members = government != null && government.Status != CoalitionStatus.Negotiating
+                ? government.MemberPartyIds
+                : null;
+
+            double total = 0.0;
+            for (int i = 0; i < shares.Count; i++)
+            {
+                PartyVoteShare s = shares[i];
+                if (string.IsNullOrEmpty(s.PartyId)) continue;
+
+                bool governing = members != null && members.Count > 0
+                    ? members.Contains(s.PartyId)
+                    : !string.IsNullOrEmpty(state.MayorPartyId) &&
+                      string.Equals(s.PartyId, state.MayorPartyId, StringComparison.Ordinal);
+
+                if (governing) total += s.Share;
+            }
+
+            if (double.IsNaN(total) || total <= 0.0) return 0.0;
+            return total > 1.0 ? 1.0 : total;
         }
 
         private static SimDate? LastElectionDate(PoliticalState state) =>

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
@@ -143,6 +143,11 @@
     "eventModifierWeightMuted": 0.10,
     "eventModifierWeightLoud": 0.30,
     "eventModifierDecayHalfLifeMonths": 9,
+
+    "_storyPressureWeight": "The story term's own budget, and a separate clamp from the event term's. Larger than eventModifierWeight because a story is a decision the player was asked to make and either made or ducked, where a timeline event merely happens to them — but the same order of magnitude, because the issue term has to stay dominant or the city votes on last month's headline instead of on what it believes. Shares eventModifierDecayHalfLifeMonths rather than carrying a second decay dial. The Muted and Loud variants keep the same ratio to the default as the event trio does, so the NewsInfluence setting moves both surfaces together; moving only one reads to a player as the setting not working.",
+    "storyPressureWeight": 0.24,
+    "storyPressureWeightMuted": 0.13,
+    "storyPressureWeightLoud": 0.40,
     "localGrievanceWeight": 0.20,
     "nationalMoodWeight": 0.10,
     "habitualLoyalty": 0.20,
@@ -494,12 +499,16 @@
     "reuseCooldownMonths": 6,
     "maxMandatoryPerCycle": 2,
 
-    "_breadthComment": "effects.stackingMode is 'sum' with maxStackedPerModifier 4, so six story events several of which share a modifier would hit that limit and SILENTLY DROP the fifth. Capping breadth at draft time enforces it where it can be reasoned about rather than discovered in the ledger. Keep this below effects.maxStackedPerModifier.",
+    "_breadthComment": "effects.stackingMode is 'sum' with maxStackedPerModifier 4, so six story events several of which share a modifier would hit that limit and SILENTLY DROP the fifth. Capping breadth at draft time enforces it where it can be reasoned about rather than discovered in the ledger. Keep this below effects.maxStackedPerModifier. NOTE: this cap is per ForResolution call and therefore per story, so it bounds one story's breadth and not the cycle's; what actually keeps concurrent story effects under the ledger limit is resolutionEffectMonths below, which decides how many cycles can overlap at all.",
     "maxStoryEffectsPerModifier": 3,
 
+    "_resolutionEffectComment": "How long a story's CONSEQUENCE lasts. Before this key existed a resolution effect ran for the palette entry's own durationCapMonths -- 24 to 60 -- against a two-month cadence, so 12 to 30 cycles overlapped and one modifier could carry up to 180 live ledger entries against effects.maxStackedPerModifier of 4. A cap is a ceiling, not a default, and reading it as one made the breadth cap above a no-op against the problem it was written for. Six months is three cycles: long enough that a verdict is still being felt when the next story lands, short enough that the ledger limit binds on breadth rather than on age. Still clamped by each palette entry's own durationCapMonths, so this can only ever shorten.",
+    "resolutionEffectMonths": 6,
+
+    "_effectScaleComment": "Fractions of each palette entry's declared magnitudeCap. They must leave HEADROOM below 1.0, because EffectResolver.ScaleForSeverity then multiplies by 1 + 0.2*(severity-1) and the result is clamped back to the cap: at 1.00 every severity clamps to the same number, so a severity-1 minor story failing did exactly as much damage as a severity-5 mandatory catastrophe, and every story consequence in the game ran at the entry's maximum. Severity is the one number per concept (owner decision 5) and it has to survive to the ledger. At 0.55 the severity-5 multiplier of 1.8 reaches 0.99 of the cap, so the full range is expressed and only the very top clips. activeEffectScale was already correct -- 0.50 leaves the same headroom -- and is unchanged.",
     "activeEffectScale": 0.50,
-    "successEffectScale": 1.00,
-    "failureEffectScale": 1.00,
+    "successEffectScale": 0.55,
+    "failureEffectScale": 0.55,
 
     "alienationWeight": 1.00,
     "enfranchisementWeight": 1.00,

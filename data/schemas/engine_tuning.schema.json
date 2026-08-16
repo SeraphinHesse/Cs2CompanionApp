@@ -80,7 +80,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 7 },
+    "schemaVersion": { "type": "integer", "const": 8 },
 
     "blocs": {
       "type": "object",
@@ -227,7 +227,9 @@
         "distanceKernel", "distanceKernelSigma", "issueWeight", "baseAffinity", "incumbencyBonus",
         "incumbencyDiscontentPenalty", "mandatePerformanceWeight", "mandateFailurePenalty",
         "eventModifierWeight", "eventModifierWeightMuted", "eventModifierWeightLoud",
-        "eventModifierDecayHalfLifeMonths", "localGrievanceWeight",
+        "eventModifierDecayHalfLifeMonths",
+        "storyPressureWeight", "storyPressureWeightMuted", "storyPressureWeightLoud",
+        "localGrievanceWeight",
         "nationalMoodWeight", "habitualLoyalty", "loyaltyDecayPerMonth", "noiseSigma", "noiseClamp",
         "softmaxTemperature", "softmaxTemperatureBlurred", "softmaxTemperatureSharp",
         "minPartyShare", "tacticalVotingThresholdFptp"
@@ -245,6 +247,9 @@
         "eventModifierWeightMuted": { "type": "number" },
         "eventModifierWeightLoud": { "type": "number" },
         "eventModifierDecayHalfLifeMonths": { "$ref": "#/$defs/positiveInt" },
+        "storyPressureWeight": { "type": "number" },
+        "storyPressureWeightMuted": { "type": "number" },
+        "storyPressureWeightLoud": { "type": "number" },
         "localGrievanceWeight": { "type": "number" },
         "nationalMoodWeight": { "type": "number" },
         "habitualLoyalty": { "$ref": "#/$defs/unitInterval" },
@@ -672,7 +677,7 @@
         "mandatorySeverityThreshold", "majorSeverityThreshold", "missStreakWeightStep",
         "maxMissStreak", "poolMaxSize", "archiveRetention", "minorPromotionEnabled",
         "reuseCooldownMonths", "maxMandatoryPerCycle",
-        "maxStoryEffectsPerModifier", "activeEffectScale", "successEffectScale",
+        "maxStoryEffectsPerModifier", "resolutionEffectMonths", "activeEffectScale", "successEffectScale",
         "failureEffectScale", "alienationWeight", "enfranchisementWeight", "freeTextMaxLength",
         "wrappedEventHappinessGoalPoints"
       ],
@@ -693,6 +698,7 @@
         "reuseCooldownMonths": { "$ref": "#/$defs/nonNegativeInt" },
         "maxMandatoryPerCycle": { "$ref": "#/$defs/nonNegativeInt" },
         "maxStoryEffectsPerModifier": { "$ref": "#/$defs/positiveInt" },
+        "resolutionEffectMonths": { "$ref": "#/$defs/positiveInt" },
         "activeEffectScale": { "type": "number", "minimum": 0 },
         "successEffectScale": { "type": "number", "minimum": 0 },
         "failureEffectScale": { "type": "number", "minimum": 0 },

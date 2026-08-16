@@ -7,6 +7,8 @@ using Agora.Core.Engine;
 using Agora.Core.Engine.Parties;
 using Agora.Core.Events.Catalog;
 using Agora.Core.Events.Scheduler;
+using Agora.Core.Stories;
+using Agora.Core.Stories.Catalog;
 using Agora.Core.Tuning;
 using Agora.Mod.Effects;
 using Agora.Mod.Llm;
@@ -134,6 +136,7 @@ namespace Agora.Mod.Core
         private static CoreSettings _saveSettings;
 
         private static TimelineCatalog _catalog = TimelineCatalog.Empty;
+        private static CivicEventCatalog _civicCatalog = CivicEventCatalog.Empty;
         private static PoliticalState _state;
         private static SimDate _startDate;
         private static readonly List<CitySnapshot> _snapshotHistory = new List<CitySnapshot>();
@@ -371,6 +374,21 @@ namespace Agora.Mod.Core
         }
 
         /// <summary>
+        /// The loaded civic-event catalog — what stories are assembled from. Empty when the data
+        /// files are missing or every document was rejected.
+        /// </summary>
+        /// <remarks>
+        /// Kept beside <see cref="Catalog"/> and never merged into it. A timeline event fires on a
+        /// date and a civic event triggers on a reading of the city; <c>TimelineEventAdapter</c> is
+        /// the one sanctioned bridge, and handing either subsystem the other's list would let each
+        /// silently answer the other's question.
+        /// </remarks>
+        public static CivicEventCatalog CivicCatalog
+        {
+            get { return _civicCatalog ?? CivicEventCatalog.Empty; }
+        }
+
+        /// <summary>
         /// Bumped every time <see cref="State"/> is replaced or the prose changes.
         /// </summary>
         /// <remarks>
@@ -510,6 +528,7 @@ namespace Agora.Mod.Core
                     // freed state, which breaks every subsequent load).
                     _tuning = LoadTuning();
                     _catalog = LoadCatalog();
+                    _civicCatalog = LoadCivicCatalog();
 
                     // The sensors read one coefficient out of tuning — blocs.wealthTierThresholds, the
                     // quantile cuts that split households into wealth tiers. Without this line they
@@ -989,11 +1008,37 @@ namespace Agora.Mod.Core
             int was = _state.LastCompletedTickMonth;
             _state.LastCompletedTickMonth = today.TotalMonths - 1;
 
+            // EVERY watermark, not just the tick's. Wave 0 wrote this repair when there was exactly
+            // one; wave 4 added three more — the two story phases and the power accrual — and each of
+            // them gates its own subsystem behind the same "have we already run this month" question.
+            // Repairing one and leaving three is what made three separate wave-4 lanes each look like
+            // they had a rewind defect of their own: the cycle stalled for every month between the
+            // city's date and the stale watermark, silently, with no log line and no story panel, and
+            // the accrual froze while every debit stayed live. A save rolled back further than the
+            // snapshot retention is a supported path, not an abuse — TickPlanner.SnapshotsToPrune
+            // keeps only the newest few, so it is reachable in ordinary play.
+            //
+            // Pulled to today - 1 rather than to -1, so the guards read "this month has not run" and
+            // not "no month has ever run": resetting to never would re-open a first-tick path that
+            // reseeds the election calendar and the pool.
+            int floor = today.TotalMonths - 1;
+
+            int draftWas = _state.LastStoryDraftMonth;
+            int resolveWas = _state.LastStoryResolveMonth;
+            if (_state.LastStoryDraftMonth > floor) _state.LastStoryDraftMonth = floor;
+            if (_state.LastStoryResolveMonth > floor) _state.LastStoryResolveMonth = floor;
+
+            PoliticalPowerState power = _state.Power;
+            int accrualWas = power != null ? power.LastAccrualMonth : -1;
+            if (power != null && power.LastAccrualMonth > floor) power.LastAccrualMonth = floor;
+
             AgoraMod.Log.Info("Agora: the political state is dated ahead of the city (watermark month " +
                               was + ", city is at " + today + "). Reconciling the watermark to " +
                               _state.LastCompletedTickMonth + " so this month ticks — the " +
                               "RewindBeforeHistory path keeps the party system and settings and " +
-                              "rebuilds current state from city metrics.");
+                              "rebuilds current state from city metrics. Story watermarks " +
+                              draftWas + "/" + resolveWas + " and power accrual " + accrualWas +
+                              " were reconciled with it.");
         }
 
         private static void ConfigureClock()
@@ -2062,7 +2107,11 @@ namespace Agora.Mod.Core
                 Snapshot = snapshot,
                 SnapshotHistory = _snapshotHistory,
                 Catalog = Catalog.Events,
+                CivicCatalog = CivicCatalog.Events,
                 ManualFlavorWakeRequested = _manualWakeRequested,
+                // Explicit, though false is the default: this is the lived month, and the one place
+                // in the codebase where that has to be stated is beside the place that says otherwise.
+                IsReplay = false,
                 Tuning = Tuning
             };
 
@@ -2888,6 +2937,16 @@ namespace Agora.Mod.Core
                         Snapshot = snapshot,
                         SnapshotHistory = _snapshotHistory,
                         Catalog = Catalog.Events,
+                        CivicCatalog = CivicCatalog.Events,
+
+                        // The story cycle is suspended for every replayed month, and the flag is set
+                        // here because this loop is the only thing that can know. Two hazards decided
+                        // it: this method deliberately does not dispatch effects, so a story drafted
+                        // and resolved inside the window would award political power while applying
+                        // none of its consequences; and every replayed month is scored against
+                        // TODAY's city, so a resolution check would measure 2005's crime wave against
+                        // 2031's crime rate. A replayed decade producing no stories is honest.
+                        IsReplay = true,
                         Tuning = Tuning
                     });
 
@@ -3183,6 +3242,78 @@ namespace Agora.Mod.Core
                 AgoraMod.Log.Error(ex, "Agora could not load the timeline catalogs; only procedural " +
                                        "events will fire.");
                 return TimelineCatalog.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Loads the civic-event catalogs for every region from the deployed <c>data/</c> folder.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// All three files regardless of the save's theme, exactly as <see cref="LoadCatalog"/> does
+        /// and for the same reason: <c>StoryAssembler</c> filters by region itself, and a save whose
+        /// theme is changed mid-game must not need a restart to see its own events.
+        /// </para>
+        /// <para>
+        /// Fails soft. A missing or malformed catalog leaves the story layer with nothing to draft —
+        /// a degraded save rather than a broken one, and far better than refusing to load a city over
+        /// a data file. Rejections are logged by name and reason, because a silently shorter catalog
+        /// is indistinguishable from a quiet month.
+        /// </para>
+        /// </remarks>
+        private static CivicEventCatalog LoadCivicCatalog()
+        {
+            var sources = new List<CivicEventCatalogSource>();
+            string[] fileNames = { "events_global.json", "events_eu.json", "events_na.json" };
+
+            for (int i = 0; i < fileNames.Length; i++)
+            {
+                string path = DataFile(fileNames[i]);
+                if (path == null) continue;
+
+                try
+                {
+                    sources.Add(new CivicEventCatalogSource(fileNames[i], File.ReadAllText(path)));
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora could not read " + path + "; its civic events cannot " +
+                                           "become stories.");
+                }
+            }
+
+            if (sources.Count == 0)
+            {
+                AgoraMod.Log.Warn("Agora found no civic-event catalogs under the mod's data folder; no " +
+                                  "story will ever draft in this save.");
+                return CivicEventCatalog.Empty;
+            }
+
+            try
+            {
+                CivicEventCatalogLoadResult loaded = CivicEventCatalogLoader.Load(sources, Tuning);
+
+                // Single-argument form: a rejected entry is a data error, not an exception, and the
+                // two-argument overload is ambiguous on a null Exception.
+                for (int i = 0; i < loaded.Errors.Count; i++)
+                    AgoraMod.Log.Error("Agora civic catalog: " + loaded.Errors[i]);
+
+                for (int i = 0; i < loaded.Warnings.Count; i++)
+                    AgoraMod.Log.Warn("Agora civic catalog: " + loaded.Warnings[i]);
+
+                AgoraMod.Log.Info("Agora loaded " + loaded.Catalog.Events.Count + " civic event(s) from " +
+                                  sources.Count + " file(s)" +
+                                  (loaded.RejectedEventCount > 0
+                                      ? "; " + loaded.RejectedEventCount + " rejected."
+                                      : "."));
+
+                return loaded.Catalog;
+            }
+            catch (Exception ex)
+            {
+                AgoraMod.Log.Error(ex, "Agora could not load the civic-event catalogs; no story will " +
+                                       "draft in this save.");
+                return CivicEventCatalog.Empty;
             }
         }
 

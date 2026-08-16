@@ -264,6 +264,22 @@ namespace Agora.Core.Contracts
         /// <summary>Sum of active event modifiers.</summary>
         public double EventComponent { get; set; }
 
+        /// <summary>
+        /// Sum of story salience and government credit — the story system's own term.
+        /// </summary>
+        /// <remarks>
+        /// <b>Separate from <see cref="EventComponent"/> deliberately, and it is not a duplicate.</b>
+        /// The two carry different quantities and are budgeted apart: a story contributes both an
+        /// issue-aligned salience, which the event term also has, and a credit or blame owed to
+        /// whoever is governing, which the event term has no way to express — see
+        /// <c>Agora.Core.Stories.StoryPressureContribution</c>. Folding them together would also put
+        /// stories inside the event term's <c>[-1, +1]</c> clamp, and
+        /// <c>PoliticalState.LiveStories</c>' own remarks record why that saturates: at six story
+        /// events a cycle the clamp binds permanently and the term stops discriminating between a
+        /// flood and a bus-fare rise. Two budgets, two clamps.
+        /// </remarks>
+        public double StoryComponent { get; set; }
+
         /// <summary>Habitual-loyalty term from <see cref="Bloc.PreviousVote"/>.</summary>
         public double LoyaltyComponent { get; set; }
 
