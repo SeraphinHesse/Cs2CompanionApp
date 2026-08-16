@@ -1,5 +1,5 @@
 import { ModRegistrar } from "cs2/modding";
-import { AgoraButton, ArticleModal, Dashboard, FirstRunDialog } from "./shell";
+import { AgoraButton, ArticleModal, Dashboard, FirstRunDialog, StoryModal } from "./shell";
 
 /**
  * UI mod entry point.
@@ -41,6 +41,15 @@ const register: ModRegistrar = (moduleRegistry) => {
   // down with it, which is the one place the player could otherwise still read what happened. It
   // renders null while the region prompt is up, with an empty queue, and with the mod switched off.
   moduleRegistry.append("GameTopLeft", ArticleModal);
+
+  // The story card, on its own append and on its own queue. It is not a repoint of ArticleModal and
+  // must not become one: ArticleModal renders `alerts[0]` or nothing, so two lanes sharing it would
+  // serialise behind each other, and a story alert's id is not a news feed row id — `BuildArticle`
+  // answers an unknown key with an empty payload rather than throwing, so the failure would be a
+  // blank masthead with nothing logged. Above all, `AlertQueueMax` drops the oldest when it
+  // overflows: on the news lane that is a missed headline, on this one it would be a decision the
+  // player never got to make.
+  moduleRegistry.append("GameTopLeft", StoryModal);
 };
 
 export default register;

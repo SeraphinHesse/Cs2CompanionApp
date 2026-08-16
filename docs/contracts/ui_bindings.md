@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 8**
+**schemaVersion: 9**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -56,6 +56,30 @@ must not share a policy. No sidecar, settings or flavor schema moves with it; th
 session state and is deliberately never persisted, which is what makes "an alert does not replay
 after a reload" structural rather than a rule.
 
+**Version 9 is wave 6 of the event-system rework** (`docs/plans/0004-event-system-rework.md`), and it
+is the largest unfreeze so far: an entire new group, `agora.stories` (§4.7), carrying five outbound
+bindings and **five inbound `CallBinding`s** — the first write surface in this contract that a player
+uses every month rather than once per save. Purely additive again: nothing renamed, no existing field
+moved or retyped, no sort key reordered.
+
+Three things moved outside the new group, and each is here rather than in §4.7 because it changes a
+shape that already existed:
+
+- **`SettingsPayload` gains six fields** (§4.1). They have been in the sidecar since wave 2 of the
+  rework and reachable from no surface since — a per-save setting nothing can read or write is a
+  setting only a text editor can change. Four are writable; `powerIntensity` and `storyDifficulty`
+  are **read-only in this build and have no `setSetting` key**, because the presets behind them do
+  not exist yet (`TuningPresets.Apply` reads three levels, not five). Publishing a control that
+  persists a value and changes no number is the defect `PauseOnMajorNews` and `ShowAllReports` were
+  before W5, and it is not being shipped a second time. Wave 7b adds the presets and the write keys
+  together.
+- **§4.6 gains three outcome codes** — `InsufficientPower`, `AlreadyResolved`, `PowerDisabled`. All
+  three landed in the C# enum in wave 4 and reach this contract now, when the story command surface
+  first got a caller. The C#-enum-first rule was followed; this is the second step of it, late.
+- **`ui/types/bindings.d.ts`'s stale authority comment** said "schemaVersion 5" while this file was
+  at 7 and then 8 (`docs/status.md` known gap 2). Corrected to 9 in the same pass, which is what the
+  drift audit exists to catch.
+
 The freeze otherwise stands; these notes exist so the next reviewer reads authorised changes rather
 than violations.
 
@@ -83,6 +107,7 @@ exactly one publisher of its own.
 | `agora.seats` | seat chart, government breakdown, mayor, last election, latest poll | `src/Agora.Mod/UiBindings/AgoraSeatsUISystem.cs` |
 | `agora.districts` | per-district vote splits, wealth × education crosstabs, indices | `src/Agora.Mod/UiBindings/AgoraDistrictsUISystem.cs` |
 | `agora.news` | news feed, timeline events, mandate tracker, LLM health, the alert queue | `src/Agora.Mod/UiBindings/AgoraNewsUISystem.cs` |
+| `agora.stories` | live stories, the archive, story prose, political power, the story card queue, and the five commands that answer a story | `src/Agora.Mod/UiBindings/AgoraStoriesUISystem.cs` |
 | `agora.debug` | M0 pipeline proof — not part of the dashboard, do not extend | `src/Agora.Mod/UiBindings/AgoraDebugUISystem.cs` |
 
 ---
@@ -216,7 +241,25 @@ the sidecar is how the two come to disagree.
 | `voteSharpness` | `"Blurred"` \| `"Default"` \| `"Sharp"` | How decisively blocs convert preference into votes (`affinity.softmaxTemperature`). Enum **name**, case-sensitive; an all-digit value is `BadValue`. Takes effect at the next engine tick. |
 | `newsInfluence` | `"Muted"` \| `"Default"` \| `"Loud"` | How far a live event can move a bloc (`affinity.eventModifierWeight`). Same parsing rule. |
 | `brandDiscipline` | `"Loose"` \| `"Default"` \| `"Locked"` | How tightly fixed brands hold their archetype (`parties.anchoredSpreadSigma`). Read **only at party generation**, so an accepted write changes nothing visible until the registry is regenerated. |
+| `storiesEnabled` | `"true"` \| `"false"` | The per-save story kill switch (W6). Off stops the **next** draft and strands nothing: a story already live still resolves on its own month. Nothing is ever retro-generated. |
+| `storiesPerCycle` | `"0"`–`"5"` | Stories drafted per cycle. **`"0"` means unset** — the engine falls back to `stories.storiesPerCycle`, which is how a player hands the decision back to tuning. Outside the range is `BadValue`. Parsed invariant; a non-decimal value is `BadValue`. |
+| `eventsPerStory` | `"0"`–`"5"` | Events bundled into one story, same unset rule and same range. |
+| `politicalPowerEnabled` | `"true"` \| `"false"` | The per-save power kill switch (W6). Off means overrides answer `PowerDisabled` and no debt penalty can arise; stories still draft and resolve. |
 | `dismissFirstRun` | ignored | Clears `isFirstRun` without changing a setting. Not persisted. |
+
+**There is deliberately no key for `powerIntensity` or `storyDifficulty`**, and a panel must render no
+control for either. Both are published on `SettingsPayload` and both drive nothing —
+`TuningPresets.Apply` reads three levels and there is no preset table behind these two — so a write
+would persist a value, republish it, and change no number in the engine. That is a switch that does
+nothing with hint text promising behaviour there is none of, which is exactly what `PauseOnMajorNews`
+and `ShowAllReports` were before W5 and is not being shipped again. Wave 7b adds the preset tables
+and these two keys in one change, so the setting and its effect arrive together. Until then a write
+answers `UnknownKey`, which is the truthful answer.
+
+The upper bound of 5 on the two counts is a bound on what a settings control may ask for, not a
+balance number: wave 2's concurrency retune sized the story effect budget and its non-saturation
+claim around 2 stories × 3 events, and asking for an order of magnitude more is a rebalance, which
+belongs in `engine_tuning.json` where the effect scales and the pool size move with it.
 
 Anything else returns `UnknownKey`. A theme change **destroys** the political state built under the
 old theme — party ids are reused across themes with different meanings, so nothing keyed to one can
@@ -580,6 +623,91 @@ A mandate with `isMeasurementStalled === true` is **held, not failing**. Render 
 render its progress bar as falling behind, and never show it as `Defied` because the clock ran out
 while its metric was unreadable.
 
+### 4.7 `agora.stories` — the stories, the power currency, and the five commands
+
+| Binding | Kind | Direction | C# | TS | Cadence | Empty | Since |
+|---|---|---|---|---|---|---|---|
+| `agora.stories.live` | `ValueBinding<T>` | C# → UI | `List<StoryPayload>` | `Agora.Story[]` | on `StateVersion` — draft, resolve, and every accepted command | `[]` | W6 |
+| `agora.stories.archive` | `ValueBinding<T>` | C# → UI | `List<StoryBriefPayload>` | `Agora.StoryBrief[]` | on `StateVersion` | `[]` | W6 |
+| `agora.stories.article` | `GetterMapBinding<string,T>` | C# → UI | `StoryArticlePayload` per key | `Agora.StoryArticle` | on demand, per subscribed key | `EMPTY_STORY_ARTICLE` | W6 |
+| `agora.stories.power` | `ValueBinding<T>` | C# → UI | `PowerPayload` | `Agora.Power` | on `StateVersion` | `EMPTY_POWER` | W6 |
+| `agora.stories.alerts` | `ValueBinding<T>` | C# → UI | `List<StoryAlertPayload>` | `Agora.StoryAlert[]` | on raise and on ack | `[]` | W6 |
+| `agora.stories.setResponse` | `CallBinding<string,string,string,string,string>` | **UI → C#** | `(storyId, eventId, mode, text) => CommandOutcome` | `(storyId, eventId, mode: SlotResponseName, text: string) => Promise<CommandOutcomeName>` | on click | n/a | W6 |
+| `agora.stories.declareManual` | `CallBinding<string,string,bool,string,string>` | **UI → C#** | `(storyId, eventId, met, text) => CommandOutcome` | `(storyId, eventId, met: boolean, text: string) => Promise<CommandOutcomeName>` | on click | n/a | W6 |
+| `agora.stories.resolveNow` | `CallBinding<string,string>` | **UI → C#** | `(storyId) => CommandOutcome` | `(storyId: string) => Promise<CommandOutcomeName>` | on click | n/a | W6 |
+| `agora.stories.spendPowerOverride` | `CallBinding<string,string,string>` | **UI → C#** | `(storyId, eventId) => CommandOutcome` | `(storyId, eventId) => Promise<CommandOutcomeName>` | on click | n/a | W6 |
+| `agora.stories.ackAlert` | `CallBinding<string,string>` | **UI → C#** | story id or `"*"` | `(id: string) => Promise<CommandOutcomeName>` | on dismiss | n/a | W6 |
+
+**Sort keys.** `live` by `id` ordinal ascending. A story's `slots` **major first, then minors
+ascending by `eventId` ordinal** — a declared total order the engine writes and the panel must not
+re-sort. `archive` by `(resolvedMonth` descending`, id)`. `power.ledger` by `(month, sequence)`,
+newest last. `alerts` **oldest first**, the order the player answers them in.
+
+**Payload caps.** `archive` at 24 rows; `power.ledger` at 24 rows, keeping the newest;
+`live` is bounded by the engine at `storiesPerCycle` plus mandatory stories, not by this contract.
+Bodies are never on `live` — a story carries two articles in up to two voices at 1260 characters
+each, so they are fetched per story from `article`, the same split the news feed makes.
+
+**Five inbound bindings, not the three the rework plan's §605 table lists.** The plan assumed a
+purchase would travel as an ordinary response through `setResponse`. Wave 4 refuses that: a
+`PowerOverride` arriving as a response would be a free `Met` nobody paid for, so the purchase has its
+own channel that charges for it. The fifth is the card dismissal. `setResponse` answers `BadValue` if
+asked for `"PowerOverride"`, and it is the panel's job to route the button to the right call rather
+than to the one whose name looks closest.
+
+**A tier is the engine's verdict and the UI never derives one.** `slot.tier` is Mandatory / Major /
+Minor, projected from the 1–5 `slot.severity` through `stories.mandatorySeverityThreshold` and
+`stories.majorSeverityThreshold`. `severity` ships alongside for display only. This is the same rule
+§4.5 states in bold for news, and the reason is the same: a fourth vocabulary drifts on the next
+tuning pass, and here it would drift into disagreeing with the price the engine charges.
+
+**`overrideCost` and `canAfford` are what the button LOOKS like, never whether the purchase
+happens.** With the power layer off both are published as `0` / `false` — the card must not quote a
+live price against a balance that cannot move, or a player will save up for something the engine
+refuses with `PowerDisabled` whatever they do. Whether a purchase goes through is
+`spendPowerOverride`'s answer, read at the moment of the press; a panel that checks affordability
+itself and declines to send is computing a rejection the engine did not return (rule 5).
+
+**`"Unaddressed"` is silence and `"Ignore"` is a decision.** They score identically — both resolve
+not-met — and they read completely differently in the prose and in the command log. The panel must be
+able to show that a slot has not been answered; collapsing the two loses the only signal that the
+player has work outstanding.
+
+**A slot outcome of `"Unmeasurable"` is held, not failing** — the same rule as a stalled mandate,
+one paragraph up. It means the engine could not read the city, it is excluded from both halves of the
+success ratio, and it costs the player nothing. Never render it as a failure, and never render it as
+"the player did not respond", which is `"NotMet"`.
+
+**A story's prose has two voices and both render when both exist.** The canned pool answers every
+poll and always has an answer; the CLI answers rarely. Showing only the newest would erase the
+model's prose within a minute of it arriving and — worse — would change text the player had already
+read. The pool half is always shown; the CLI half appears **beside** it, never instead of it. This is
+an owner decision from wave 5, not an implementation detail.
+
+**Story cards are their own queue and their own lane, deliberately not `agora.news.alerts`.** Three
+reasons, all from this contract: every news alert `id` is a feed row's id whose body is fetched from
+`agora.news.article` under that same id, and a story id is neither — `BuildArticle` answers an unknown
+key with an empty payload rather than throwing, so the failure would be a blank masthead with nothing
+logged; `ArticleModal` renders `alerts[0]` or nothing and holds the pause barrier while it is up, so
+two lanes sharing it would serialise; and the news queue drops its oldest when full, which on that
+lane is a missed headline and on this one would be **a decision the player never got to make**.
+
+**One card per story, never one per event.** All of a story's slots render inside the one card, which
+is why `StoryAlert` carries a `slotCount` and no event id. At the shipped cadence that is two
+interruptions per cycle rather than six. **Dismissing a card answers nothing** — it closes the
+interruption; the story stays live and is answered from the Stories panel.
+
+`alert.major` is the engine's verdict on whether the card holds the clock, decided once when the
+alert is raised from the story's own major slot against the tuned threshold. The UI never recomputes
+it, for the same reason it never derives a tier.
+
+**Every one of the five commands must be sent with a deadline.** A story card may hold the pause
+barrier, and while it is held the game forces the speed to zero every frame — so a call that never
+answers leaves a player with a card they cannot close and a clock they cannot start. `ui/src/shell/
+bindings.ts` wraps all five in `withDeadline`; use those wrappers rather than calling `call` directly.
+
+---
+
 ### 4.6 Outcome codes — the closed set
 
 Every inbound `CallBinding` in this contract returns one of these, and only these. Mirrors
@@ -600,6 +728,15 @@ extended this set rather than starting a parallel one, adding the last four rows
 | `ValueRequired` | The field was left empty. **Empty is never a reset**; resetting is its own binding (§4.2). |
 | `TooLong` | Over the limit published by `agora.parties.editLimits`. Separate from `BadValue` so the counter and the rejector say the same thing. |
 | `OkColorInUse` | **Accepted, with a warning.** The colour was applied; another party already wears it. |
+| `InsufficientPower` | The balance does not cover this override's cost. A statement about *now*, not about the save. |
+| `AlreadyResolved` | The story exists; its window has closed. Unlike `NotFound`, the *record* was found — the *moment* had passed. |
+| `PowerDisabled` | This save runs with the political-power layer switched off. Nothing can be bought off, ever, here. |
+
+**`InsufficientPower` and `PowerDisabled` must not be collapsed.** One says "not yet", the other says
+"not in this save". Telling a player to save up for a purchase the engine will never permit is worse
+than saying nothing at all, and it is the exact confusion the two separate codes exist to prevent.
+The same distinction holds between `AlreadyResolved` and `NotFound` for the identical reason §4.6
+already gives for `NotFound` versus `UnknownKey`: the field was fine, the subject was not.
 
 **Two of these are acceptances: `""` and `OkColorInUse`. Everything else is a rejection.** Test with
 `CommandOutcomes.IsAccepted` on the C# side, and with the same two-value check on the panel's —
@@ -755,6 +892,31 @@ const EMPTY_STATE_SUMMARY: Agora.StateSummary = {
 const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
   themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+  voteSharpness: "Default", newsInfluence: "Default", brandDiscipline: "Default",
+  voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
+  storiesEnabled: true, storiesPerCycle: 2, eventsPerStory: 3,
+  politicalPowerEnabled: true, powerIntensity: "Default", storyDifficulty: "Default",
+};
+
+// `enabled: false` is the one field here worth arguing about, and it is deliberate. Before the
+// engine publishes we do not know whether this save runs the power layer, and the counter's rule is
+// "hide when off" — so a `true` here would flash a balance of 0 on every load of a save that has the
+// layer switched off, which reads as "you have no power" rather than "there is no such currency".
+const EMPTY_POWER: Agora.Power = {
+  enabled: false, balance: 0, lifetimeEarned: 0, lifetimeSpent: 0, inDebt: false, ledger: [],
+};
+
+const EMPTY_STORY_ARTICLE: Agora.StoryArticle = {
+  storyId: "", poolHeadline: "", poolArticle: "", cliHeadline: "", cliArticle: "",
+  poolResolutionHeadline: "", poolResolutionArticle: "",
+  cliResolutionHeadline: "", cliResolutionArticle: "",
+};
+
+// Not wired into a binding — `agora.stories.alerts` is an array and takes `[]`. This is the guard a
+// card substitutes for a queue index the engine no longer holds, so a render racing an ack cannot
+// read a field off `undefined`. `major` is false: an empty card must never take the pause barrier.
+const EMPTY_STORY_ALERT: Agora.StoryAlert = {
+  id: "", date: "", headline: "", summary: "", slotCount: 0, major: false,
 };
 
 const EMPTY_PARTY_PALETTE: Agora.PartyPalette = { colors: [] };

@@ -3649,7 +3649,7 @@ declare module "cs2/bindings" {
 // ---------------------------------------------------------------------------------------------
 // AGORA — dashboard binding payloads.
 //
-// Authority: docs/contracts/ui_bindings.md (schemaVersion 8). FROZEN for M4 — do not rename a
+// Authority: docs/contracts/ui_bindings.md (schemaVersion 9). FROZEN for M4 — do not rename a
 // field, add a field, or change a sort key here without changing that document first. Nothing
 // checks this contract at compile time: a mismatch renders an empty panel, not a build error.
 //
@@ -3778,11 +3778,20 @@ declare namespace Agora {
    * - `NotFound`       no party in this save carries that id
    * - `ValueRequired`  the field was left empty; an empty string is NEVER read as "reset"
    * - `TooLong`        over the limit published by `agora.parties.editLimits`
+   * - `InsufficientPower`  the balance does not cover this override's cost
+   * - `AlreadyResolved`    the story exists but its window has closed
+   * - `PowerDisabled`      the save has the political-power layer switched off
+   *
+   * The last three landed in C# in wave 4 and reached this union in wave 6, when the story command
+   * surface first got a caller. `InsufficientPower` and `PowerDisabled` are DIFFERENT answers and a
+   * panel must not collapse them: one says "not yet", the other says "not in this save", and telling
+   * a player to save up for a purchase the engine will never permit is worse than saying nothing.
    */
   type CommandOutcomeName =
     | "" | "OkColorInUse"
     | "NoActiveSave" | "UnknownKey" | "BadValue" | "ThemeLocked" | "Busy" | "Failed"
-    | "NotFound" | "ValueRequired" | "TooLong";
+    | "NotFound" | "ValueRequired" | "TooLong"
+    | "InsufficientPower" | "AlreadyResolved" | "PowerDisabled";
 
   // -- agora.state -----------------------------------------------------------------------------
 
@@ -3850,7 +3859,40 @@ declare namespace Agora {
     voteSharpnessValue: number;
     newsInfluenceValue: number;
     brandDisciplineValue: number;
+
+    /**
+     * The story layer. Writable keys: `"storiesEnabled"`, `"storiesPerCycle"`, `"eventsPerStory"`,
+     * `"politicalPowerEnabled"`.
+     *
+     * Turning `storiesEnabled` off stops the NEXT draft and strands nothing: a story already live
+     * still resolves on its own month. Nothing here retro-generates.
+     */
+    storiesEnabled: boolean;
+    /**
+     * Stories drafted per cycle, and events bundled into one story. **0 means "unset"** — the engine
+     * falls back to `stories.storiesPerCycle` / `stories.eventsPerStory`, which is how a player hands
+     * the decision back to tuning. Writes are rejected with `BadValue` outside [0, 5].
+     */
+    storiesPerCycle: number;
+    eventsPerStory: number;
+    politicalPowerEnabled: boolean;
+
+    /**
+     * **READ-ONLY in this build, and rendering a control for either is a defect.**
+     *
+     * Both are persisted in the sidecar and published here, and both drive nothing:
+     * `TuningPresets.Apply` reads VoteSharpness, NewsInfluence and BrandDiscipline and no fourth or
+     * fifth level, so the presets behind these two do not exist yet. There is deliberately no
+     * `setSetting` key for either — a write would answer `UnknownKey` — because a switch that
+     * persists a value and changes no number is the exact defect `PauseOnMajorNews` and
+     * `ShowAllReports` were before W5. Wave 7b builds the preset tables and the write keys together.
+     */
+    powerIntensity: PowerIntensityName;
+    storyDifficulty: StoryDifficultyName;
   }
+
+  type PowerIntensityName = "Lenient" | "Default" | "Harsh";
+  type StoryDifficultyName = "Forgiving" | "Default" | "Demanding";
 
   type VoteSharpnessName = "Blurred" | "Default" | "Sharp";
   type NewsInfluenceName = "Muted" | "Default" | "Loud";
@@ -4610,5 +4652,185 @@ declare namespace Agora {
     lastError: FlavorErrorName;
     /** Number of articles currently held. */
     articleCount: number;
+  }
+
+  // -- agora.stories ---------------------------------------------------------------------------
+
+  type SlotRoleName = "Major" | "Minor";
+
+  /**
+   * Mandatory / Major / Minor — the ENGINE'S projection of a 1–5 severity through
+   * `stories.mandatorySeverityThreshold` and `stories.majorSeverityThreshold`.
+   *
+   * **The UI never derives this and never compares a severity to a threshold of its own**, which is
+   * the same rule section 4.5 states in bold for news. A fourth vocabulary would drift on the next
+   * tuning pass, and the panel would start disagreeing with the price the engine charges.
+   */
+  type StoryTierName = "Mandatory" | "Major" | "Minor";
+
+  /**
+   * How the player chose to tackle one event.
+   *
+   * `"Unaddressed"` is silence and `"Ignore"` is a decision. **They score the same** — both resolve
+   * not-met — and they read completely differently in the prose and in the command log, so do not
+   * collapse them into one state. The panel must be able to show that a slot has not been answered.
+   */
+  type SlotResponseName = "Unaddressed" | "Ignore" | "Goal" | "PowerOverride" | "Manual";
+
+  /**
+   * How a slot came out.
+   *
+   * `"Unmeasurable"` means **the engine could not read the city** and nothing else. It is excluded
+   * from both halves of the success ratio and costs the player nothing. Render it as held, never as
+   * failed — section 4.5 already writes this rule for the identical mandate case. It is NOT the
+   * outcome for a player who did not respond; silence is `"NotMet"`.
+   */
+  type SlotOutcomeName = "Pending" | "Met" | "NotMet" | "Unmeasurable";
+
+  /** `"Abandoned"` is a story whose evidence was gone. It pays out nothing in either direction. */
+  type StoryOutcomeName = "Pending" | "Success" | "Failure" | "Abandoned";
+
+  type PowerLedgerReasonName =
+    | "Accrual" | "SuccessAward" | "FailurePenalty" | "OverrideSpend" | "ManualAward";
+
+  /** One event inside a story, with the player's response and the verdict on it. */
+  interface StorySlot {
+    eventId: IdString;
+    role: SlotRoleName;
+    /** The catalog's authored name. "" when the catalog no longer explains this event — in which
+     *  case say so; NEVER fall back to rendering `eventId`, which is a raw-id leak. */
+    name: string;
+    description: string;
+    /** The four authored response blurbs. */
+    ignoreText: string;
+    goalText: string;
+    powerOverrideText: string;
+    /** The authored aftermath lines. Both ship before resolution so the card can show the stakes. */
+    successText: string;
+    failText: string;
+    /** 1–5. DISPLAY ONLY — read `tier`, never compare this to a threshold. */
+    severity: number;
+    tier: StoryTierName;
+    response: SlotResponseName;
+    /** The player's own words, for Ignore and Manual. FLAVOR — never parse it for a number. */
+    playerText: string;
+    outcome: SlotOutcomeName;
+    manualDeclared: boolean;
+    /** Price of buying this slot off. **0 when the power layer is off** — not a free purchase. */
+    overrideCost: number;
+    /** Whether the balance covers `overrideCost`. False when the power layer is off. */
+    canAfford: boolean;
+  }
+
+  /**
+   * `agora.stories.live` — ValueBinding, republished on `StateVersion`. Empty value: [].
+   *
+   * Sorted by `id` ordinal ascending. Bodies are NOT here — fetch them from
+   * `agora.stories.article`, keyed on this `id`.
+   */
+  interface Story {
+    id: IdString;
+    openedDate: SimDateString;
+    /** The month it resolves on by itself, absent a `resolveNow`. */
+    resolvesDate: SimDateString;
+    isMandatory: boolean;
+    outcome: StoryOutcomeName;
+    resolveEarlyRequested: boolean;
+    /** The pool's headline, which always exists. The model's, if any, comes with the body. */
+    headline: string;
+    /** **Major first, then minors ascending by event id ordinal.** Do not re-sort. */
+    slots: StorySlot[];
+  }
+
+  /** `agora.stories.archive` — ValueBinding, newest first. Empty value: []. */
+  interface StoryBrief {
+    id: IdString;
+    openedDate: SimDateString;
+    resolvesDate: SimDateString;
+    outcome: StoryOutcomeName;
+    headline: string;
+    /**
+     * `scoredCount` EXCLUDES `Unmeasurable` slots, the same exclusion the 2-of-3 rule makes, so
+     * "1 of 2" on a three-slot story is correct rather than a missing slot. Do not substitute
+     * `slotCount` to make the arithmetic look tidier.
+     */
+    metCount: number;
+    scoredCount: number;
+    slotCount: number;
+  }
+
+  /**
+   * `agora.stories.article` — GetterMapBinding keyed on the story id. Every field is FLAVOR.
+   *
+   * **Two voices, and both render when both exist.** The canned pool answers every poll and always
+   * has an answer; the CLI answers rarely. Showing only the newest would erase the model's prose
+   * within a minute of it arriving — and worse, would change text the player had already read. So
+   * the pool half is what is always shown and the CLI half appears BESIDE it, never instead of it.
+   *
+   * The `cli*` fields are "" when the model has not written about this story, which is the ordinary
+   * case and not an error. The `*Resolution*` fields are "" until the story resolves.
+   */
+  interface StoryArticle {
+    storyId: IdString;
+    poolHeadline: string;
+    poolArticle: string;
+    cliHeadline: string;
+    cliArticle: string;
+    poolResolutionHeadline: string;
+    poolResolutionArticle: string;
+    cliResolutionHeadline: string;
+    cliResolutionArticle: string;
+  }
+
+  interface PowerLedgerRow {
+    /** SimDate.TotalMonths, not a calendar year. `(month, sequence)` is the sort key. */
+    month: number;
+    sequence: number;
+    reason: PowerLedgerReasonName;
+    /** Signed. Negative for a spend or a penalty. */
+    delta: number;
+    storyId: IdString;
+    eventId: IdString;
+  }
+
+  /**
+   * `agora.stories.power` — ValueBinding. Empty value: EMPTY_POWER.
+   *
+   * `balance` is signed and debt is a state the player can be in, not a spend that gets refused.
+   * Read `inDebt` rather than testing `balance < 0`: what counts as debt is the engine's rule and
+   * the consequence attached to it is a capped, tuned effect.
+   */
+  interface Power {
+    /** False when this save has the power layer off. The counter hides; it does not render zero. */
+    enabled: boolean;
+    balance: number;
+    lifetimeEarned: number;
+    lifetimeSpent: number;
+    inDebt: boolean;
+    /** Newest last, sorted by `(month, sequence)`. */
+    ledger: PowerLedgerRow[];
+  }
+
+  /**
+   * `agora.stories.alerts` — the unanswered story cards, OLDEST FIRST. Empty value: [].
+   *
+   * Its own queue, not a share of `agora.news.alerts`. **One card per story, never one per event** —
+   * all of a story's slots render inside the one card, which is why there is a `slotCount` and no
+   * event id. At two stories per cycle that is two interruptions.
+   *
+   * **Dismissing a card answers nothing.** It closes the interruption; the story stays live and is
+   * still answered from the Stories panel. Ack through `agora.stories.ackAlert(id)`, or `"*"` for
+   * all of them.
+   */
+  interface StoryAlert {
+    /** The story id, and the ack key — also the `agora.stories.article` map key. Bare, unprefixed. */
+    id: IdString;
+    date: SimDateString;
+    headline: string;
+    /** One line: the major event's description. */
+    summary: string;
+    slotCount: number;
+    /** The ENGINE'S verdict on whether this card holds the clock. Never re-derive it. */
+    major: boolean;
   }
 }

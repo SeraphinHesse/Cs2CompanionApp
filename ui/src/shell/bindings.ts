@@ -20,6 +20,8 @@ export const EMPTY_SETTINGS: Agora.SettingsPayload = {
   themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
   voteSharpness: "Default", newsInfluence: "Default", brandDiscipline: "Default",
   voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
+  storiesEnabled: true, storiesPerCycle: 2, eventsPerStory: 3,
+  politicalPowerEnabled: true, powerIntensity: "Default", storyDifficulty: "Default",
 };
 
 /**
@@ -33,6 +35,42 @@ export const EMPTY_SETTINGS: Agora.SettingsPayload = {
 export const EMPTY_NEWS_ALERT: Agora.NewsAlert = {
   id: "", kind: "Article", date: "", headline: "", summary: "", outletName: "",
   partyId: "", districtId: "", eventId: "", severity: 0, major: false, hasArticle: false,
+};
+
+/**
+ * The fallback for `power$`.
+ *
+ * `enabled` is `false` here on purpose, and it is the one field worth arguing about. Before the
+ * engine has published anything we do not know whether this save runs the power layer, and the
+ * counter's rule is "hide when off" — so an empty value claiming `true` would flash a balance of 0
+ * on every load of a save that has the layer switched off, which reads as "you have no power" rather
+ * than as "there is no such currency here".
+ */
+export const EMPTY_POWER: Agora.Power = {
+  enabled: false, balance: 0, lifetimeEarned: 0, lifetimeSpent: 0, inDebt: false, ledger: [],
+};
+
+/**
+ * The guard a card substitutes for a queue index that no longer exists, so a render racing an ack
+ * cannot read a field off `undefined`. Not wired into a binding — `storyAlerts$` is an array and
+ * takes `[]`.
+ *
+ * `major` is `false` here for the same reason it is on `EMPTY_NEWS_ALERT`: an empty card must never
+ * be the thing that takes the pause barrier.
+ */
+export const EMPTY_STORY_ALERT: Agora.StoryAlert = {
+  id: "", date: "", headline: "", summary: "", slotCount: 0, major: false,
+};
+
+/**
+ * The fallback for a story body that has not arrived. Every field empty — a story with no prose at
+ * all cannot happen once it has drafted (the canned pool writes one immediately), so this is the
+ * shape for an id the map does not hold, not a state the player should ever see.
+ */
+export const EMPTY_STORY_ARTICLE: Agora.StoryArticle = {
+  storyId: "", poolHeadline: "", poolArticle: "", cliHeadline: "", cliArticle: "",
+  poolResolutionHeadline: "", poolResolutionArticle: "",
+  cliResolutionHeadline: "", cliResolutionArticle: "",
 };
 
 // -- agora.state (§4.1, dashboard chrome) --------------------------------------------------------
@@ -86,6 +124,42 @@ export const roster$ = bindValue<Agora.PartyBrief[]>("agora.parties", "roster", 
  * again in the News tab afterwards.
  */
 export const alerts$ = bindValue<Agora.NewsAlert[]>("agora.news", "alerts", []);
+
+// -- agora.stories (§4.7) ------------------------------------------------------------------------
+//
+// Declared HERE rather than in ui/src/panels/Stories/bindings.ts, and that is a wave-6 structural
+// decision rather than an accident. Three separate surfaces read this group — the Stories panel, the
+// power counter beside the mod icon, and the story card, which are three different mount points in
+// three different React trees. A `bindValue` is a subscription, so declaring each one at module
+// scope in one module is what makes them a single shared instance rather than three; and it is what
+// keeps the binding NAMES in one place, since a rename here produces a panel that renders nothing,
+// at runtime, with no build error.
+
+/**
+ * The live stories, sorted by id ordinal. Bodies are not here — fetch them per story from
+ * `agora.stories.article` keyed on the same id.
+ */
+export const stories$ = bindValue<Agora.Story[]>("agora.stories", "live", []);
+
+/** The resolved archive, newest first. Do not re-sort it. */
+export const storyArchive$ = bindValue<Agora.StoryBrief[]>("agora.stories", "archive", []);
+
+/**
+ * The political-power counter.
+ *
+ * `enabled` false means this save has the power layer switched off, and the counter must HIDE rather
+ * than render a zero — a zero is a balance, and "off" is not one.
+ */
+export const power$ = bindValue<Agora.Power>("agora.stories", "power", EMPTY_POWER);
+
+/**
+ * The unanswered story cards, OLDEST FIRST — the order they happened in. Do not sort it and do not
+ * reverse it, for the same reason as `alerts$`.
+ *
+ * Read by the shell rather than by the Stories panel because the card is chrome: it has to appear
+ * with the dashboard closed, over whatever the player was doing.
+ */
+export const storyAlerts$ = bindValue<Agora.StoryAlert[]>("agora.stories", "alerts", []);
 
 // -- agora.debug (§4.0, M0 pipeline proof) -------------------------------------------------------
 
@@ -222,6 +296,106 @@ export function ackAlert(id: string): Promise<WriteOutcome> {
   });
 }
 
+// -- the story write channels (§4.7) -------------------------------------------------------------
+//
+// FIVE, not the three the rework plan's table lists. The plan assumed a purchase would travel as an
+// ordinary response through `setResponse`; wave 4 refuses that, because a `PowerOverride` arriving
+// that way would be a free `Met` nobody paid for — so the purchase has its own channel. The fifth is
+// the card dismissal.
+//
+// Every one carries the same deadline as `requestSetting`, and on the same reasoning as `ackAlert`:
+// a story card may hold the pause barrier, and a call that never answers would leave a player with a
+// card they cannot close and a clock they cannot start.
+//
+// All five only SEND. The returned code is the engine's verdict and the panel renders it; a panel
+// that computes a rejection of its own violates contract rule 5. In particular: do not check
+// affordability in the UI before sending an override. `canAfford` on the slot is for what the button
+// LOOKS like; whether the purchase happens is `spendPowerOverride`'s answer, and the two are read at
+// different moments.
+
+/**
+ * Choose how to tackle one event.
+ *
+ * `mode` is a `SlotResponseName` other than `"Unaddressed"` — that is the state before a choice, not
+ * a choice. **`"PowerOverride"` is rejected here with `BadValue`**: a purchase goes through
+ * `spendPowerOverride`, which is the channel that charges for it.
+ *
+ * `text` is the player's own words for `"Ignore"` and `"Manual"`, capped at
+ * `stories.freeTextMaxLength` and answered with `TooLong` when over. It is prose and is never parsed
+ * for a number.
+ */
+export function setStoryResponse(
+  storyId: string, eventId: string, mode: Agora.SlotResponseName, text: string,
+): Promise<WriteOutcome> {
+  return withDeadline("setStoryResponse(" + storyId + "/" + eventId + ")", function () {
+    return call<Agora.CommandOutcomeName>(
+      "agora.stories", "setResponse", storyId, eventId, mode, text,
+    );
+  });
+}
+
+/**
+ * Declare the outcome of a `"Manual"` slot yourself.
+ *
+ * Only legal on a slot whose response is already `"Manual"` — anything else answers `BadValue`. A
+ * declared SUCCESS requires a justification and answers `ValueRequired` on an empty box; a declared
+ * FAILURE does not, because nobody has to explain admitting one.
+ *
+ * The award for a self-declared success is capped at the MINOR rate whatever the event's tier. The
+ * penalty for a self-declared failure is charged at the real tier — see `PoliticalPowerState` for
+ * why capping both sides is a trap.
+ */
+export function declareManualOutcome(
+  storyId: string, eventId: string, met: boolean, text: string,
+): Promise<WriteOutcome> {
+  return withDeadline("declareManualOutcome(" + storyId + "/" + eventId + ")", function () {
+    return call<Agora.CommandOutcomeName>(
+      "agora.stories", "declareManual", storyId, eventId, met, text,
+    );
+  });
+}
+
+/**
+ * Close a story early rather than waiting for its resolve month.
+ *
+ * Answers `AlreadyResolved` on a story whose window has closed — which is a different answer from
+ * `NotFound`, and the difference matters: the record exists, the moment passed. Pressing it more than
+ * once is accepted each time and resolves once.
+ */
+export function resolveStoryNow(storyId: string): Promise<WriteOutcome> {
+  return withDeadline("resolveStoryNow(" + storyId + ")", function () {
+    return call<Agora.CommandOutcomeName>("agora.stories", "resolveNow", storyId);
+  });
+}
+
+/**
+ * Buy one slot off with political power.
+ *
+ * `InsufficientPower` and `PowerDisabled` are DIFFERENT refusals and must not be collapsed: one says
+ * "not yet", the other says "not in this save". Buying a slot that is already bought answers `""`
+ * and charges nothing — the guard is in the engine, so a double-press cannot double-charge.
+ */
+export function spendPowerOverride(storyId: string, eventId: string): Promise<WriteOutcome> {
+  return withDeadline("spendPowerOverride(" + storyId + "/" + eventId + ")", function () {
+    return call<Agora.CommandOutcomeName>(
+      "agora.stories", "spendPowerOverride", storyId, eventId,
+    );
+  });
+}
+
+/**
+ * Dismiss a story card, or all of them with `"*"`.
+ *
+ * **This answers nothing.** It closes the interruption; the story stays live and is still answered
+ * from the Stories panel. Acking an id the queue no longer holds answers `""`, not a refusal — a
+ * double-click is not an error.
+ */
+export function ackStoryAlert(id: string): Promise<WriteOutcome> {
+  return withDeadline("ackStoryAlert(" + id + ")", function () {
+    return call<Agora.CommandOutcomeName>("agora.stories", "ackAlert", id);
+  });
+}
+
 /**
  * The closed outcome vocabulary (§4.6) in plain English, one sentence each.
  *
@@ -251,6 +425,15 @@ const OUTCOME_MESSAGE: { [outcome: string]: string } = {
   // that can drift from the engine's, which is the whole reason that binding exists.
   TooLong: "That is longer than this field will hold. Shorten it and try again.",
   OkColorInUse: "Saved. Another party already wears this colour, so the two will look alike.",
+  // No number in these two either, and for a sharper reason than TooLong's. The price is published
+  // per slot as `overrideCost` and the balance as `power.balance`; a literal here would be a third
+  // copy of an amount the engine charges, and it would be wrong the moment the power economy is
+  // retuned. The two are kept apart because they are different refusals: one is "not yet", the other
+  // is "not in this save", and telling a player to save up for a purchase that can never happen is
+  // worse than saying nothing.
+  InsufficientPower: "There is not enough political power to buy this one off.",
+  PowerDisabled: "This city is not running the political-power system, so nothing can be bought off.",
+  AlreadyResolved: "This story has already closed. Its verdict is in the archive.",
 };
 
 /** Shown when the engine gave a code this build was never taught, and when it gave none at all. */

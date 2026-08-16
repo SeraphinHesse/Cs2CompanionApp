@@ -223,6 +223,57 @@ namespace Agora.Mod.Core
         /// </remarks>
         private const int AlertQueueMax = 8;
 
+        /// <summary>
+        /// Story cards the player has not answered yet, oldest first. Published as
+        /// <c>agora.stories.alerts</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A separate queue from <see cref="_alerts"/>, and separate on purpose</b> — the reasoning
+        /// is in the rework plan's wave 6 section and is worth restating where the field is, because
+        /// "just reuse the news lane" is the obvious cheap move and it breaks three ways. The news
+        /// alert contract states that every alert <c>id</c> is a feed row's id and its body is fetched
+        /// from <c>agora.news.article</c> under that same id; a story id is not a feed row id, and
+        /// <c>BuildArticle</c> answers an unknown key with an empty payload rather than throwing, so
+        /// the failure would be a blank masthead with nothing logged. <c>ArticleModal</c> renders
+        /// <c>alerts[0]</c> or nothing, so two lanes sharing it would serialise behind each other. And
+        /// <see cref="AlertQueueMax"/> drops the oldest when it overflows — on the news lane that is a
+        /// missed headline, on this one it is <b>a decision the player never got to make</b>.
+        /// </para>
+        /// <para>
+        /// Session-scoped and never persisted, exactly like <see cref="_alerts"/>: a card that was
+        /// never answered before a reload does not come back, because the story itself is persisted
+        /// and the panel is where it is answered. The queue is the interruption, not the record.
+        /// </para>
+        /// </remarks>
+        private static readonly List<StoryAlert> _storyAlerts = new List<StoryAlert>();
+
+        /// <summary>
+        /// Story ids already offered as a card this session. Membership only — never enumerated, so
+        /// nothing downstream can depend on a hash order (non-negotiable #3).
+        /// </summary>
+        /// <remarks>
+        /// Story ids are engine-authored, so this needs no compound key: the reason
+        /// <see cref="_raisedAlertIds"/> prefixes with a kind is that an article id is model-authored
+        /// and could collide with an engine-written one. Nothing here is model-authored.
+        /// </remarks>
+        private static readonly HashSet<string> _raisedStoryAlertIds =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// How many unanswered story cards the ring holds before it drops the oldest.
+        /// </summary>
+        /// <remarks>
+        /// <b>Deliberately larger in proportion than <see cref="AlertQueueMax"/> is for news, because
+        /// a dropped story card is a lost decision rather than a missed headline.</b> At the shipped
+        /// cadence of two stories per two-month cycle, four is two full cycles of not opening the
+        /// dashboard — and the story itself survives in <c>LiveStories</c> whatever this queue does,
+        /// so a drop costs the interruption, never the story. It is a bound on a UI queue and not a
+        /// political quantity, so it is not a tuning key, for the same reason as
+        /// <see cref="AlertQueueMax"/>.
+        /// </remarks>
+        private const int StoryAlertQueueMax = 4;
+
         private static FlavorPayload _flavorPayload;
         private static SimDate? _lastFlavorDate;
         private static SimDate? _lastAttemptDate;
@@ -434,6 +485,20 @@ namespace Agora.Mod.Core
         public static IList<NewsAlert> Alerts
         {
             get { return _alerts; }
+        }
+
+        /// <summary>
+        /// The unanswered story-card queue, oldest first. Never null, and empty for the whole of a
+        /// resumed save until a story drafts.
+        /// </summary>
+        /// <remarks>
+        /// Its own queue rather than a share of <see cref="Alerts"/> — see <c>_storyAlerts</c> for the
+        /// three reasons, of which the load-bearing one is that a dropped news card is a missed
+        /// headline and a dropped story card is a decision the player never got to make.
+        /// </remarks>
+        public static IList<StoryAlert> StoryAlerts
+        {
+            get { return _storyAlerts; }
         }
 
         /// <summary>The prose currently in force, or null when none has ever been produced.</summary>
@@ -719,6 +784,13 @@ namespace Agora.Mod.Core
                 // reload is already clean; this is the quit-to-menu path, where the statics survive.
                 _alerts.Clear();
                 _raisedAlertIds.Clear();
+
+                // The story ring, for identically the same reason and in the same block so the two
+                // cannot drift apart. Story ids are minted per save, so a card from city A popping
+                // over city B would point `agora.stories.article` at a story city B's state has never
+                // heard of — and the panel would render a headline for a decision that does not exist.
+                _storyAlerts.Clear();
+                _raisedStoryAlertIds.Clear();
 
                 // City B's party ids are not city A's, but an id that collided would arrive here
                 // already marked provisional and let a stopgap name be overwritten in a save that
@@ -1386,6 +1458,42 @@ namespace Agora.Mod.Core
                         case "brandDiscipline":
                             return SetLevel<BrandDiscipline>(value, v => _saveSettings.BrandDiscipline = v);
 
+                        // ---- the story layer (wave 6) ----
+                        //
+                        // These six have been in the sidecar since wave 2 and reachable from nothing
+                        // since. They are ordinary per-save settings and take the ordinary helpers;
+                        // nothing here retro-generates or cancels a story, because a setting change is
+                        // not a tick. Turning stories off leaves whatever is live exactly where it is
+                        // and stops the next draft — the story cycle reads the flag on the draft phase
+                        // and nowhere else, so a live story still resolves rather than being stranded.
+
+                        case "storiesEnabled":
+                            return SetFlag(value, v => _saveSettings.StoriesEnabled = v);
+
+                        case "storiesPerCycle":
+                            return SetCount(value, v => _saveSettings.StoriesPerCycle = v);
+
+                        case "eventsPerStory":
+                            return SetCount(value, v => _saveSettings.EventsPerStory = v);
+
+                        case "politicalPowerEnabled":
+                            return SetFlag(value, v => _saveSettings.PoliticalPowerEnabled = v);
+
+                        // There is deliberately NO key for `powerIntensity` or `storyDifficulty`.
+                        //
+                        // Both enums are persisted, cloned and published — and both drive nothing:
+                        // `TuningPresets.Apply` reads VoteSharpness, NewsInfluence and BrandDiscipline
+                        // and no fourth or fifth level, so the presets behind these two do not exist
+                        // yet. Accepting a write would persist a value, republish it, and change no
+                        // number in the engine — a switch that does nothing, with hint text promising
+                        // behaviour there is none of, which is the exact defect `docs/status.md`
+                        // records against PauseOnMajorNews and ShowAllReports before W5 closed it.
+                        //
+                        // The presets are wave 7b's row ("the presets behind StoryDifficulty /
+                        // PowerIntensity"). The write key belongs in the same change as the preset
+                        // table, so the setting and its effect ship together. Until then an unknown
+                        // key answers `UnknownKey`, which is the truthful answer.
+
                         case "dismissFirstRun":
                             // Not a setting and not persisted — the player closed the prompt. It is
                             // here because it is a one-shot lifecycle signal on the same object, and
@@ -1417,6 +1525,52 @@ namespace Agora.Mod.Core
             if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)) parsed = true;
             else if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)) parsed = false;
             else return CommandOutcome.BadValue;
+
+            apply(parsed);
+            PersistSettings();
+            _stateVersion++;
+            return CommandOutcome.Ok;
+        }
+
+        /// <summary>
+        /// Upper bound on the two story counts a player may set from the panel.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Not a balance number — a bound on what a settings control may ask for.</b> Wave 2's
+        /// concurrency retune sized the story layer's effect budget and its non-saturation claim
+        /// around the shipped 2 stories × 3 events; asking for an order of magnitude more is a
+        /// rebalance, and a rebalance belongs in <c>engine_tuning.json</c> where the effect scales and
+        /// the pool size move with it. Five is comfortably above anything the shipped tuning is sized
+        /// for and comfortably below a number that would exhaust the pool in a cycle.
+        /// </para>
+        /// <para>
+        /// Zero is legal and means "unset": <c>StoryAssembler</c> resolves a count of zero against
+        /// <c>stories.storiesPerCycle</c> / <c>stories.eventsPerStory</c>, which is how a player hands
+        /// the decision back to tuning. That is <c>TickPlanner.SnapshotsToPrune</c>'s convention, and
+        /// it is why the floor here is 0 rather than 1.
+        /// </para>
+        /// </remarks>
+        private const int StoryCountMax = 5;
+
+        /// <summary>
+        /// Parses a small non-negative count, applies it, persists and republishes. Rejects anything
+        /// that is not a plain decimal integer within <c>[0, <see cref="StoryCountMax"/>]</c>.
+        /// </summary>
+        /// <remarks>
+        /// Parsed with <see cref="CultureInfo.InvariantCulture"/> rather than the ambient culture: the
+        /// value crosses the bridge as a string the panel built, and a culture that formats or parses
+        /// digits differently must not change which number a save takes.
+        /// </remarks>
+        private static CommandOutcome SetCount(string value, Action<int> apply)
+        {
+            if (string.IsNullOrEmpty(value)) return CommandOutcome.BadValue;
+
+            int parsed;
+            if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out parsed))
+                return CommandOutcome.BadValue;
+
+            if (parsed < 0 || parsed > StoryCountMax) return CommandOutcome.BadValue;
 
             apply(parsed);
             PersistSettings();
@@ -2256,6 +2410,86 @@ namespace Agora.Mod.Core
             RaiseCoalitionAlerts(today);
             RaisePartyAlerts(today);
             RaiseEventAlerts(tick);
+            RaiseStoryAlerts(today, tick);
+        }
+
+        /// <summary>Stories that drafted on this tick, one card each.</summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Drafted stories only, never resolved ones.</b> A card is an interruption asking for a
+        /// decision, and a resolved story has no decision left in it — its verdict is news and belongs
+        /// in the panel's archive, where the player reads it when they choose to. Interrupting for a
+        /// verdict would double this lane's interruption budget for something nobody can answer.
+        /// </para>
+        /// <para>
+        /// <b>The severity gate is read, never written down here</b>, on exactly the rule
+        /// <see cref="RaiseEventAlerts"/> states: <c>stories.majorSeverityThreshold</c> is the same
+        /// number the engine derives a tier from, and a literal here would be a second and eventually
+        /// disagreeing definition of a serious story inside one build. What is compared is the
+        /// <b>major slot's</b> severity, because a story's weight is its major event's — a bundle
+        /// carrying two trivial minors beside a catastrophe is a catastrophe.
+        /// </para>
+        /// <para>
+        /// A story whose major slot the catalog no longer explains still raises a card, at
+        /// non-major. Losing the card entirely would cost the player the decision; losing only the
+        /// pause is the smaller failure, and it is logged where the catalog gap is diagnosable.
+        /// </para>
+        /// </remarks>
+        private static void RaiseStoryAlerts(SimDate today, EngineTickResult tick)
+        {
+            if (tick == null || tick.DraftedStories == null) return;
+
+            int threshold = Tuning.Stories.MajorSeverityThreshold;
+
+            for (int i = 0; i < tick.DraftedStories.Count; i++)
+            {
+                Story story = tick.DraftedStories[i];
+                if (story == null || string.IsNullOrEmpty(story.Id)) continue;
+
+                StorySlot major = MajorSlotOf(story);
+                CivicEvent civicEvent = major == null ? null : FindCivicEvent(major.EventId);
+
+                EnqueueStory(new StoryAlert
+                {
+                    Id = story.Id,
+                    Date = story.OpenedDate == default(SimDate) ? today : story.OpenedDate,
+                    Headline = story.HeadlineFallback ?? "",
+                    Summary = civicEvent == null ? "" : civicEvent.Description ?? "",
+                    SlotCount = story.Slots == null ? 0 : story.Slots.Count,
+                    Major = civicEvent != null && civicEvent.Severity >= threshold
+                });
+
+                if (civicEvent == null)
+                {
+                    AgoraMod.Log.Warn("Agora: story '" + story.Id + "' drafted with a major slot the " +
+                                      "loaded civic catalog does not explain; its card is raised " +
+                                      "without a summary and does not hold the clock.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// A story's major slot, or its first slot when no slot carries the flag.
+        /// </summary>
+        /// <remarks>
+        /// <b>The flag, not the position.</b> <c>Story.Slots</c> really is sorted major-first, so
+        /// index 0 is right today and every fixture in the suite is built that way — which is exactly
+        /// why wave 5's review found that deleting the flag check from
+        /// <c>StaticPoolProvider.MajorSlot</c> left the whole suite green. Reading the flag is what
+        /// keeps this correct if the sort ever changes; falling back to index 0 is what keeps a
+        /// degraded all-minor story from raising a card with no summary at all.
+        /// </remarks>
+        private static StorySlot MajorSlotOf(Story story)
+        {
+            if (story == null || story.Slots == null || story.Slots.Count == 0) return null;
+
+            for (int i = 0; i < story.Slots.Count; i++)
+            {
+                StorySlot slot = story.Slots[i];
+                if (slot != null && slot.Role == SlotRole.Major) return slot;
+            }
+
+            return story.Slots[0];
         }
 
         /// <summary>
@@ -2537,6 +2771,104 @@ namespace Agora.Mod.Core
             // The publishers republish on this and on nothing else, so an alert raised without it
             // would sit in the ring until some unrelated change happened to move the version.
             _stateVersion++;
+        }
+
+        /// <summary>
+        /// Puts one story card on its ring, if it is new and the ring will have it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// No compound key, unlike <see cref="Enqueue"/>: every id on this ring is an engine-minted
+        /// story id, so there is no model-authored namespace to keep apart from an engine-written one.
+        /// </para>
+        /// <para>
+        /// <b>The drop is logged at Warn, not Info</b> — the difference from the news lane is the
+        /// whole reason the two rings are separate. A dropped news card is a headline the player can
+        /// still read in the News tab; a dropped story card is an interruption they never saw, and the
+        /// log line has to say plainly that the story is still live and still answerable from the
+        /// Stories panel, or the drop reads as the decision having been taken away.
+        /// </para>
+        /// </remarks>
+        private static void EnqueueStory(StoryAlert alert)
+        {
+            if (alert == null || string.IsNullOrEmpty(alert.Id)) return;
+
+            if (!_raisedStoryAlertIds.Add(alert.Id)) return;
+
+            _storyAlerts.Add(alert);
+
+            while (_storyAlerts.Count > StoryAlertQueueMax)
+            {
+                StoryAlert dropped = _storyAlerts[0];
+                _storyAlerts.RemoveAt(0);
+
+                AgoraMod.Log.Warn("Agora: the story card queue is full at " + StoryAlertQueueMax +
+                                  "; dropped the oldest unanswered card (" + dropped.Id +
+                                  "). The story itself is untouched and is still answerable from the " +
+                                  "Stories panel.");
+            }
+
+            _stateVersion++;
+        }
+
+        /// <summary>
+        /// The player answered a story card: drops it from the queue, or drops all of them when the id
+        /// is the sentinel <c>"*"</c>. Backs <c>agora.stories.ackAlert</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Dismissing a card is not answering the story.</b> It closes the interruption and nothing
+        /// else — no response is recorded, no slot moves, and the story stays live in
+        /// <see cref="PoliticalState.LiveStories"/> until it resolves or the player tackles it from
+        /// the panel. That separation is what lets the card be a notification rather than a modal the
+        /// player must complete, and it is why this touches no engine state at all.
+        /// </para>
+        /// <para>
+        /// Acking an id the queue no longer holds is <see cref="CommandOutcome.Ok"/>, not
+        /// <see cref="CommandOutcome.NotFound"/> — a double-click, or a second dismiss racing the
+        /// republish, is not something the player did wrong. Same rule as <see cref="AckAlert"/>.
+        /// </para>
+        /// </remarks>
+        public static CommandOutcome AckStoryAlert(string id)
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(id)) return CommandOutcome.BadValue;
+
+                    if (id == "*")
+                    {
+                        if (_storyAlerts.Count == 0) return CommandOutcome.Ok;
+
+                        _storyAlerts.Clear();
+                        _stateVersion++;
+                        return CommandOutcome.Ok;
+                    }
+
+                    for (int i = 0; i < _storyAlerts.Count; i++)
+                    {
+                        StoryAlert alert = _storyAlerts[i];
+                        if (alert == null || !string.Equals(alert.Id, id, StringComparison.Ordinal))
+                            continue;
+
+                        _storyAlerts.RemoveAt(i);
+                        _stateVersion++;
+                        return CommandOutcome.Ok;
+                    }
+
+                    // Not held any more, which a double-click reaches routinely. The dedupe set is
+                    // deliberately not rolled back: re-offering a card the player already dismissed is
+                    // worse than never showing it again.
+                    return CommandOutcome.Ok;
+                }
+                catch (Exception ex)
+                {
+                    AgoraMod.Log.Error(ex, "Agora: story card '" + (id ?? "(null)") + "' could not be " +
+                                           "dismissed; the queue is unchanged.");
+                    return CommandOutcome.Failed;
+                }
+            }
         }
 
         /// <summary>
