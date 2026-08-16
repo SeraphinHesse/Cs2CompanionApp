@@ -284,7 +284,69 @@ namespace Agora.Core.Events.Catalog
         /// a mirroring convention, which is why the rule is machine-checked rather than only written
         /// down.
         /// </remarks>
-        PressureSignFlip = 118
+        PressureSignFlip = 118,
+
+        /// <summary>
+        /// A district check's threshold is tighter than its trigger's, leaving a band of districts
+        /// that never contributed to the trigger but can still fail the check.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// An <c>allDistricts</c> check returns <c>NotMet</c> the instant one measured district fails.
+        /// So if the trigger fires at <c>&gt;= 0.40</c> and the check demands <c>&lt; 0.35</c>, a
+        /// district sitting at 0.37 contributed nothing to the trigger, is invisible in the prose —
+        /// the description says the rest of the city is fine — and fails the story anyway. The player
+        /// fixes the district the story is about and still loses, over one they were never told
+        /// about, with nothing surfacing why.
+        /// </para>
+        /// <para>
+        /// Reported only on a genuine numeric gap, so an exact complement passes whatever the
+        /// strictness of the two comparisons. A warning rather than an error because a deliberate
+        /// "clean up the whole city, not just the worst block" event is a legitimate design — it just
+        /// has to be argued for, and the shipped gate holds catalogs to zero warnings.
+        /// </para>
+        /// <para>
+        /// Distinct from <see cref="DistrictCheckNotBoundToTrigger"/>, which is about scope: this one
+        /// is invisible to that rule, because the defect lives between two thresholds rather than
+        /// between two scopes. Lane 3a hit it eight times.
+        /// </para>
+        /// </remarks>
+        CheckThresholdLeavesTrapBand = 119,
+
+        /// <summary>
+        /// A <c>delta</c> check reads back further than the story has existed, so part of its verdict
+        /// was decided before the player saw the card.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A story lives one month, not <c>cycleMonths</c>.</b>
+        /// <c>StoryAssembler.NewStory</c> sets <c>months = stories.CycleMonths - 1</c> — draft on M,
+        /// resolve on M+1, next batch at M+2 — so at the shipped cadence of 2 the window the player
+        /// can influence is a single month. A check reading back further scores the player on months
+        /// that predate their decision, and the further back it reads the smaller their share of the
+        /// verdict.
+        /// </para>
+        /// <para>
+        /// This is the distinction that makes <c>cycleMonths</c> a trap for content authors: it is the
+        /// <i>cadence</i>, not the story's life, and the two differ by one. Every wave-3 content lane
+        /// was handed the cadence and authored against it.
+        /// </para>
+        /// </remarks>
+        CheckWindowOutrunsStoryLife = 120,
+
+        /// <summary>
+        /// A threshold sits above the highest value its metric's sensor can actually produce.
+        /// </summary>
+        /// <remarks>
+        /// Two shipped metrics are means over channels the game does not all expose, so the
+        /// unmeasured ones are hard-zeroed and drag the mean down permanently: <c>serviceCoverage</c>
+        /// tops out at 5/9 ≈ 0.5556 and <c>pollution</c> at 0.75. A <c>gte</c> above the ceiling can
+        /// never be met and a <c>lt</c> above it is met by every city always — either way the spec
+        /// says nothing about the city. See <c>CivicEventCatalogLoader.AttainableMaximum</c>, which
+        /// also records why a threshold merely <i>near</i> the ceiling is a judgement for review
+        /// rather than something this loader can decide.
+        /// </remarks>
+        ThresholdAboveAttainableMaximum = 121
     }
 
     /// <summary>
