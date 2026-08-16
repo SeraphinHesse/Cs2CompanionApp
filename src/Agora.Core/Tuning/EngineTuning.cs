@@ -1349,6 +1349,7 @@ namespace Agora.Core.Tuning
             District("district-building-fire-hazard", "BuildingFireHazard", 0.20, 24, DistrictFallback);
             District("district-bike-probability", "BikeProbability", 0.25, 36, DistrictFallback);
             District("district-car-reserve-probability", "CarReserveProbability", 0.20, 36, DistrictFallback);
+            District("district-street-speed-limit", "StreetSpeedLimit", 0.15, 24, DistrictFallback);
 
             // Game.City.CityModifierType — 40 members.
             City("city-tax-happiness", "TaxHappiness", 0.15, 60, "");
@@ -1382,6 +1383,15 @@ namespace Agora.Core.Tuning
             City("city-taxi-starting-fee", "TaxiStartingFee", 0.25, 36, CityFallback);
             City("city-oil-resource-amount", "OilResourceAmount", 0.20, 60, CityFallback);
             City("city-ore-resource-amount", "OreResourceAmount", 0.20, 60, CityFallback);
+
+            // Wave 3. All three are applied by the game rather than being dead enum members —
+            // ProcessingCompanySystem, RoadSafetySystem and LaneDataSystem respectively — and all
+            // three were already in ModifierRegistry's name table, which registers the complete enums.
+            // city-office-software-efficiency falls back to city-office-efficiency rather than to
+            // CityFallback: the narrower lever degrading to the broader one of the same kind keeps an
+            // event about the software sector about the office sector, instead of about tax mood.
+            City("city-office-software-efficiency", "OfficeSoftwareEfficiency", 0.30, 24, "city-office-efficiency");
+            City("city-highway-traffic-safety", "HighwayTrafficSafety", 0.20, 36, CityFallback);
 
             return m;
         }

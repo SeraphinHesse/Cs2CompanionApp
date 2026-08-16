@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/civic_events.schema.json",
+  "title": "events_*.json — authored civic events, the unit a story is assembled from",
+
+  "$comment": "Shape validation only. FOUR further checks run in CivicEventCatalogLoader and cannot be expressed here: every effect id must exist in the closed effect palette (effects.perEffect); every metricId on a metric/delta spec must exist in MetricRegistry at the declared scope; the five census-gated metric ids may carry a delta spec but never an absolute one; and every unlock id must appear in this document family's featureIds allow-list. The last two exist because an Absent spec NEGATES whatever it resolves to, so an id resolving to nothing fires Met on every city forever, silently.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "events"],
+
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+
+    "featureIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "$comment": "The allow-list of progression feature ids an unlock spec in ANY events_*.json may name. Feature ids are raw PrefabSystem.GetPrefabName strings (wave 1 ruling 4) — nothing can check them against the game from here, so declaring them is the only thing standing between a typo and a trigger that reads as never-unlocked forever. The lists union across documents: an unlock in events_eu.json may name an id declared in events_global.json. Confirming these against a real save is wave 1's unwalked manual gate 11."
+    },
+
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "severity", "region", "trigger", "check",
+          "name", "description", "ignoreText", "goalText", "powerOverrideText",
+          "successText", "failText"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+
+          "severity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "$comment": "The existing 1-5 integer, NOT a new enum. StoryTiers projects it onto Mandatory/Major/Minor through stories.mandatorySeverityThreshold and stories.majorSeverityThreshold. Be conservative: mandatory should feel rare, and AffinityEngine.EventTerm's severity/5 scaling is only honest if the range is used."
+          },
+
+          "region": { "type": "string", "enum": ["eu", "na", "global"] },
+
+          "trigger": { "$ref": "#/$defs/spec" },
+
+          "check": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["spec"],
+            "properties": {
+              "spec": { "$ref": "#/$defs/spec" },
+              "relativeToBaseline": {
+                "type": "boolean",
+                "$comment": "True measures against StorySlot.BaselineMetric — the reading captured when the story opened — rather than against an absolute number. This is what makes the two-month cycle mean something: drafting at M and resolving at M+1 is a genuinely later measurement."
+              }
+            }
+          },
+
+          "activeEffects": { "$ref": "#/$defs/effectList" },
+          "successEffects": { "$ref": "#/$defs/effectList" },
+          "failureEffects": { "$ref": "#/$defs/effectList" },
+
+          "activePressure": { "$ref": "#/$defs/issuePressure" },
+          "successPressure": { "$ref": "#/$defs/issuePressure" },
+          "failurePressure": { "$ref": "#/$defs/issuePressure" },
+
+          "districtAffinity": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "$comment": "District archetypes that feel this hardest. Empty means evenly."
+          },
+
+          "tags": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+
+          "notes": {
+            "type": "string",
+            "$comment": "Authoring note, never rendered and never a prompt input. Required by content review to state the EXPECTED TRIGGER FREQUENCY — 'a mid-size city should see this perhaps twice a decade'. The design document says twice that every threshold must be hittable in a normal game, and this is where the author records the reasoning that claim rests on."
+          },
+
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "ignoreText": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "goalText": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "powerOverrideText": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "successText": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "failText": { "type": "string", "minLength": 1, "maxLength": 300 }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "$comment": "Declarative, never code per event. A kind that cannot be expressed here is a reason to widen TriggerKind in a reviewed commit, not to special-case one catalog entry.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["metric", "delta", "unlock", "absent", "manual"],
+          "$comment": "\"policy\" is DELIBERATELY ABSENT from this enum. No sensor writes CitySnapshot.ActivePolicyIds — it is plumbed through SensorMerge and SnapshotAssembly and populated by nothing — so a policy spec can never fire, and an absent policy spec fires on every city forever. The loader rejects it by name with that reason; the schema refuses it one step earlier. \"manual\" never fires from the city and is never pooled, so an authored event carrying one can never produce a story."
+        },
+
+        "metricId": {
+          "type": "string",
+          "$comment": "For metric/delta: a name from MetricRegistry, checked at the declared scope. For unlock: a progression feature id, which must appear in featureIds. For absent: whichever of the two it resolves to. Empty for manual."
+        },
+
+        "comparison": { "type": "string", "enum": ["lt", "lte", "gt", "gte"] },
+
+        "threshold": {
+          "type": "number",
+          "$comment": "Required by the loader for every kind that compares a number. Not defaulted: 0.0 is a real threshold rather than an obviously-absent one, so a missing threshold is an error rather than a silent zero."
+        },
+
+        "windowMonths": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "Delta only. The loader additionally bounds this above by scheduler.snapshotRetention - 1, read from tuning: a window wider than the retained history can never be answered and would evaluate Unmeasurable for the life of every save. No delta may name unlockedFeatureIds or industryTaxRates — both are lists, and MetricHistory stores one double per series per month, so no historical series stands behind either."
+        },
+
+        "scope": { "type": "string", "enum": ["city", "anyDistrict", "allDistricts"] }
+      }
+    },
+
+    "effectList": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(city|district)-[a-z0-9-]+$" },
+      "$comment": "Effect IDS only — no magnitude and no duration. Story effects are scaled by stories.activeEffectScale / successEffectScale / failureEffectScale and clamped against the palette's own declared caps, so an authored magnitude here would be a second, unclamped copy of a number the palette already owns. An event's prose may only claim what these ids can actually do: see the mapping table in docs/plans/0004-event-system-rework.md, which records what is reachable and what is not."
+    },
+
+    "issuePressure": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1
+      },
+      "$comment": "Per-issue voter pressure. This is the mechanism the whole rework exists for: a positive outcome moves voters toward the government and a negative one away. An unstated issue is simply not pressed. Keys are the Issues.ToKey vocabulary; an unknown key is warned and ignored."
+    }
+  }
+}

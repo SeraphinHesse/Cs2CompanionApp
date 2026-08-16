@@ -64,9 +64,13 @@ namespace Agora.Core.Tests
         {
             EffectPalette p = Palette();
 
-            Assert.Equal(43, p.Count);
-            Assert.Equal(12, p.DistrictIds.Count);
-            Assert.Equal(31, p.CityIds.Count);
+            // Wave 3 added three: district-street-speed-limit, city-office-software-efficiency and
+            // city-highway-traffic-safety. This assertion is SUPPOSED to fail on a palette change —
+            // that is what it is for — so the numbers move with a reviewed addition rather than the
+            // assertion being loosened into something that would not have noticed.
+            Assert.Equal(46, p.Count);
+            Assert.Equal(13, p.DistrictIds.Count);
+            Assert.Equal(33, p.CityIds.Count);
             Assert.Equal(p.Count, p.DistrictIds.Count + p.CityIds.Count);
         }
 

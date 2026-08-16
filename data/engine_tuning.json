@@ -410,6 +410,7 @@
       "district-building-fire-hazard":    { "scope": "district", "modifier": "BuildingFireHazard",         "magnitudeCap": 0.20, "durationCapMonths": 24, "fallbackEffectId": "district-wellbeing" },
       "district-bike-probability":        { "scope": "district", "modifier": "BikeProbability",            "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
       "district-car-reserve-probability": { "scope": "district", "modifier": "CarReserveProbability",      "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-street-speed-limit":      { "scope": "district", "modifier": "StreetSpeedLimit",          "magnitudeCap": 0.15, "durationCapMonths": 24, "fallbackEffectId": "district-wellbeing" },
 
       "city-tax-happiness":               { "scope": "city", "modifier": "TaxHappiness",                        "magnitudeCap": 0.15, "durationCapMonths": 60, "fallbackEffectId": "" },
       "city-attractiveness":              { "scope": "city", "modifier": "Attractiveness",                      "magnitudeCap": 0.25, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
@@ -441,7 +442,9 @@
       "city-disaster-damage-rate":        { "scope": "city", "modifier": "DisasterDamageRate",                  "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
       "city-taxi-starting-fee":           { "scope": "city", "modifier": "TaxiStartingFee",                     "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
       "city-oil-resource-amount":         { "scope": "city", "modifier": "OilResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
-      "city-ore-resource-amount":         { "scope": "city", "modifier": "OreResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" }
+      "city-ore-resource-amount":         { "scope": "city", "modifier": "OreResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-office-software-efficiency":  { "scope": "city", "modifier": "OfficeSoftwareEfficiency",            "magnitudeCap": 0.30, "durationCapMonths": 24, "fallbackEffectId": "city-office-efficiency" },
+      "city-highway-traffic-safety":      { "scope": "city", "modifier": "HighwayTrafficSafety",                "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" }
     }
   },
 

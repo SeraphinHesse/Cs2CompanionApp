@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agora.local/schemas/timeline_adaptation.schema.json",
+  "title": "timeline_adaptation.json — how each shipped timeline event becomes (or does not become) a civic event",
+
+  "$comment": "OWNER DECISION, wave 3: the 25/50/25 split is expressed HERE and the timeline catalogs are NOT edited. The rework plan's wording was 'drop the most boring 25% outright', which would have deleted ~30 authored real-history entries from data/timeline_*.json and stopped them firing in the existing timeline system too — a destructive side effect of a story-system wave. A separate policy file gets the same behaviour reversibly: an event marked 'none' keeps firing as a timeline event exactly as it does today and is simply never wrapped into a civic event. One further check runs in the test suite and cannot be expressed here: every id below must name an event that actually exists in timeline_global/eu/na.json.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policies"],
+
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+
+    "defaultPolicy": {
+      "type": "string",
+      "enum": ["none", "generic"],
+      "default": "generic",
+      "$comment": "What an event with no entry below gets. 'generic' means the middle 50% need no entry at all, so the file lists only the two deliberate ends of the split."
+    },
+
+    "policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["timelineEventId", "policy"],
+        "properties": {
+          "timelineEventId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+
+          "policy": {
+            "type": "string",
+            "enum": ["none", "generic", "authored"],
+            "$comment": "'none' — never becomes a civic event; it stays a timeline event and nothing else changes. This is the non-destructive form of the plan's 'drop'. 'generic' — the adapter wraps it: name from title, description from headlineBrief, a severity-derived check. 'authored' — a hand-written civic event in data/events_*.json takes over, with real resolution checks and all seven prose fields; civicEventId names it."
+          },
+
+          "civicEventId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$",
+            "$comment": "Required when policy is 'authored'. Must name an event in the civic event catalogs."
+          },
+
+          "reason": {
+            "type": "string",
+            "$comment": "Why this event sits at this end of the split. Required by content review for 'none': 'the most boring 25%' is a judgement, and a judgement with no stated reason cannot be argued with later."
+          }
+        }
+      }
+    }
+  }
+}
