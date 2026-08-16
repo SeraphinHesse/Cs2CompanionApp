@@ -1121,12 +1121,19 @@ namespace Agora.Mod.Core
 
             // Logged because the failure mode is silent: a catalog that came out short drops cached
             // entries one at a time, and the player sees names quietly revert with nothing in the log
-            // to say why. Four counts here turn that into a one-line diagnosis.
+            // to say why. Five counts here turn that into a one-line diagnosis.
+            //
+            // Stories are the fifth, and they were nearly the counterexample this comment warns
+            // about: the count existed for a wave with no call site, while story ids are the entry
+            // most likely to come back empty — they are minted per cycle, and a load that rebuilds
+            // state without them (a lost state_*.json beside an intact flavor_cache.json, or a
+            // rewind) drops every cached story entry with nothing above Debug to say so.
             AgoraMod.Log.Info("Agora flavor: cache re-validation catalog — " +
                               catalog.PartyCount + " parties, " +
                               catalog.FactionCount + " factions, " +
                               catalog.DistrictCount + " districts, " +
-                              catalog.EventCount + " events.");
+                              catalog.EventCount + " events, " +
+                              catalog.StoryCount + " stories.");
 
             _flavor = FlavorProviders.Create(saveGuid, _saveSettings.Theme, directory, catalog);
         }
