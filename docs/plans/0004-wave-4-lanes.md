@@ -266,56 +266,46 @@ Lanes 4a, 4c, 4d are pure `Agora.Core` and carry the full testing obligation.
 
 ---
 
-## RESUME STATE — wave 4 is NOT closed
+## CLOSED — all eight lanes merged, reviewed and green
 
-Written when a session limit cut three lanes off mid-work. **Read this before doing anything else.**
-The umbrella (`event-system/wave-4`) is clean and green at **2041 passed, 0 failed**; nothing below
-is broken, it is unfinished.
+**Zero merge conflicts across eight lanes**, the fifth wave to prove the spine-first law and the
+widest test of it yet. Final: **2109 passed, 0 failed** (from 1978 at the base, **+131**), solution
+build 0 warnings including the deploying pass, `npx tsc --noEmit` clean.
 
-### Merged and done
+| Lane | Delivered | Review |
+|---|---|---|
+| **4a** `StoryCycle.cs` | The cycle: sweep, resolve, draft, archive, replay suspension | **Blocked once** — half the block was the orchestrator's |
+| **4b** `AgoraRuntime.StoryCommands.cs` | Four inbound commands, 14 manual gate rows | **Blocked once**, 5 findings; 2 were spine defects |
+| **4c** `StoryEffects.cs` + `StoryPressure.cs` | Effects, breadth cap, salience/credit split | **Blocked once**, 3 findings, all measured |
+| **4d** `PowerLedger.cs` | Accrual, awards, spends, debt penalty | **Blocked once**, 2 findings |
+| **4e** tests | 34 tests: reload matrix, sweep, replay, evidence | **Blocked once** — 5 over-broad assertions |
+| **4f/4g/4h** content | 90 wrapped timeline events given an `issuePressure` | 4f **blocked once**; 4g, 4h approved first pass |
 
-| Lane | State |
-|---|---|
-| **4d** power ledger | ✅ merged (`5b2e3b8`). Blocked once, fixed: `>=` → `==` accrual guard, `Spend` → `TrySpend` |
-| **4f** global content | ✅ merged (`d1fa4c7`). Blocked once, fixed: six recessions had `growth` inverted |
-| **4g** EU content | ✅ merged (`c0c860c`). Approved first pass |
-| **4h** NA content | ✅ merged (`3afcf8b`). Approved first pass |
+**Every lane was blocked at least once, and every block was a real defect a green suite had waved
+through** — the same result as wave 3, on a wave whose defects were of a different family entirely.
 
-All 90 wrapped timeline events now author an `issuePressure`. That gap is closed.
+### What the disjoint-lane structure actually bought
 
-### Outstanding, in the order to resume
+Lane 4e wrote 34 tests against four `AGORA-SEAM` stubs, in a worktree that could not build. When 4a's
+and 4c's real bodies merged, **27 of its 32 failures went green at once** — the reload matrix, the
+sweep boundary, replay suspension, recorded-evidence scoring and the district-identity case all held
+against code written independently that had never seen those tests. The 5 survivors were all the test
+lane's own over-broad assertions, and one of them was a genuine design disagreement worth having.
 
-1. **4a — committed, reviewed, ONE ITEM STILL OWED.** Branch `event-system/w4-4a` at `2fbd5b5`,
-   clean. It fixed the forward-dated-story reap and reworded the `PoliticalPowerEnabled` comment.
-   **It has NOT done the district-id seam change** — that instruction was sent but the session ended
-   before it was acted on, and its report does not mention districts. Re-send: `ForActive` /
-   `ForResolution` gain a `string districtId`, and 4a chooses it deterministically from
-   `StoryCycleInput.Context.Today`. Do not merge 4a until 4c's seam matches.
-2. **4c — BLOCKED, fix in progress, uncommitted (3 files).** Branch still at the spine. The three
-   required changes are in the message history: the severity-ordering test (its tuning half is done,
-   commit `6ffec56`), reading `stories.resolutionEffectMonths` for the resolution duration (key added,
-   same commit), and the district-id seam widening. **This is the wave's most valuable outstanding
-   repair** — 102 of 277 authored effect references (36.8%) currently dispatch nothing, and 47 of 174
-   non-empty effect phases resolve to literally no effect.
-3. **4b — BLOCKED, fix NEVER DISPATCHED.** Branch still at the spine, one uncommitted file. My
-   omission, not the lane's: I did the two spine halves of its block (`PlayerCommand.DeclaredMet` and
-   `PlayerCommandLog.Append`, both merged) and then never sent the lane the remaining four. Still
-   owed by the lane: B2 (a paid `PowerOverride` can be overwritten free by `SetStoryResponse`, then
-   charged again — the review has the exact three-step sequence), B3 (binding names — its remarks say
-   `declareOutcome` where the plan says `declareManual`, and it invented a fourth binding
-   unilaterally), B5 (both catch blocks claim state is unchanged after it has already changed), plus
-   clearing `PlayerText` on a bought override and `CapFreeText`'s unbounded fall-through. It must also
-   switch to `PlayerCommandLog.Append` and `TrySpend`, and re-send its twelve manual gate rows — the
-   reviewer never received them and could not judge them.
-4. **4e — merged the umbrella, revision in progress, uncommitted (2 files).** Owes two added cases:
-   a story reached by both the sweep and the ordinary pass producing exactly **one** resolution, and
-   archive trim at exactly `retention`, at `retention + 1`, and at `retention <= 0`. **Merges last**,
-   and its failures are expected until 4a and 4c land — that is the design, not a defect.
+### The defect family this wave produced
 
-### Then
+Wave 3's was *a check that reads like a goal and cannot function as one*. Wave 4's was **a derived
+number no green suite can see**:
 
-Re-review 4a and 4c after their fixes, review 4b, merge in the order above, and only then
-`/commitpushpr`.
+- severity clamping to a constant, so a severity-1 minor story did exactly as much damage as a
+  severity-5 catastrophe — and the cap test passed *because* all five clamped to the same value;
+- 102 of 277 authored effect references (36.8%) skipped for want of a district id, behind an honest
+  comment;
+- a per-call breadth cap bounding one story instead of the cycle, against a ledger limit 30 cycles of
+  consequences could overlap on;
+- three lanes each appearing to have a rewind defect that was one spine omission behind all of them.
+
+Every one was found by a reviewer probing arithmetic. **None was found by a test.**
 
 ---
 
