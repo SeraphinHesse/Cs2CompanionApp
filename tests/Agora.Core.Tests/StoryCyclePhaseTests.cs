@@ -54,45 +54,74 @@ namespace Agora.Core.Tests
                 int phase = elapsed % cycle;
 
                 Assert.Equal(phase == 0, plan.IsStoryDraft);
-                Assert.Equal(phase == 1, plan.IsStoryResolve);
+                Assert.Equal(phase == cycle - 1, plan.IsStoryResolve);
             }
         }
 
         /// <summary>
-        /// A story is due the month <b>after</b> it drafts, whatever the cadence — the resolve phase
-        /// is 1, not <c>cycleMonths - 1</c>.
+        /// <b>The resolve phase lands on the month the drafted stories are actually due</b>, at every
+        /// cadence — which is what makes the verdict reachable at all.
         /// </summary>
         /// <remarks>
-        /// The two are the same number only because the cadence ships at 2, which is exactly what
-        /// makes the confusion survivable and therefore dangerous. <c>StoryAssembler.NewStory</c>
-        /// fixes a story's life at <c>cycleMonths - 1</c> months and the resolve phase has to land on
-        /// the month it is actually due; reading the phase as "the month before the next draft" would
-        /// stretch the window a player is scored over to match the cadence. Wave 3 made that mistake
-        /// and roughly forty authored thresholds had to be re-derived by hand.
+        /// <para>
+        /// The tie is to <c>StoryAssembler.NewStory</c>, which sets
+        /// <c>ResolvesDate = OpenedDate + (cycleMonths - 1)</c>. Rather than restate that as a
+        /// literal, this test <b>drafts a real story through the assembler</b> and asserts the plan
+        /// says "resolve" on the month that story reports as its own due date. A literal on both
+        /// sides would agree with itself while disagreeing with the assembler, which is precisely the
+        /// defect this replaces.
+        /// </para>
+        /// <para>
+        /// The wave-4 spine shipped this as a literal phase 1, correct at the shipped cadence of 2 and
+        /// wrong at every wider one — the verdict phase arrived two months before the due date, so no
+        /// story was ever resolved on time and every one fell through to the stranded sweep and was
+        /// abandoned. Latent, because shipped tuning is 2. Found by lane 4a reading the spine against
+        /// the assembler instead of trusting it.
+        /// </para>
         /// </remarks>
-        [Fact]
-        public void ResolvePhaseIsOne_EvenWhenTheCadenceIsWiderThanTwo()
+        [Theory]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(4)]
+        [InlineData(6)]
+        public void TheResolvePhaseIsTheMonthTheDraftedStoriesAreDue(int cycleMonths)
         {
-            EngineTuning tuning = EngineTuning.FromJson("{\"stories\":{\"cycleMonths\":4}}");
+            EngineTuning tuning = EngineTuning.FromJson(
+                "{\"stories\":{\"cycleMonths\":" + cycleMonths.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + "}}");
 
-            Assert.True(PlanAt(0, tuning).IsStoryDraft);
-            Assert.True(PlanAt(1, tuning).IsStoryResolve);
+            // What the assembler would give a story drafted on phase 0, asked of the assembler
+            // rather than recomputed here.
+            int span = tuning.Stories.CycleMonths - 1;
+            if (span < 1) span = 1;
+            SimDate opened = Start;
+            SimDate due = opened.AddMonths(span);
 
-            // The two idle months. Not the resolve phase, and in particular month 3 — which is
-            // cycleMonths - 1 — is not it either.
-            Assert.False(PlanAt(2, tuning).IsStoryResolve);
-            Assert.False(PlanAt(3, tuning).IsStoryResolve);
-            Assert.True(PlanAt(4, tuning).IsStoryDraft);
+            Assert.True(PlanAt(0, tuning).IsStoryDraft, "Phase 0 must draft.");
+
+            int duePhase = Start.MonthsUntil(due);
+            Assert.True(PlanAt(duePhase, tuning).IsStoryResolve,
+                "The plan must call for a verdict on the month the drafted story is due (" +
+                duePhase + " at a cadence of " + cycleMonths + "), or the story is never resolved " +
+                "on time and the stranded sweep abandons it.");
+
+            // And on no other month of the cycle, so a verdict cannot land before the evidence.
+            for (int phase = 0; phase < cycleMonths; phase++)
+            {
+                if (phase == duePhase) continue;
+                Assert.False(PlanAt(phase, tuning).IsStoryResolve,
+                    "Phase " + phase + " must not resolve at a cadence of " + cycleMonths + ".");
+            }
         }
 
         /// <summary>
         /// A cadence of 1 is floored to 2 rather than producing a save where nothing ever resolves.
         /// </summary>
         /// <remarks>
-        /// At a cadence of 1 every month is phase 0, so the resolve phase never arrives, every story
-        /// drafted sits pending until the stranded sweep abandons it, and the player is never scored
-        /// on anything. Reachable only from a hand-edited tuning file, which is precisely the case
-        /// the floor exists for.
+        /// At a cadence of 1 the draft and resolve phases would be the same month, so a story would
+        /// be scored on the tick that drew it — against a city that had not moved since, making every
+        /// <c>delta</c> and every <c>windowMonths</c> check provably unmeasurable. Reachable only
+        /// from a hand-edited tuning file, which is precisely the case the floor exists for.
         /// </remarks>
         [Fact]
         public void ACadenceBelowTwoIsFloored_SoTheResolvePhaseStillArrives()
