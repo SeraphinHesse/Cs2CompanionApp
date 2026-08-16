@@ -23,6 +23,7 @@
         }
       ],
       "headlineBrief": "US downturn dated from July 1990: oil price spike after the invasion of Kuwait, a credit contraction, and defence and construction layoffs. Local angle: municipal revenue falls while service demand rises, and incumbents are blamed for a national cycle.",
+      "issuePressure": { "costOfLiving": 0.35, "growth": 0.15 },
       "tags": [
         "economy",
         "recession",
@@ -51,6 +52,7 @@
         }
       ],
       "headlineBrief": "Congress adds acid-rain emissions trading, urban smog deadlines and air-toxics rules. Cities gain enforceable air targets and compliance costs at once; industrial employers argue the schedule closes plants. Environment becomes a municipal budget line.",
+      "issuePressure": { "environment": 0.4, "growth": -0.15 },
       "tags": [
         "environment",
         "regulation",
@@ -85,6 +87,7 @@
         }
       ],
       "headlineBrief": "Acquittals in the Rodney King beating trial trigger six days of rioting in Los Angeles; the guard is deployed and thousands of buildings burn or are looted. Policing practice, inner-city disinvestment and emergency response dominate municipal politics.",
+      "issuePressure": { "heritageOrder": 0.4, "services": 0.25 },
       "tags": [
         "unrest",
         "policing",
@@ -141,6 +144,7 @@
         }
       ],
       "headlineBrief": "Tariffs begin phasing out across Canada, Mexico and the United States. Continental supply chains reorganise: cheaper imported inputs and export access set against plant relocation. Trade becomes a permanent local cleavage rather than a one-off vote.",
+      "issuePressure": { "growth": 0.25, "costOfLiving": 0.2 },
       "tags": [
         "trade",
         "nafta",
@@ -169,6 +173,7 @@
         }
       ],
       "headlineBrief": "The 1994 crime act funds 100,000 additional officers, prison construction and mandatory minimums. Cities take the federal money for patrol strength now; the incarceration bill and its neighbourhood effects arrive a decade later.",
+      "issuePressure": { "heritageOrder": 0.45, "services": 0.15 },
       "tags": [
         "crime",
         "policing",
@@ -197,6 +202,7 @@
         }
       ],
       "headlineBrief": "The 1996 act opens local telephone markets, loosens broadcast ownership caps and sets terms for cable and internet build-out. Cities negotiate franchise and right-of-way deals; coverage gaps become a visible local grievance.",
+      "issuePressure": { "growth": 0.25, "services": 0.2 },
       "tags": [
         "telecom",
         "deregulation",
@@ -225,6 +231,7 @@
         }
       ],
       "headlineBrief": "PRWORA replaces AFDC with time-limited block grants and work requirements. Caseloads fall sharply; responsibility for whoever remains shifts to states, counties and city services. Poverty becomes a municipal service problem.",
+      "issuePressure": { "services": 0.4, "costOfLiving": 0.3 },
       "tags": [
         "welfare",
         "services",
@@ -287,6 +294,7 @@
         }
       ],
       "headlineBrief": "The technology-led recession begins in March 2001: startup failures, telecom overbuild write-offs and vacant sublease space. Cities that leveraged boom revenue face structural deficits and a stalled office pipeline.",
+      "issuePressure": { "growth": 0.3, "costOfLiving": 0.15 },
       "tags": [
         "dot-com",
         "recession",
@@ -349,6 +357,7 @@
         }
       ],
       "headlineBrief": "Signed six weeks after the attacks, the act widens wiretap, records and information-sharing authority and pushes federal-local intelligence fusion. Civil-liberties objections are marginal in 2001 and grow steadily through the decade.",
+      "issuePressure": { "heritageOrder": 0.35 },
       "tags": [
         "security",
         "civil-liberties",
@@ -405,6 +414,7 @@
         }
       ],
       "headlineBrief": "Storm surge overwhelms New Orleans flood defences; more than 1,800 die and the federal response fails in public. Emergency management, evacuation planning and infrastructure maintenance move from technical questions to electoral ones.",
+      "issuePressure": { "services": 0.5, "environment": 0.2 },
       "tags": [
         "disaster",
         "emergency-management",
@@ -427,6 +437,7 @@
         }
       ],
       "headlineBrief": "Millions march against the Sensenbrenner enforcement bill; the 1 May walkout stops construction, meatpacking and restaurant work in several cities. Immigration becomes an open municipal cleavage rather than a federal abstraction.",
+      "issuePressure": { "heritageOrder": 0.3, "growth": 0.15 },
       "tags": [
         "immigration",
         "labour",
@@ -461,6 +472,7 @@
         }
       ],
       "headlineBrief": "The recession dates from December 2007: subprime defaults, falling house prices, construction layoffs and foreclosure clusters. Property-tax bases fall with a lag, so the municipal fiscal crisis arrives after the national one has been declared over.",
+      "issuePressure": { "costOfLiving": 0.45, "services": 0.25 },
       "tags": [
         "recession",
         "housing",
@@ -489,6 +501,7 @@
         }
       ],
       "headlineBrief": "The rescue package is signed on 3 October 2008 after Lehman's failure and an initial House rejection. It stabilises credit and detonates a legitimacy problem: support for banks, foreclosure for households. Both later populisms start here.",
+      "issuePressure": { "costOfLiving": 0.45, "services": 0.2 },
       "tags": [
         "finance",
         "bailout",
@@ -523,6 +536,7 @@
         }
       ],
       "headlineBrief": "The Recovery Act directs roughly $800bn to tax cuts, state budget relief and infrastructure. Cities receive transport, water and weatherisation money on federal timelines, and delivery speed becomes the local test of competence.",
+      "issuePressure": { "services": 0.3, "transit": 0.2 },
       "tags": [
         "stimulus",
         "infrastructure",
@@ -579,6 +593,7 @@
         }
       ],
       "headlineBrief": "Coverage expansion through exchanges, subsidies and optional Medicaid expansion. Hospitals see uncompensated-care loads fall where states expand, and health coverage becomes an explicit partisan marker at every level of government.",
+      "issuePressure": { "services": 0.5, "costOfLiving": 0.15 },
       "tags": [
         "healthcare",
         "services",
@@ -607,6 +622,7 @@
         }
       ],
       "headlineBrief": "Protest camps in dozens of downtowns put inequality and post-crisis impunity on the agenda and force cities into visible eviction decisions. Public-space policing and the 99-percent frame both outlive the camps themselves.",
+      "issuePressure": { "costOfLiving": 0.35, "heritageOrder": 0.2 },
       "tags": [
         "protest",
         "inequality",
@@ -641,6 +657,7 @@
         }
       ],
       "headlineBrief": "Storm surge floods subway tunnels, substations and coastal neighbourhoods days before a national election. Climate adaptation shifts from a coastal-planning topic to a capital-budget argument in every exposed city.",
+      "issuePressure": { "environment": 0.3, "transit": 0.25, "services": 0.15 },
       "tags": [
         "disaster",
         "climate-adaptation",
@@ -709,6 +726,7 @@
         }
       ],
       "headlineBrief": "A cost-driven switch to the Flint River without corrosion control leaches lead into household taps, and officials deny the problem for eighteen months. Emergency financial management and the credibility of technical assurances both collapse.",
+      "issuePressure": { "services": 0.5, "environment": 0.3 },
       "tags": [
         "water",
         "infrastructure",
@@ -737,6 +755,7 @@
         }
       ],
       "headlineBrief": "A police shooting in Ferguson, Missouri triggers weeks of protest and a militarised response. Body cameras, consent decrees and municipal fines-and-fees practice enter mainstream local politics.",
+      "issuePressure": { "heritageOrder": 0.35, "costOfLiving": 0.1 },
       "tags": [
         "policing",
         "protest",
@@ -799,6 +818,7 @@
         }
       ],
       "headlineBrief": "An anti-trade, anti-establishment campaign takes the industrial Midwest on turnout and defection in long-safe counties. Education replaces income as the sharpest voting cleavage, and trade and immigration become the governing agenda.",
+      "issuePressure": { "heritageOrder": 0.4, "growth": -0.25 },
       "tags": [
         "populism",
         "realignment",
@@ -849,6 +869,7 @@
         }
       ],
       "headlineBrief": "The 2017 act cuts the corporate rate to 21 percent and caps the state and local tax deduction. High-tax metros take a direct hit to their revenue politics, and business investment claims dominate the local argument.",
+      "issuePressure": { "costOfLiving": 0.35, "services": -0.15 },
       "tags": [
         "taxes",
         "business",
@@ -877,6 +898,7 @@
         }
       ],
       "headlineBrief": "Twenty-five percent steel and ten percent aluminium tariffs take effect on national-security grounds, hitting allies as well as rivals. Metal producers gain; fabricators, builders and equipment makers pay. Retaliation targets farm exports.",
+      "issuePressure": { "costOfLiving": 0.25, "growth": -0.15 },
       "tags": [
         "tariffs",
         "trade",
@@ -961,6 +983,7 @@
         }
       ],
       "headlineBrief": "Direct payments, expanded unemployment benefits and payroll loans land as the economy shuts down. Transfers exceed lost wages for many households, while municipal revenue collapses on transit fares and sales tax.",
+      "issuePressure": { "costOfLiving": 0.4, "services": 0.25 },
       "tags": [
         "pandemic",
         "relief",
@@ -989,6 +1012,7 @@
         }
       ],
       "headlineBrief": "The largest protest wave in decades reaches small cities as well as large ones, with property damage and curfews in some downtowns. Police budgets, use-of-force rules and civilian oversight become ballot-level questions.",
+      "issuePressure": { "heritageOrder": 0.4, "services": 0.2 },
       "tags": [
         "protest",
         "policing",
@@ -1017,6 +1041,7 @@
         }
       ],
       "headlineBrief": "A crowd breaks into the Capitol to stop certification of the presidential result. Election administration, until now clerical work, becomes a contested partisan office, and local election officials face threats and turnover.",
+      "issuePressure": { "heritageOrder": 0.4 },
       "tags": [
         "legitimacy",
         "elections",
@@ -1051,6 +1076,7 @@
         }
       ],
       "headlineBrief": "Roughly $1.2tn over five years for roads, bridges, transit, water mains and broadband, distributed largely by competitive grant. Cities with grant-writing capacity capture disproportionate shares and the rest fall further behind.",
+      "issuePressure": { "transit": 0.3, "services": 0.25 },
       "tags": [
         "infrastructure",
         "transit",
@@ -1085,6 +1111,7 @@
         }
       ],
       "headlineBrief": "June consumer prices are reported at 9.1 percent year on year, led by rent, fuel and groceries. Real wages fall for two years and cost of living displaces every other issue in polling, whatever a city government actually controls.",
+      "issuePressure": { "costOfLiving": 0.6 },
       "tags": [
         "inflation",
         "cost-of-living",
@@ -1119,6 +1146,7 @@
         }
       ],
       "headlineBrief": "Semiconductor subsidies in August 2022 are followed within a week by clean-energy tax credits. Site selection, grid connections and training pipelines become the substance of state and municipal competition for plants.",
+      "issuePressure": { "growth": 0.35, "environment": 0.2 },
       "tags": [
         "industrial-policy",
         "energy",
@@ -1147,6 +1175,7 @@
         }
       ],
       "headlineBrief": "Smoke from record Quebec fires pushes eastern US air quality to the worst on record on 7 June 2023; schools close and outdoor work stops. Air quality becomes a lived urban experience rather than a regulatory abstraction.",
+      "issuePressure": { "environment": 0.45, "services": 0.15 },
       "tags": [
         "wildfire",
         "air-quality",
@@ -1181,6 +1210,7 @@
         }
       ],
       "headlineBrief": "A universal baseline tariff plus higher country-specific rates is announced on 2 April 2025, followed by partial suspensions and retaliation. Import-dependent retail and construction costs jump and sourcing decisions freeze.",
+      "issuePressure": { "costOfLiving": 0.4, "growth": -0.2 },
       "tags": [
         "tariffs",
         "trade",

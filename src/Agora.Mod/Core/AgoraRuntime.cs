@@ -7,6 +7,7 @@ using Agora.Core.Engine;
 using Agora.Core.Engine.Parties;
 using Agora.Core.Events.Catalog;
 using Agora.Core.Events.Scheduler;
+using Agora.Core.Stories;
 using Agora.Core.Stories.Catalog;
 using Agora.Core.Tuning;
 using Agora.Mod.Effects;
@@ -1007,11 +1008,37 @@ namespace Agora.Mod.Core
             int was = _state.LastCompletedTickMonth;
             _state.LastCompletedTickMonth = today.TotalMonths - 1;
 
+            // EVERY watermark, not just the tick's. Wave 0 wrote this repair when there was exactly
+            // one; wave 4 added three more — the two story phases and the power accrual — and each of
+            // them gates its own subsystem behind the same "have we already run this month" question.
+            // Repairing one and leaving three is what made three separate wave-4 lanes each look like
+            // they had a rewind defect of their own: the cycle stalled for every month between the
+            // city's date and the stale watermark, silently, with no log line and no story panel, and
+            // the accrual froze while every debit stayed live. A save rolled back further than the
+            // snapshot retention is a supported path, not an abuse — TickPlanner.SnapshotsToPrune
+            // keeps only the newest few, so it is reachable in ordinary play.
+            //
+            // Pulled to today - 1 rather than to -1, so the guards read "this month has not run" and
+            // not "no month has ever run": resetting to never would re-open a first-tick path that
+            // reseeds the election calendar and the pool.
+            int floor = today.TotalMonths - 1;
+
+            int draftWas = _state.LastStoryDraftMonth;
+            int resolveWas = _state.LastStoryResolveMonth;
+            if (_state.LastStoryDraftMonth > floor) _state.LastStoryDraftMonth = floor;
+            if (_state.LastStoryResolveMonth > floor) _state.LastStoryResolveMonth = floor;
+
+            PoliticalPowerState power = _state.Power;
+            int accrualWas = power != null ? power.LastAccrualMonth : -1;
+            if (power != null && power.LastAccrualMonth > floor) power.LastAccrualMonth = floor;
+
             AgoraMod.Log.Info("Agora: the political state is dated ahead of the city (watermark month " +
                               was + ", city is at " + today + "). Reconciling the watermark to " +
                               _state.LastCompletedTickMonth + " so this month ticks — the " +
                               "RewindBeforeHistory path keeps the party system and settings and " +
-                              "rebuilds current state from city metrics.");
+                              "rebuilds current state from city metrics. Story watermarks " +
+                              draftWas + "/" + resolveWas + " and power accrual " + accrualWas +
+                              " were reconciled with it.");
         }
 
         private static void ConfigureClock()

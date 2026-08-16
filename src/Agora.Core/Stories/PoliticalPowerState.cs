@@ -153,6 +153,31 @@ namespace Agora.Core.Stories
         /// <summary>The player's own words. Never parsed for a number.</summary>
         public string FreeText { get; set; } = "";
 
+        /// <summary>
+        /// The declared outcome, for <see cref="PlayerCommandKind.DeclareManualOutcome"/> only.
+        /// Meaningless — and always false — on every other kind.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Without this the log cannot tell a declared success from a declared failure</b>, and the
+        /// contract above promises it can. The two commands would append rows differing in no field,
+        /// while the flag they set — <see cref="StorySlot.ManualDeclared"/> — is what
+        /// <see cref="PoliticalPower.AwardFor"/>'s <c>manualDeclared</c> parameter reads. A replay
+        /// that rebuilt state from the log, which this contract explicitly permits, would score a
+        /// different award from the one the player earned. Found by review of wave 4's command lane,
+        /// which had written a remark asserting the log told them apart when nothing in the log could.
+        /// </para>
+        /// <para>
+        /// <b>Additive and optional, so no schema version moves.</b> A sidecar written before this
+        /// field reads it as <c>false</c>, which is correct rather than merely tolerable: wave 4 is
+        /// the first wave that writes any story command at all, so there is no older save containing
+        /// a <see cref="PlayerCommandKind.DeclareManualOutcome"/> row for the default to be wrong
+        /// about. The wave-3 precedent is <c>engine_tuning</c>, which bumped because a section gained
+        /// a <b>required</b> property.
+        /// </para>
+        /// </remarks>
+        public bool DeclaredMet { get; set; }
+
         /// <summary>Month the command was issued, as <c>SimDate.TotalMonths</c>.</summary>
         public int DecidedMonth { get; set; }
 
@@ -161,5 +186,63 @@ namespace Agora.Core.Stories
         /// arrival — arrival order is wall-clock, which is not engine state.
         /// </summary>
         public int Sequence { get; set; }
+    }
+
+    /// <summary>
+    /// The one implementation of the command log's ordering rule.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Here, in <c>Agora.Core</c>, because deciding where a record sorts in engine state is
+    /// computing rather than glue.</b> Wave 4's command lane implemented this inside
+    /// <c>Agora.Mod</c>, which <c>src/Agora.Mod/CLAUDE.md</c> forbids — "compute nothing that belongs
+    /// in Agora.Core" — and which would have left one documented ordering rule with two
+    /// implementations on opposite sides of the assembly boundary. That is how they drift.
+    /// </para>
+    /// <para>
+    /// The sort key is <c>(DecidedMonth, Sequence, EventId ordinal)</c>, and the third component is
+    /// never actually reached: <see cref="Append"/> always issues the highest sequence in its month,
+    /// so two commands in one month are separated before the tiebreak matters. It is in the key
+    /// anyway, because a total order that depends on nothing ever colliding is not a total order.
+    /// </para>
+    /// </remarks>
+    public static class PlayerCommandLog
+    {
+        /// <summary>
+        /// Appends <paramref name="command"/> in sort position, stamping its
+        /// <see cref="PlayerCommand.Sequence"/> as the highest yet issued in its month.
+        /// </summary>
+        /// <remarks>
+        /// Inserted at position rather than appended-and-sorted. <c>List.Sort</c> is unstable, so
+        /// re-sorting a log whose sequences are already correct could still permute equal keys and
+        /// change the serialized bytes — a determinism failure with nothing wrong behind it.
+        /// </remarks>
+        public static void Append(List<PlayerCommand> log, PlayerCommand command)
+        {
+            if (log == null || command == null) return;
+
+            int next = 0;
+            int insertAt = log.Count;
+
+            for (int i = 0; i < log.Count; i++)
+            {
+                PlayerCommand existing = log[i];
+                if (existing == null) continue;
+
+                if (existing.DecidedMonth == command.DecidedMonth && existing.Sequence >= next)
+                {
+                    next = existing.Sequence + 1;
+                }
+
+                // The first entry belonging to a later month is where this one goes.
+                if (insertAt == log.Count && existing.DecidedMonth > command.DecidedMonth)
+                {
+                    insertAt = i;
+                }
+            }
+
+            command.Sequence = next;
+            log.Insert(insertAt, command);
+        }
     }
 }
