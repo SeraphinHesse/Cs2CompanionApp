@@ -1000,6 +1000,124 @@ namespace Agora.Core.Tests
             "}";
         }
 
+        // --- 5d. v6 → v7: the story wake, in a state file's nested settings block -------------------
+
+        /// <summary>
+        /// A state file exactly as a wave-4 build wrote it: root v6, nested settings v4, story
+        /// collections already present and a cadence that predates the story wake.
+        /// </summary>
+        private static string StateV6()
+        {
+            return "{" +
+                "\"schemaVersion\": 6," +
+                "\"saveGuid\": \"11112222-3333-4444-5555-666677778888\"," +
+                "\"date\": \"1994-03-01\"," +
+                "\"lastCompletedTickMonth\": " +
+                    new SimDate(1994, 3, 1).TotalMonths.ToString(CultureInfo.InvariantCulture) + "," +
+                "\"liveStories\": []," +
+                "\"storyArchive\": []," +
+                "\"eventPool\": []," +
+                "\"playerCommands\": []," +
+                "\"power\": { \"balance\": 0, \"lifetimeEarned\": 0, \"lifetimeSpent\": 0," +
+                             "\"lastAccrualMonth\": -1, \"ledger\": [] }," +
+                "\"lastStoryDraftMonth\": -1," +
+                "\"lastStoryResolveMonth\": -1," +
+                "\"settings\": {" +
+                    "\"schemaVersion\": 4," +
+                    "\"startYear\": 1990," +
+                    "\"theme\": \"Eu\"," +
+                    "\"system\": \"Proportional\"," +
+                    "\"wakeCadence\": \"Yearly, Election, Manual\"," +
+                    "\"snapshotRetention\": 25," +
+                    "\"enabled\": true," +
+                    "\"effectsEnabled\": true," +
+                    "\"themeLocked\": true," +
+                    "\"pauseOnMajorNews\": false," +
+                    "\"showAllReports\": false," +
+                    "\"voteSharpness\": \"Default\"," +
+                    "\"newsInfluence\": \"Default\"," +
+                    "\"brandDiscipline\": \"Default\"," +
+                    "\"storiesEnabled\": true," +
+                    "\"storiesPerCycle\": 2," +
+                    "\"eventsPerStory\": 3," +
+                    "\"politicalPowerEnabled\": true," +
+                    "\"powerIntensity\": \"Default\"," +
+                    "\"storyDifficulty\": \"Default\"" +
+                "}," +
+                "\"parties\": []," +
+                "\"factions\": []," +
+                "\"electionHistory\": []," +
+                "\"firedEventIds\": []," +
+                "\"termNumber\": 2," +
+                "\"isCampaignSeason\": false" +
+            "}";
+        }
+
+        /// <summary>
+        /// A wave-4 save gains the story wake, in the block the settings step table cannot reach.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is the case the whole v6 → v7 step exists for, and it is invisible from the
+        /// standalone settings tests.</b> A save with a state file never reads <c>settings.json</c> at
+        /// all — <c>SidecarStore.ResolveSettings</c> prefers the state's own block — so
+        /// <see cref="SettingsSteps"/> never sees those settings. Without a state step to carry it,
+        /// every save written by a wave-4 build would sit at settings v4 forever and never wake on a
+        /// story: no error, no log line, just a feature that works on new cities and not on old ones.
+        /// </para>
+        /// <para>
+        /// Asserted against the constants rather than against 7 and 5, so it stays a test of the step
+        /// rather than of the version number.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV6_CarriesTheStoryWakeIntoTheNestedSettings()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV6(), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.True(result.IsLoadable);
+
+            Assert.Equal(SidecarSchema.CurrentStateVersion, Int(root, SidecarSchema.VersionProperty));
+
+            JObject settings = Obj(root, "settings");
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion,
+                         Int(settings, SidecarSchema.VersionProperty));
+            Assert.Equal("Yearly, Election, Manual, Story", (string)settings["wakeCadence"]!);
+
+            // The step's only job is the cadence. Everything wave 4 wrote must arrive untouched — a
+            // v6 file already has its story collections, and a step that re-seeded them would erase
+            // a real save's history rather than upgrade it.
+            Assert.Equal(-1, Int(root, "lastStoryDraftMonth"));
+            Assert.True(settings["storiesEnabled"]!.Value<bool>());
+            Assert.Equal(2, settings["storiesPerCycle"]!.Value<int>());
+        }
+
+        /// <summary>
+        /// A v6 save whose player had narrowed the cadence keeps exactly what they chose.
+        /// </summary>
+        /// <remarks>
+        /// The other half of the rule, on the path that actually reaches a real save. Turning a wake
+        /// back on for someone who turned it off would be the mod overriding a decision about how
+        /// often it is allowed to start a subprocess — and the story wake is the most frequent one in
+        /// the build.
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV6_LeavesANarrowedCadenceAlone()
+        {
+            MigrationResult result;
+            JObject root = Migrate(
+                StateV6().Replace("\"wakeCadence\": \"Yearly, Election, Manual\"",
+                                  "\"wakeCadence\": \"Election, Manual\""),
+                out result);
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal("Election, Manual", (string)Obj(root, "settings")["wakeCadence"]!);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion,
+                         Int(Obj(root, "settings"), SidecarSchema.VersionProperty));
+        }
+
         /// <summary>
         /// The step reaches both current versions from a genuine v5 file — the root's and the nested
         /// settings block's, which move together because <c>MigrateStateV5ToV6</c> calls the settings
