@@ -42,7 +42,7 @@ true: no player has seen any of it.**
 
 ## PR
 
-**PR:** _(filled in by `/commitpushpr`)_
+**PR:** https://github.com/SeraphinHesse/Cs2CompanionApp/pull/8
 **Merge status: NOT merged.** The owner reviews. Wave 6 must not open its umbrella until it is in.
 
 ---
@@ -75,9 +75,9 @@ true: no player has seen any of it.**
 | **5a** `FlavorPromptBuilder.cs` | Story/resolution prompt sections, +12 tests | **Approved first pass** |
 | **5b** `FlavorValidator.cs` | Per-entry story id check, +6 tests | **Approved**; found one spine defect |
 | **5c** `StaticPoolProvider.cs` · `StaticPoolContent.cs` | The canned story voice, +17 tests | **Blocked once**, 2 findings, both real |
-| **5d** two new test files | 16 cross-cutting proofs | Verified on the umbrella |
+| **5d** two new test files | 17 cross-cutting proofs | **Blocked once**, 2 findings — verified on the umbrella |
 
-**The suite went 2109 → 2175 (+66).**
+**The suite went 2109 → 2178 (+69).**
 
 ---
 
@@ -132,10 +132,12 @@ true: no player has seen any of it.**
 
 ## Known gaps, recorded rather than closed
 
-- **The `IsMajor` / slot-order contract is asserted only against lane 5d's own fixture**, never
-  against what `AgoraRuntime.BuildStoryBrief` produces. If the runtime sorted slots differently the
-  golden test would keep passing. Closing it needs `BuildStoryBrief` reachable from the suite, which
-  is a Core/Mod split question rather than a test one.
+- **The `IsMajor` flag was exercised by nothing in the repo until 5d's review.** Every fixture in
+  the suite put the major slot at index 0 — `Story.Slots` really is sorted major-first — so deleting
+  the flag check from `StaticPoolProvider.MajorSlot` left all 2175 tests green.
+  `Headline_FollowsTheMajorFlagRatherThanTheSlotPosition` closes the pool's half. **The runtime half
+  is still open**: nothing proves `AgoraRuntime.BuildStoryBrief` sets `IsMajor` from `SlotRole.Major`
+  or preserves slot order into the brief, because it is reachable from no test. That is gate 7.
 - **`StoriesAllDiscarded` deliberately does not exist**, unlike `ArticlesAllDiscarded`. The reasoning
   is on `FlavorValidator.FilterStoryProse` and rests on the canned pool always having written the
   story. That premise is now true — 5c landed — but **if a future change makes pool story prose
@@ -153,19 +155,19 @@ true: no player has seen any of it.**
 
 ---
 
-## Manual gates opened by wave 5 — six, none walked
+## Manual gates opened by wave 5 — seven, none walked
 
 Full text in `docs/status.md` § "Wave 5's manual gates".
 
 Unlike wave 4, **most of wave 5 is genuinely tested** — every file the lanes touched is
-`<Compile Link>`-ed into `Agora.Core.Tests`. The six gates are what is left: the `AgoraRuntime`
-wiring, and the two things only a real save shows. Gates 1–3 are the sharpest: the wake firing on
+`<Compile Link>`-ed into `Agora.Core.Tests`. The seven gates are what is left: the `AgoraRuntime`
+wiring, and the two things only a real save shows. Gates 1-3 are the sharpest: the wake firing on
 draft months and **not** on a stories-off save, the yearly round still carrying story sections, and
 the settings migration reaching an untouched save while leaving a customised one alone.
 
 **Still outstanding from earlier waves:** all five of wave 0's, all sixteen of wave 1's, and all
 fifteen of wave 4's. None has been walked. Wave 4's rows 1–14 **cannot** run until wave 6 wires a
-pressable modal — which is this wave. Expect to walk twenty-one rows, not six.
+pressable modal — which is this wave. Expect to walk twenty-two rows, not seven.
 
 ---
 
@@ -173,10 +175,9 @@ pressable modal — which is this wave. Expect to walk twenty-one rows, not six.
 
 - `dotnet build Agora.sln` — **0 warnings, 0 errors**, toolchain mode. Run once at the end; **this
   build deploys** to the player's live `…\Mods\Agora.Mod`.
-- `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` — **2175 passed, 0 failed**
-  (from 2109; **+66**).
-- `cd ui && npx tsc --noEmit` — **not run, and not required: no `ui/` file changed this wave.**
-  Wave 6 owes it.
+- `dotnet test tests\Agora.Core.Tests\Agora.Core.Tests.csproj` — **2178 passed, 0 failed**
+  (from 2109; **+69**).
+- `cd ui && npx tsc --noEmit` — **clean.** No `ui/` file changed this wave; run anyway at close.
 - **Schema versions moved: `politics_flavor` 2→3, `engine_tuning` 8→9, flavor cache 2→3, settings
   4→5, state 6→7.** The last two are a real migration reaching every existing save — the first since
   wave 1. `timeline` and `civic_events` did not move. `PoliticalEngine.CloneState` and
