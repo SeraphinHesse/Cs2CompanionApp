@@ -1,5 +1,561 @@
 {
   "schemaVersion": 1,
   "featureIds": [],
-  "events": []
+  "events": [
+    {
+      "id": "eu-asylum-dispersal-quota",
+      "severity": 4,
+      "region": "eu",
+      "trigger": {
+        "kind": "delta",
+        "metricId": "citizensMovedIn",
+        "comparison": "gte",
+        "threshold": 1,
+        "windowMonths": 6,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 0.5,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-service-building-upkeep"],
+      "successEffects": ["city-attractiveness", "city-entertainment"],
+      "failureEffects": ["city-service-building-upkeep", "district-crime-accumulation"],
+      "activePressure": { "services": 0.3, "heritageOrder": 0.25 },
+      "successPressure": { "services": 0.1, "heritageOrder": 0.1 },
+      "failurePressure": { "services": 0.45, "heritageOrder": 0.45 },
+      "tags": ["migration", "integration", "housing", "eu"],
+      "notes": "FREQUENCY: this trigger is satisfied by essentially any city whose register grew over six months, i.e. continuously in a growing city and never in a shrinking one. It is not a rare event and nothing here should be read as claiming otherwise; what limits it in play is the reuse cooldown and competition for pool slots, not the threshold. THE THRESHOLD IS PROVISIONAL: citizensMovedIn is census-gated, so a delta of 1 may be a day's arrivals or a founding-to-date total. It is deliberately the smallest positive value that still means 'the register grew', which is directionally correct under either reading; wave 7 retunes it once AGORA-STATCOLLECTION is walked, and a tighter, genuinely occasional threshold is only authorable after that. CHECK SIZE: half a happiness point above where the story opened, over the one month a story lives (stories.cycleMonths - 1, not cycleMonths - the story drafts at M and resolves at M+1). The test is whether the council absorbed the intake without the city souring, not whether it improved.",
+      "name": "Dispersal quota lands on the council",
+      "description": "The prefecture sends the council its share under the national dispersal key: reception places, school registrations and case workers, all inside the existing budget line. The opposition calls it an unfunded mandate. The churches and the unions call it the minimum. Nobody disputes the arithmetic of how many are coming.",
+      "ignoreText": "Take the allocation and house it wherever there is space this month.",
+      "goalText": "Absorb the intake without letting the city's mood slip below where it started.",
+      "powerOverrideText": "Spend political capital appealing the allocation to the prefecture and settle it out of public view.",
+      "successText": "The intake was housed and registered, the halls and clubrooms opened to it, and the prefecture's numbers stopped being the only story in the local paper.",
+      "failText": "Reception places overflowed into temporary accommodation, tempers went with them, and the council is now the reason people give for everything else."
+    },
+    {
+      "id": "eu-cohesion-fund-bid",
+      "severity": 3,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "unemployment",
+        "comparison": "gte",
+        "threshold": 0.1,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "unemployment",
+          "comparison": "lt",
+          "threshold": 0.1,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["city-export-cost"],
+      "successEffects": ["city-industrial-efficiency", "district-low-commercial-tax"],
+      "failureEffects": ["city-import-cost", "city-loan-interest"],
+      "activePressure": { "growth": 0.3, "costOfLiving": 0.2 },
+      "successPressure": { "growth": 0.1, "costOfLiving": 0.05 },
+      "failurePressure": { "growth": 0.45, "costOfLiving": 0.35 },
+      "tags": ["eu-funding", "jobs", "regeneration", "budget"],
+      "notes": "One district at ten percent unemployment is the qualifying reading, and district unemployment is far spikier than the city mean - a single quarter losing its main employer clears it. A mid-size city should expect this two or three times in a twenty-year run. CHECK SHAPE: allDistricts at the trigger's own threshold, so gte 0.10 and lt 0.10 are exact complements. An earlier draft asked lt 0.09 and was wrong: allDistricts returns NotMet on one failing district, so every district sitting in [0.09, 0.10) would have failed a story it never contributed to and is never mentioned in - and in the downturn city this event fires in, that band is exactly where districts cluster. The goal is now 'no quarter left above the bar that raised the bid', answerable only by the quarter the story is about, since the others are normally well clear.",
+      "name": "Cohesion fund bid, and the co-financing to find",
+      "description": "The regeneration package is on the table: seven years of structural money for the quarter with the shuttered works, conditional on the council finding its own share and delivering measurable employment. The application window closes at the end of the quarter. The finance committee has read the co-financing clause twice and gone quiet.",
+      "ignoreText": "Let the window close. The co-financing was never in the medium-term plan.",
+      "goalText": "Win the bid and get every district back under ten percent unemployment.",
+      "powerOverrideText": "Lean on the regional managing authority to waive the co-financing test and take the consequences later.",
+      "successText": "The money landed, the works site reopened as something else, and there is no longer a quarter of this city with a jobless register worth reporting.",
+      "failText": "The bid failed the appraisal, the co-financing was borrowed for nothing, and the quarter is a case study in somebody else's evaluation report."
+    },
+    {
+      "id": "eu-cycle-lane-objection",
+      "severity": 3,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "trafficCongestion",
+        "comparison": "gte",
+        "threshold": 0.5,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "trafficCongestion",
+          "comparison": "lte",
+          "threshold": -0.03,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-parking-fee"],
+      "successEffects": ["district-bike-probability", "district-street-traffic-safety"],
+      "failureEffects": ["district-car-reserve-probability", "district-street-speed-limit"],
+      "activePressure": { "transit": 0.3, "environment": 0.15, "heritageOrder": 0.15 },
+      "successPressure": { "transit": 0.1, "environment": 0.05, "heritageOrder": 0.05 },
+      "failurePressure": { "transit": 0.4, "environment": 0.25, "heritageOrder": 0.3 },
+      "tags": ["cycling", "transit", "objections", "streets"],
+      "notes": "Congestion at or above 0.5 is an ordinary busy weekday in any city past its second milestone, so this is one of the more frequently pooled events in this file - expect it several times over a long run, throttled mainly by the reuse cooldown. CHECK SIZE: three points off congestion over the ONE month a story lives (stories.cycleMonths - 1). This is one of only two relative bars in the file NOT halved when the story's life was re-derived - congestion and pollution both respond within a month of a network or restriction change, where a population mean like wealth or homelessness does not, so the horizon correction does not bite on them. It is achievable by a genuine modal shift and is not achievable by doing nothing, which is exactly the discrimination wanted. The failure raises street speed limits: the arterial keeps its lanes and stays exactly as hostile to anything without an engine as it was.",
+      "name": "Protected cycle lane, and the parking bays it costs",
+      "description": "The mobility plan takes a traffic lane and a row of parking bays off the arterial and gives them to a kerb-separated cycle track. The cycling association has counted the collisions. The shopkeepers' association has counted the bays. Both delegations are booked into the same committee evening.",
+      "ignoreText": "Leave the plan on the shelf and repaint the advisory lane that is already there.",
+      "goalText": "Build the track and pull city congestion down by three points.",
+      "powerOverrideText": "Push the scheme through under delegated officer powers before the objection period closes.",
+      "successText": "The track opened, the counts climbed, and the traffic the shopkeepers were promised would strangle the street never materialised.",
+      "failText": "The bays went and the traffic stayed, faster than before. The cycle lobby got its kerbstones and everybody else got the same jam with less parking."
+    },
+    {
+      "id": "eu-district-heating-bills",
+      "severity": 3,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "wealth.low",
+        "comparison": "gte",
+        "threshold": 0.4,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "wealth.low",
+          "comparison": "lte",
+          "threshold": -0.005,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-building-upkeep"],
+      "successEffects": ["district-energy-awareness", "district-wellbeing"],
+      "failureEffects": ["district-building-upkeep", "district-product-consumption"],
+      "activePressure": { "costOfLiving": 0.35, "environment": 0.1, "services": 0.15 },
+      "successPressure": { "costOfLiving": 0.1, "environment": 0.05, "services": 0.05 },
+      "failurePressure": { "costOfLiving": 0.5, "environment": 0.15, "services": 0.25 },
+      "tags": ["energy", "district-heating", "cost-of-living", "housing"],
+      "notes": "A district where two in five households sit in the low wealth band is the normal shape of an older social-housing estate, and most cities have one well before the halfway milestone. Expect this once or twice a decade. CHECK SHAPE: the trigger finds the estate, the check is scored city-wide and relative to the month the story opened, because a relative check is city-scope only - nothing on StorySlot records which district the story landed on. An absolute allDistricts bar on wealth.low was the alternative and was rejected because it would be answerable only by a city that is not poor, which is not the city this event fires in. CHECK SIZE: half a point off the city's low-wealth share, over the ONE month a story lives (stories.cycleMonths - 1). Halved from an earlier draft written against a two-month horizon that does not exist. UNEVIDENCED: nothing in the repo says what a month of ordinary drift on wealth.low looks like, so this bar is set by proportion - half of what the severity-4 cost-of-living events ask - and not by a measured noise floor. Whether it discriminates a real intervention from drift is a wave 7 calibration item, alongside the rent units.",
+      "name": "District heating tariff review",
+      "description": "The municipal utility's board wants the heat tariff reset for the coming season, and the estates on the network are the ones who will feel it. The tenants' association has brought the last four bills to the town hall. The utility has brought the fuel contracts. Both sets of numbers are correct.",
+      "ignoreText": "Approve the utility's tariff as tabled and let the social fund absorb the complaints.",
+      "goalText": "Ease the squeeze until fewer households across the city sit in the low wealth band.",
+      "powerOverrideText": "Instruct the board to hold the tariff and absorb the shortfall in the municipal accounts without a public vote.",
+      "successText": "The tariff held, insulation work went ahead on the worst blocks, and fewer households in this city are counting the cost of being warm.",
+      "failText": "The tariff went through as tabled. The estates are colder, poorer, and quite clear about who signed it off."
+    },
+    {
+      "id": "eu-energy-price-protest",
+      "severity": 4,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "happiness",
+        "comparison": "lt",
+        "threshold": 55,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 1.5,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-product-consumption"],
+      "successEffects": ["city-tax-happiness", "district-energy-awareness"],
+      "failureEffects": ["city-taxi-starting-fee", "district-building-upkeep"],
+      "activePressure": { "costOfLiving": 0.45, "services": 0.15, "heritageOrder": 0.2 },
+      "successPressure": { "costOfLiving": 0.15, "services": 0.05, "heritageOrder": 0.05 },
+      "failurePressure": { "costOfLiving": 0.6, "services": 0.25, "heritageOrder": 0.35 },
+      "tags": ["energy", "protest", "cost-of-living", "unions"],
+      "notes": "City happiness below 55 is a city that is visibly going wrong rather than one merely under strain, so this stays comparatively rare - perhaps once or twice in a long run, and never in a well-run city. A point and a half of recovery in the single month a story lives is a real turnaround; it was three until the story's life was re-derived as cycleMonths - 1 rather than cycleMonths. The severity of 4 is earned by the trigger being hard to reach rather than by the event being common. Success eases what the council actually controls: the municipal tax bill stings less. Failure is the rest of getting through the week getting dearer.",
+      "name": "Energy prices on the market square",
+      "description": "The unions have called an afternoon rally about heating and electricity bills, and it has turned into a rally about everything. The banners name the utility, the national regulator and the mayor, in that order but not by much. The council's actual power over any of it is a subject the platform speeches do not dwell on.",
+      "ignoreText": "Let the rally have its afternoon. The tariff is set two levels of government above this chamber.",
+      "goalText": "Turn the mood around: a point and a half of city happiness back before the month is out.",
+      "powerOverrideText": "Announce an emergency municipal hardship fund by decree and argue about where it came from afterwards.",
+      "successText": "The hardship measures and the rates relief bit before the winter did, the square emptied, and the banners went back into the union office.",
+      "failText": "The rally became a fortnightly fixture. The bills went up, the fares went with them, and the council's name stayed at the top of every banner."
+    },
+    {
+      "id": "eu-heritage-facade-objection",
+      "severity": 2,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "signatureBuildingCount",
+        "comparison": "gte",
+        "threshold": 1,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 0.25,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-building-upkeep"],
+      "successEffects": ["city-attractiveness", "city-entertainment"],
+      "failureEffects": ["district-building-upkeep"],
+      "activePressure": { "growth": -0.15, "heritageOrder": 0.25 },
+      "successPressure": { "growth": -0.05, "heritageOrder": 0.1 },
+      "failurePressure": { "growth": -0.25, "heritageOrder": 0.4 },
+      "tags": ["heritage", "planning", "objections", "conservation"],
+      "notes": "One signature building anywhere in a district is the condition, so this becomes available as soon as the city has any landmark at all - a deliberately common, low-severity filler throttled by the reuse cooldown rather than by rarity. CHECK SHAPE: city scope, relative, and a real tolerance of a quarter of a happiness point rather than the zero an earlier draft used. Zero asked only whether a population mean failed to drift down over one month, on a metric nothing this event does moves - and since this is the most frequently available event in the file, that fed more drift-driven noise into the power balance than anything else here. A quarter point is deliberately the smallest bar in the file, a quarter of what the severity-4 events ask, because a planning row is a small thing that should still have to be won. PRESSURE: the growth axis is signed NEGATIVE here, which is the one place in this file it is. A conservation row does not make the pro-development pole look right; it hardens the anti-development one, and a scheme that ends up at the inspectorate hardens it further. Order rises alongside it on the same reasoning.",
+      "name": "Conservation objection to the frontage plans",
+      "description": "The developer wants the frontage opened up and the upper storeys reworked; the conservation society wants the listing enforced to the last window reveal. The file has been to the regional heritage office and come back with an opinion both sides are quoting from. The scaffolding has been up for eleven weeks either way.",
+      "ignoreText": "Let the planning officers settle it on delegated powers and stay out of the photographs.",
+      "goalText": "Settle it well enough that the city ends the month in a better temper than it started.",
+      "powerOverrideText": "Call the application in and decide it at committee, whatever the heritage office's opinion says.",
+      "successText": "The compromise held the street's face and got the upper floors back into use as somewhere people go. The society and the developer both claim to have won.",
+      "failText": "The scaffolding is still there, the file is with the inspectorate, and the frontage is now famous for the wrong reason."
+    },
+    {
+      "id": "eu-integration-language-programme",
+      "severity": 3,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "education.uneducated",
+        "comparison": "gte",
+        "threshold": 0.2,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "education.uneducated",
+          "comparison": "lte",
+          "threshold": -0.002,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-service-building-upkeep"],
+      "successEffects": ["city-college-graduation", "city-university-interest"],
+      "failureEffects": ["city-crime-probability", "district-crime-accumulation"],
+      "activePressure": { "services": 0.25, "growth": 0.15, "heritageOrder": 0.15 },
+      "successPressure": { "services": 0.1, "growth": 0.05, "heritageOrder": 0.05 },
+      "failurePressure": { "services": 0.4, "growth": 0.25, "heritageOrder": 0.35 },
+      "tags": ["integration", "education", "adult-learning", "eu-funding"],
+      "notes": "A fifth of a district's residents with no completed schooling is ordinary in a young, cheap or newly settled quarter, and most cities have such a district within the first decade. Expect this a handful of times over a long run. CHECK SHAPE AND SIZE: city scope and relative, because a relative check is city-scope only, and the bar is deliberately small - two tenths of a percentage point over the ONE month a story lives (stories.cycleMonths - 1). It is the only relative bar in this file NOT halved on that re-derivation, because it was already the smallest here and halving it again would take it under any plausible resolution. UNEVIDENCED, and stated as such: the claim that education shares move only on the timescale citizens graduate on is a reading of what the metric is, not something measured, and nothing in the repo says what a month of drift on it looks like. Both this bar and the assertion that drift alone will not clear it are wave 7 calibration items. What can be said from the file is that it is proportionate: the smallest ask attached to a severity-3 event here.",
+      "name": "Evening classes, and who is entitled to a place",
+      "description": "The integration budget funds language and literacy courses for adults, and the waiting list in the eastern quarter is longer than the places. The chamber argues about entitlement: newcomers first, long-term unemployed first, or nobody until the funding is confirmed for a second year. The tutors have asked, twice, to be told which.",
+      "ignoreText": "Run the courses at last year's size and let the waiting list order itself.",
+      "goalText": "Move the needle: fewer residents across the city with no completed schooling.",
+      "powerOverrideText": "Reallocate from the culture budget by executive decision and expand the programme without a committee vote.",
+      "successText": "The classes filled, the certificates came through, and enough of them went on to the college that the registrar noticed.",
+      "failText": "The waiting list outlived the funding. The tutors moved on and the quarter learned what the entitlement debate was worth."
+    },
+    {
+      "id": "eu-low-emission-zone",
+      "severity": 3,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "pollution",
+        "comparison": "gte",
+        "threshold": 0.35,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "pollution",
+          "comparison": "lte",
+          "threshold": -0.03,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-parking-fee"],
+      "successEffects": ["district-bike-probability", "district-energy-awareness"],
+      "failureEffects": ["city-pollution-health-affect", "district-car-reserve-probability"],
+      "activePressure": { "costOfLiving": 0.2, "environment": 0.35, "transit": 0.25 },
+      "successPressure": { "costOfLiving": 0.05, "environment": 0.1, "transit": 0.1 },
+      "failurePressure": { "costOfLiving": 0.3, "environment": 0.5, "transit": 0.3 },
+      "tags": ["environment", "air-quality", "eu-directive", "transit"],
+      "notes": "A mean pollution reading of 0.35 across the four channels needs real industry or real traffic, so this belongs to the mid and late game rather than the first decade - expect it once or twice, more often in an industrial city. TRIGGER AGAINST THE REAL RANGE: pollution cannot exceed 0.75 (CivicEventCatalogLoader.AttainableMaximum), so 0.35 is 47 percent of everything the sensor can report - a genuine 'about half as bad as it can get' rather than a third, which is what it would mean on a 0-1 reading. Kept as authored once checked, unlike serviceCoverage in this file, which had to move. The check is relative and so has no ceiling interaction: three points off the city mean in the ONE month a story lives is what a real restriction achieves and is out of reach of doing nothing.",
+      "name": "Low emission zone, or the infringement letter",
+      "description": "The limit values in the air quality directive have been exceeded at the ring road monitor for the third year running, and the compliance correspondence has stopped being polite. A low emission zone would fix the readings and price the oldest vehicles off the road, most of them owned by the people least able to replace them.",
+      "ignoreText": "Keep answering the correspondence and hope the monitor has a better year.",
+      "goalText": "Bring the city's pollution mean down three points.",
+      "powerOverrideText": "Sign the zone into force by mayoral order, with no phase-in and no exemption scheme.",
+      "successText": "The readings came back under the limit, the monitor stopped generating letters, and the ring road is measurably easier to breathe beside.",
+      "failText": "The exceedances continued, the file went up to the infringement stage, and the council is on record as having been warned."
+    },
+    {
+      "id": "eu-night-noise-ordinance",
+      "severity": 2,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "crimeRate",
+        "comparison": "gte",
+        "threshold": 0.05,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "crimeRate",
+          "comparison": "lt",
+          "threshold": 0.05,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["city-crime-response-time"],
+      "successEffects": ["city-criminal-monitor", "district-wellbeing"],
+      "failureEffects": ["city-prison-time", "district-crime-accumulation"],
+      "activePressure": { "services": 0.15, "growth": 0.1, "heritageOrder": 0.3 },
+      "successPressure": { "services": 0.05, "growth": 0.05, "heritageOrder": 0.1 },
+      "failurePressure": { "services": 0.25, "growth": 0.15, "heritageOrder": 0.45 },
+      "tags": ["nightlife", "order", "residents", "policing"],
+      "notes": "A district crime rate of 0.05 is a busy quarter rather than a dangerous one, and any city with a nightlife district clears it regularly - a common, low-stakes severity 2. CHECK SHAPE: allDistricts on the trigger's own metric, i.e. the exact negation of the trigger, so success means the quarter that raised the complaint came back under the bar and no other quarter took its place. Crime rate responds to police coverage and stewarding within the one month a story lives, which is what makes it winnable at this severity. The failure effect is longer sentences handed down by a court that has lost patience, not a policing budget.",
+      "name": "Closing hours in the old quarter",
+      "description": "The residents' association wants the terraces cleared at midnight; the licensees point out that half the quarter's rents are paid by people who arrive after ten. The night mayor's mediation has produced a code of conduct nobody has signed. The police report notes the disorder is concentrated in four streets and two hours.",
+      "ignoreText": "Leave the licensing hours alone and let the association take it to the licensing board.",
+      "goalText": "Get every quarter of the city back under the disorder threshold.",
+      "powerOverrideText": "Impose the earlier closing hours by ordinance, with no consultation and no appeal window.",
+      "successText": "Stewarding, lighting and a later last tram did what the closing-hour row could not. The four streets are quieter and still open.",
+      "failText": "The quarter got louder, the association got a lawyer, and the licensing board is deciding what the council would not."
+    },
+    {
+      "id": "eu-rent-brake-referendum",
+      "severity": 4,
+      "region": "eu",
+      "trigger": {
+        "kind": "delta",
+        "metricId": "rent",
+        "comparison": "gte",
+        "threshold": 120,
+        "windowMonths": 12,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "delta",
+          "metricId": "rent",
+          "comparison": "lt",
+          "threshold": 10,
+          "windowMonths": 1,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["district-building-upkeep"],
+      "successEffects": ["city-tax-happiness", "district-low-commercial-tax"],
+      "failureEffects": ["city-loan-interest", "district-building-upkeep"],
+      "activePressure": { "costOfLiving": 0.4, "heritageOrder": 0.1 },
+      "successPressure": { "costOfLiving": 0.15, "heritageOrder": 0.05 },
+      "failurePressure": { "costOfLiving": 0.55, "heritageOrder": 0.2 },
+      "tags": ["housing", "rent", "referendum", "tenants"],
+      "notes": "THRESHOLD UNITS ARE UNRESOLVED. rent is the mean of PropertyRenter.m_Rent and its scale derives from EconomyParameterData prefab values that are not in refsrc, so neither number here can be grounded from the repo. 120 over twelve months is chosen to match the order of magnitude lane 3a authored rather than because it is independently defensible: two shipped files disagreeing by twelvefold would be worse than both being provisionally wrong together, and this is a wave 7 calibration item. It is set where a severity-4 tenants' referendum should fire - on a district whose rents are genuinely running away, not on background drift, which is what the earlier value of 10 was doing. CHECK SHAPE AND WINDOW: allDistricts, threshold 10, window 1. The two are now the same rate: 120 over twelve months IS ten a month, so gte 120/12mo and lt 10/1mo are complements and no district is trapped between them. Both earlier drafts were wrong here. Six months read five months that predate the story; two months still read one, because a story lives ONE month - stories.cycleMonths is the cadence and StoryAssembler.NewStory sets months = cycleMonths - 1. And the 'flatten to half the rate' ambition of the second draft trapped every district drifting between five and ten a month, which had never contributed to the trigger. The ask is now exactly 'no district still running at the pace that raised the question'. Asking for an actual fall would be asking for something no effect in the palette can deliver: rent cannot be modified (scout 0001 section 3), only leaned on through what gets built. PRESSURE: growth is deliberately absent. A rent crisis is a build-more argument and a restrict-development argument in equal measure, and the rule this file follows is that growth is carried only where the event resolves onto ONE development pole - a named scheme, or the tax base. Where both arguments are equally available it is omitted rather than guessed, which is the same call made on eu-asylum-dispersal-quota and eu-social-housing-quota.",
+      "name": "Tenants' initiative on the rent curve",
+      "description": "The tenants' union has collected enough signatures to force the question, and the question is blunt: cap what the municipal housing company charges and use the planning consents to lean on everyone else. The housing company's board says a cap means no maintenance. The signature boxes are already in the town hall foyer.",
+      "ignoreText": "Let the initiative go to the ballot and campaign for nothing in particular.",
+      "goalText": "Break the pace: no district still climbing at the rate that raised the question.",
+      "powerOverrideText": "Rule the initiative inadmissible on competence grounds and take the resulting fortnight of headlines.",
+      "successText": "Consents, municipal stock and a lower local levy did between them what the cap promised, and rents across the city stopped running away from wages.",
+      "failText": "Rents kept climbing through the campaign, the borrowing to buy stock came dearer than the case for it, and the initiative passed anyway."
+    },
+    {
+      "id": "eu-social-housing-quota",
+      "severity": 4,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "homelessShare",
+        "comparison": "gte",
+        "threshold": 0.015,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "homelessShare",
+          "comparison": "lte",
+          "threshold": -0.0025,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-service-building-upkeep"],
+      "successEffects": ["city-attractiveness", "district-wellbeing"],
+      "failureEffects": ["city-service-building-upkeep", "district-crime-accumulation"],
+      "activePressure": { "services": 0.3, "costOfLiving": 0.35, "heritageOrder": 0.15 },
+      "successPressure": { "services": 0.1, "costOfLiving": 0.1, "heritageOrder": 0.05 },
+      "failurePressure": { "services": 0.45, "costOfLiving": 0.5, "heritageOrder": 0.3 },
+      "tags": ["housing", "social-housing", "homelessness", "planning"],
+      "notes": "homelessShare is a 0-1 fraction, not the game's percentage, so 0.015 is one and a half percent of residents without a home - a level most cities touch during a growth spurt or after a demolition wave, and few sustain. Expect it a few times over a long run. CHECK SIZE: a quarter of a point off the share, over the ONE month a story lives - halved from an earlier draft written against a two-month horizon that does not exist. UNEVIDENCED, as with the other relative bars here: the repo says nothing about a month of ordinary drift on homelessShare, so this is set by proportion to severity rather than against a measured noise floor, and belongs to wave 7's calibration pass. PRESSURE: growth is deliberately absent - a social quota row is a build-more and a build-less argument in equal measure, and this file carries growth only where an event resolves onto one development pole.",
+      "name": "Social quota on the new quarter",
+      "description": "The development plan for the new quarter is at final reading, and the coalition partner will not vote for it without a binding social quota on every consent. The developers say the quota kills the yield and the site stays empty. The housing office says the waiting list is now measured in years.",
+      "ignoreText": "Adopt the plan without the quota and rely on the market to produce cheaper flats eventually.",
+      "goalText": "Get people off the street: homeless share down a quarter of a point on where it stood.",
+      "powerOverrideText": "Write the quota into the plan over the objection period and dare the developers to litigate.",
+      "successText": "The quota survived final reading, the first blocks were let at controlled rents, and the housing office's list is shorter than the day the plan was tabled.",
+      "failText": "The quota was traded away in the small hours, the yield was protected, and the waiting list did what waiting lists do."
+    },
+    {
+      "id": "eu-stability-pact-audit",
+      "severity": 4,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "unemployment",
+        "comparison": "gte",
+        "threshold": 0.09,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "unemployment",
+          "comparison": "lte",
+          "threshold": -0.0075,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-service-building-upkeep"],
+      "successEffects": ["city-industrial-efficiency", "city-office-efficiency"],
+      "failureEffects": ["city-loan-interest", "city-service-building-upkeep"],
+      "activePressure": { "services": 0.25, "costOfLiving": 0.3, "growth": 0.3 },
+      "successPressure": { "services": 0.1, "costOfLiving": 0.1, "growth": 0.1 },
+      "failurePressure": { "services": 0.4, "costOfLiving": 0.45, "growth": 0.45 },
+      "tags": ["budget", "austerity", "coalition", "jobs"],
+      "notes": "City-wide unemployment at nine percent is a serious but perfectly ordinary downturn reading, seen when industry closes or when residential outruns jobs; expect it a couple of times across a long run and rarely in a balanced city. CHECK SIZE: three quarters of a point off city unemployment in the ONE month a story lives, halved from a draft written against a two-month horizon that does not exist. Still at the demanding end of achievable, which is what the severity of 4 is for. The failText is deliberately confined to dearer borrowing and costlier services - the two things city-loan-interest and city-service-building-upkeep actually do. An earlier draft narrated the supervisory authority taking the budget over, which no effect id delivers; the threat stays in the description, where it is context rather than an outcome claim.",
+      "name": "The auditor reads the medium-term plan",
+      "description": "The regional audit chamber has looked at the four-year figures and used the word unsustainable in a covering letter that is already with the press. Under the national implementation of the deficit rules, a plan that does not balance goes to the supervisory authority. The coalition has a fortnight and three incompatible proposals.",
+      "ignoreText": "Table the plan unchanged and let the supervisory authority make the cuts instead.",
+      "goalText": "Grow the tax base back: three quarters of a point off city unemployment.",
+      "powerOverrideText": "Force the consolidation package through on a confidence motion and let the partner decide what it is worth.",
+      "successText": "Employment came back before the deadline did, the plan balanced without gutting the services, and the audit chamber's next letter is two paragraphs long.",
+      "failText": "The chamber's verdict priced itself in: the city borrows dearer than it did, and every depot and clinic on the books costs more to keep open."
+    },
+    {
+      "id": "eu-tram-extension-coalition",
+      "severity": 4,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "commuteMinutes",
+        "comparison": "gte",
+        "threshold": 32,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "commuteMinutes",
+          "comparison": "lte",
+          "threshold": -0.75,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-parking-fee"],
+      "successEffects": ["city-attractiveness", "district-bike-probability"],
+      "failureEffects": ["city-taxi-starting-fee", "district-car-reserve-probability"],
+      "activePressure": { "transit": 0.35, "costOfLiving": 0.15, "environment": 0.15, "growth": 0.15 },
+      "successPressure": { "transit": 0.15, "costOfLiving": 0.05, "environment": 0.05, "growth": 0.1 },
+      "failurePressure": { "transit": 0.5, "costOfLiving": 0.2, "environment": 0.2, "growth": 0.25 },
+      "tags": ["transit", "tram", "coalition", "capital-budget"],
+      "notes": "A mean one-way commute of 32 minutes is a city that has outgrown its network - common once the outer districts are built out, uncommon before. Expect it once or twice in a long run. CHECK SIZE: forty-five seconds off the city mean in the ONE month a story lives, halved from a draft written against a two-month horizon that does not exist. Still a serious network change - nothing incidental produces it and a tram extension plausibly does. The active effect is the parking charge the capital programme is part-funded from, which is how these extensions are actually paid for and is also why the motorists' objection has teeth.",
+      "name": "Tram extension, and the partner who wants buses instead",
+      "description": "Line four stops two districts short of where the city now lives. The capital programme has room for the extension or for the resurfacing schedule, not both, and the junior coalition partner has spent two years arguing that guided buses would do the same job for a third of the money. The funding application closes before the coalition committee meets again.",
+      "ignoreText": "Defer the extension to the next capital programme and resurface the roads instead.",
+      "goalText": "Take three quarters of a minute off the city's average commute.",
+      "powerOverrideText": "Commit the capital and sign the funding application before the coalition committee can amend it.",
+      "successText": "The extension opened, the outer districts rode or cycled to the stop instead of driving in, and the average journey is measurably shorter than it was.",
+      "failText": "The programme slipped and the funding window closed. Line four still stops where the city stopped twenty years ago, and the last mile is somebody's meter."
+    },
+    {
+      "id": "eu-waste-separation-directive",
+      "severity": 2,
+      "region": "eu",
+      "trigger": {
+        "kind": "delta",
+        "metricId": "uncollectedGarbage",
+        "comparison": "gte",
+        "threshold": 1,
+        "windowMonths": 1,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "delta",
+          "metricId": "uncollectedGarbage",
+          "comparison": "lt",
+          "threshold": 1,
+          "windowMonths": 1,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["district-garbage-production"],
+      "successEffects": ["district-energy-awareness", "district-wellbeing"],
+      "failureEffects": ["district-building-upkeep", "district-garbage-production"],
+      "activePressure": { "environment": 0.25, "services": 0.25 },
+      "successPressure": { "environment": 0.1, "services": 0.1 },
+      "failurePressure": { "environment": 0.35, "services": 0.35 },
+      "tags": ["waste", "recycling", "eu-directive", "services"],
+      "notes": "The trigger is any district where uncollected waste rose over a single month, which happens whenever collection falls behind production even briefly - a deliberately common severity 2. CHECK SHAPE: trigger and check now share both the window and the threshold, gte 1 against lt 1 over one month, which makes them exact complements. The earlier pair differed in BOTH - gte 1 over three months against lte 0 over two - so a district that had been flat for three months and then rose in the story month failed a story it never contributed to, and the two-month window read a month that predated the story entirely. One month is the whole of a story's life: stories.cycleMonths is the CADENCE, and StoryAssembler.NewStory sets months = cycleMonths - 1, so the story drafts at M and resolves at M+1. Both readings are the uncollected backlog sitting at producers, never a landfill stock, and the effect ids move the production rate rather than any store.",
+      "name": "Separate collection targets, and the bins to match",
+      "description": "The transposition deadline for the separate collection targets has passed and the municipality is still running one round for everything. The waste company wants four fractions and four containers per courtyard. The courtyards in the older districts have room for two. The waste sitting uncollected in the meantime is doing the argument no favours.",
+      "ignoreText": "Keep the single round going and report the shortfall in the annual return.",
+      "goalText": "Stop the backlog growing anywhere: no district still accumulating uncollected waste.",
+      "powerOverrideText": "Impose the four-container scheme on every courtyard by ordinance and let the caretakers work it out.",
+      "successText": "The rounds were resequenced, the containers went in where they fitted, and no quarter of the city is still piling up what nobody came for.",
+      "failText": "The backlog kept growing through the consultation. The courtyards have four containers, none of them get emptied on time, and the blocks around them show it."
+    },
+    {
+      "id": "eu-works-council-strike",
+      "severity": 3,
+      "region": "eu",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "serviceCoverage",
+        "comparison": "lt",
+        "threshold": 0.28,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "serviceCoverage",
+          "comparison": "gte",
+          "threshold": 0.28,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["city-service-building-upkeep"],
+      "successEffects": ["city-hospital-efficiency", "district-wellbeing"],
+      "failureEffects": ["city-service-building-upkeep", "district-crime-accumulation"],
+      "activePressure": { "services": 0.4, "costOfLiving": 0.2, "heritageOrder": 0.1 },
+      "successPressure": { "services": 0.15, "costOfLiving": 0.1, "heritageOrder": 0 },
+      "failurePressure": { "services": 0.55, "costOfLiving": 0.25, "heritageOrder": 0.3 },
+      "tags": ["unions", "works-council", "services", "pay"],
+      "notes": "THRESHOLD RE-DERIVED AGAINST THE REAL RANGE. serviceCoverage cannot exceed 5/9, about 0.5556 - it is the mean of nine channels and four are hard-zeroed because the game exposes no coverage concept for them (CivicEventCatalogLoader.AttainableMaximum). The earlier 0.5 was written as 'half coverage' and was in fact 90 percent of everything the sensor can report, which made the trigger fire on almost every district and the check demand near-perfection in all of them. 0.28 is half the attainable maximum and is what 'half covered' actually means here. A district with no depot in reach sits near zero and a well-served one near 0.5556, so 0.28 is a real midpoint. CHECK SHAPE: allDistricts at the identical bar, lt 0.28 against gte 0.28, so the two are exact complements and no district is trapped between them. Frequency is lower than the earlier draft implied precisely because the bar is now honest: a genuinely under-served quarter, not any quarter. Getting one over that line in the single month a story lives is a staffing and depot decision rather than a construction programme. PRESSURE: heritageOrder is dropped to zero on success rather than merely quietened. A settled strike stops being an argument about order at all, where an unsettled one running into a second month is exactly that.",
+      "name": "Works council votes to strike",
+      "description": "The municipal works council has balloted and won it: the depot, the parks section and half the social services staff are out from Monday. The dispute is about the pay round and the vacancies that were never filled, and the district that already waits longest for everything will wait longer. The conciliation service can be in on Thursday.",
+      "ignoreText": "Hold the line on the pay offer and wait the strike out.",
+      "goalText": "Settle it and get every district back to half the coverage a district can actually have.",
+      "powerOverrideText": "Requisition minimum service by emergency order and settle the pay dispute afterwards, on the council's terms.",
+      "successText": "The settlement filled the vacancies as well as the pay scale, and there is no quarter of this city left waiting on a round that never comes.",
+      "failText": "The strike ran into a second month, the vacancies stayed open, and the district learned that the shortest straw has no bottom."
+    }
+  ]
 }
