@@ -204,18 +204,26 @@ namespace Agora.Core.Tests
         /// <summary>
         /// The check is a city happiness reading relative to the baseline captured when the story
         /// opened, and severity sets the demand in <b>happiness points on the 0–100 scale</b>: the full
-        /// <c>stories.wrappedEventHappinessGoalPoints</c> at severity 1, falling linearly to zero —
-        /// hold the line — at <c>catalog.severityMax</c>.
+        /// <c>stories.wrappedEventHappinessGoalPoints</c> at severity 1, falling linearly to a
+        /// <b>nonzero floor</b> at <c>catalog.severityMax</c>.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The five thresholds are asserted as <b>hard numbers</b> rather than by restating the
         /// formula. Restating it would have passed just as happily on the version this replaced, whose
         /// entire severity spread was 0.8 points out of 100 — narrower than the month-to-month drift of
         /// a population mean, and therefore not a curve at all. A literal here is what makes the unit
         /// error visible if it ever comes back.
+        /// </para>
+        /// <para>
+        /// <b>The floor is the assertion that matters most.</b> Severity <c>severityMax</c> is the
+        /// Mandatory tier, and a demand of exactly +0.0 under a <c>gte</c> comparison settles the
+        /// highest-stakes story class on whether a population mean happened to drift — an exactly flat
+        /// city passes. Zero at the top is a defect, not a tuning taste.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void Wrapped_CheckDemandIsInHappinessPointsAndFallsWithSeverity()
+        public void Wrapped_CheckDemandIsInHappinessPointsAndFallsToANonzeroFloor()
         {
             EngineTuning tuning = Tuning();
             Assert.Equal(2.0, tuning.Stories.WrappedEventHappinessGoalPoints, 12);
@@ -232,8 +240,8 @@ namespace Agora.Core.Tests
             Assert.Equal(TriggerScope.City, minor.Spec.Scope);
             Assert.Equal(Comparison.GreaterThanOrEqual, minor.Spec.Comparison);
 
-            // 2.0, 1.5, 1.0, 0.5, 0.0 points of happiness, at the shipped tuning.
-            double[] expected = { 2.0, 1.5, 1.0, 0.5, 0.0 };
+            // 2.0, 1.6, 1.2, 0.8, 0.4 points of happiness, at the shipped tuning.
+            double[] expected = { 2.0, 1.6, 1.2, 0.8, 0.4 };
             for (int severity = 1; severity <= 5; severity++)
             {
                 source.Severity = severity;
@@ -241,11 +249,62 @@ namespace Agora.Core.Tests
                              TimelineEventAdapter.Wrap(source, tuning).Check.Spec.Threshold, 12);
             }
 
-            // And the spread is wide enough to be a curve: the two ends must differ by more than the
-            // happiness the engine already spends on fulfilling a mandate.
-            Assert.True(expected[0] - expected[4] >= tuning.Mandates.FulfilledHappinessBonus,
-                "the severity-1 demand must stand clear of the severity-max one by at least a " +
-                "mandate's worth of happiness, or the five tiers are indistinguishable from noise");
+            // Nothing on the curve asks for nothing, and every step down is a real step.
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.True(expected[i] > 0.0, "no severity may ask for a zero gain");
+                if (i > 0) Assert.True(expected[i - 1] - expected[i] > 0.0, "the curve must be strict");
+            }
+
+            // The severity-1 demand is anchored to a happiness delta the engine already spends, which
+            // is the calibration stories.wrappedEventHappinessGoalPoints states for itself.
+            //
+            // This replaces an earlier assertion on the SPREAD, which the nonzero-floor ruling makes
+            // arithmetically unsatisfiable: with the top pinned to goalPoints and the bottom held above
+            // zero, the spread is necessarily under goalPoints and can never reach the 2.0 bonus.
+            Assert.True(expected[0] >= tuning.Mandates.FulfilledHappinessBonus,
+                "a severity-1 wrapped goal must ask for at least what fulfilling a mandate pays, or " +
+                "the whole curve sits in the noise");
+        }
+
+        /// <summary>
+        /// A one-point severity scale has no range to fall across, so the single tier gets the full
+        /// demand — and in particular not a division by zero and not nothing.
+        /// </summary>
+        [Fact]
+        public void Wrapped_CheckSurvivesASeverityScaleWithOnePoint()
+        {
+            EngineTuning tuning = EngineTuning.FromJson(
+                "{ \"catalog\": { \"severityMax\": 1 }, " +
+                "\"stories\": { \"wrappedEventHappinessGoalPoints\": 2.0 } }");
+            Assert.Equal(1, tuning.Catalog.SeverityMax);
+
+            TimelineEvent source = SampleEvent();
+            source.Severity = 4; // clamped to the one point the scale has
+
+            CivicEvent civic = TimelineEventAdapter.Wrap(source, tuning);
+            Assert.Equal(1, civic.Severity);
+            Assert.Equal(2.0, civic.Check.Spec.Threshold, 12);
+        }
+
+        /// <summary>
+        /// The two rules the spine added after this class was written do not reach it — checked rather
+        /// than assumed.
+        /// </summary>
+        /// <remarks>
+        /// <c>CheckWindowOutrunsStoryLife</c> inspects only a <c>delta</c> check, and this one is a
+        /// plain <c>metric</c> reading with a zero window. <c>ThresholdAboveAttainableMaximum</c> bites
+        /// only the metrics whose sensor cannot reach their nominal ceiling — the two channel means —
+        /// and happiness is not one of them.
+        /// </remarks>
+        [Fact]
+        public void Wrapped_CheckIsUntouchedByTheTwoNewCatalogRules()
+        {
+            CheckSpec check = TimelineEventAdapter.Wrap(SampleEvent(), Tuning()).Check;
+
+            Assert.NotEqual(TriggerKind.Delta, check.Spec.Kind);
+            Assert.Equal(0, check.Spec.WindowMonths);
+            Assert.Null(CivicEventCatalogLoader.AttainableMaximum(check.Spec.MetricId));
         }
 
         /// <summary>
@@ -553,6 +612,64 @@ namespace Agora.Core.Tests
             // And the misread entry really did fall through to the default, which is what makes the
             // diagnostic the only evidence a reader would ever get.
             Assert.Equal(TimelineAdaptationKind.Generic, policy.KindFor("energy-price-shock-2022"));
+        }
+
+        /// <summary>
+        /// <c>authored</c> is a per-event answer and may never be the default. A file that asks for it
+        /// is reported and falls back to <c>generic</c>.
+        /// </summary>
+        /// <remarks>
+        /// The schema's <c>defaultPolicy</c> enum is <c>["none","generic"]</c>, and the reader has to
+        /// hold the same line for a hand-edited file: an accepted default of <c>authored</c> would
+        /// defer every unnamed event — some ninety of them — to a <c>civicEventId</c> that cannot
+        /// exist, because only an entry can carry one. It would also break the outcome's guarantee
+        /// that an <c>Authored</c> result names something.
+        /// </remarks>
+        [Fact]
+        public void Policy_RefusesAnAuthoredDefault()
+        {
+            TimelineAdaptationPolicy policy;
+            Assert.True(TimelineAdaptationPolicy.TryParse(
+                "{ \"schemaVersion\": 1, \"defaultPolicy\": \"authored\", \"policies\": [] }", out policy));
+
+            Assert.Equal(TimelineAdaptationKind.Generic, policy.DefaultKind);
+            Assert.Contains(policy.Diagnostics, d => d.Contains("defaultPolicy"));
+
+            AdaptationOutcome outcome = new TimelineEventAdapter(policy).Adapt(SampleEvent(), Tuning());
+            Assert.Equal(AdaptationOutcomeKind.Wrapped, outcome.Kind);
+
+            // "none" is a legitimate default and still parses, so the restriction is to the one kind
+            // that cannot work rather than to whatever the file happens to say.
+            TimelineAdaptationPolicy dropAll;
+            Assert.True(TimelineAdaptationPolicy.TryParse(
+                "{ \"schemaVersion\": 1, \"defaultPolicy\": \"none\", \"policies\": [] }", out dropAll));
+            Assert.Equal(TimelineAdaptationKind.None, dropAll.DefaultKind);
+            Assert.Empty(dropAll.Diagnostics);
+        }
+
+        /// <summary>
+        /// The zero value of the outcome struct — which nobody constructs but every array of them
+        /// starts as — honours the contract: an empty id rather than a null one.
+        /// </summary>
+        [Fact]
+        public void Outcome_DefaultValueCarriesAnEmptyAuthoredId()
+        {
+            AdaptationOutcome outcome = default(AdaptationOutcome);
+
+            Assert.Equal(AdaptationOutcomeKind.NoEvent, outcome.Kind);
+            Assert.False(outcome.HasCivicEvent);
+            Assert.Equal("", outcome.AuthoredCivicEventId);
+            Assert.Equal(0, outcome.AuthoredCivicEventId.Length); // the NRE this exists to prevent
+        }
+
+        /// <summary>
+        /// A <c>Wrapped</c> outcome carrying nothing would contradict the only thing its kind asserts,
+        /// so the factory refuses it rather than constructing one.
+        /// </summary>
+        [Fact]
+        public void Outcome_WrappedRefusesANullEvent()
+        {
+            Assert.Throws<ArgumentNullException>(() => AdaptationOutcome.Wrapped(null!));
         }
 
         // ------------------------------------------------------------------ the shipped policy file

@@ -76,7 +76,10 @@ namespace Agora.Core.Stories.Catalog
             _diagnostics = new ReadOnlyCollection<string>(diagnostics);
         }
 
-        /// <summary>What an event with no entry gets. <c>generic</c> unless the file says otherwise.</summary>
+        /// <summary>
+        /// What an event with no entry gets: <c>generic</c> unless the file says otherwise, and never
+        /// <see cref="TimelineAdaptationKind.Authored"/> — see <c>TryParseDefaultKind</c>.
+        /// </summary>
         public TimelineAdaptationKind DefaultKind { get; }
 
         /// <summary>How many events the file names explicitly.</summary>
@@ -147,7 +150,7 @@ namespace Agora.Core.Stories.Catalog
             if (defaultNode != null)
             {
                 TimelineAdaptationKind parsed;
-                if (defaultNode.Kind == JsonKind.String && TryParseKind(defaultNode.Text, out parsed))
+                if (defaultNode.Kind == JsonKind.String && TryParseDefaultKind(defaultNode.Text, out parsed))
                 {
                     defaultKind = parsed;
                 }
@@ -275,6 +278,31 @@ namespace Agora.Core.Stories.Catalog
             return -1;
         }
 
+        /// <summary>
+        /// The kinds a <c>defaultPolicy</c> may take: <c>none</c> and <c>generic</c> only, matching the
+        /// schema's own enum.
+        /// </summary>
+        /// <remarks>
+        /// <b><c>authored</c> is a per-event answer and can never be a default.</b> A default of
+        /// <c>authored</c> would defer every event the file does not name — about ninety of them — to a
+        /// <c>civicEventId</c> that by construction does not exist, since only an entry can carry one.
+        /// Read through the general parser this sailed through with no diagnostic at all, and it would
+        /// have broken the outcome's guarantee that an <see cref="AdaptationOutcomeKind.Authored"/>
+        /// result names something. The schema forbids it; so, now, does the reader that has to survive
+        /// a hand-edited file.
+        /// </remarks>
+        private static bool TryParseDefaultKind(string? text, out TimelineAdaptationKind kind)
+        {
+            if (!TryParseKind(text, out kind)) return false;
+            if (kind == TimelineAdaptationKind.Authored)
+            {
+                kind = TimelineAdaptationKind.Generic;
+                return false;
+            }
+
+            return true;
+        }
+
         private static bool TryParseKind(string? text, out TimelineAdaptationKind kind)
         {
             if (string.CompareOrdinal(text, "none") == 0) { kind = TimelineAdaptationKind.None; return true; }
@@ -347,11 +375,13 @@ namespace Agora.Core.Stories.Catalog
     /// </remarks>
     public readonly struct AdaptationOutcome
     {
+        private readonly string? _authoredCivicEventId;
+
         private AdaptationOutcome(AdaptationOutcomeKind kind, CivicEvent? civicEvent, string authoredCivicEventId)
         {
             Kind = kind;
             CivicEvent = civicEvent;
-            AuthoredCivicEventId = authoredCivicEventId;
+            _authoredCivicEventId = authoredCivicEventId;
         }
 
         public AdaptationOutcomeKind Kind { get; }
@@ -362,9 +392,20 @@ namespace Agora.Core.Stories.Catalog
         /// <summary>
         /// The authored civic event id, non-empty for <see cref="AdaptationOutcomeKind.Authored"/>
         /// unless the policy file marked one authored without naming it — which the policy's
-        /// <see cref="TimelineAdaptationPolicy.Diagnostics"/> reports.
+        /// <see cref="TimelineAdaptationPolicy.Diagnostics"/> reports. Never null.
         /// </summary>
-        public string AuthoredCivicEventId { get; }
+        /// <remarks>
+        /// Backed by a field and coalesced rather than an auto-property, because a struct always has a
+        /// default form nobody constructed: <c>default(AdaptationOutcome)</c> zeroes every field, and
+        /// an auto-property would hand back <c>null</c> from a value whose <see cref="Kind"/> reads
+        /// <see cref="AdaptationOutcomeKind.NoEvent"/> — so a caller taking <c>.Length</c> would get a
+        /// <see cref="NullReferenceException"/> off an outcome the documentation promises is empty
+        /// rather than absent. Cheaper to make true than to warn about.
+        /// </remarks>
+        public string AuthoredCivicEventId
+        {
+            get { return _authoredCivicEventId ?? ""; }
+        }
 
         /// <summary>True when <see cref="CivicEvent"/> carries something.</summary>
         public bool HasCivicEvent
@@ -378,8 +419,15 @@ namespace Agora.Core.Stories.Catalog
         public static AdaptationOutcome Dropped { get; } =
             new AdaptationOutcome(AdaptationOutcomeKind.Dropped, null, "");
 
-        public static AdaptationOutcome Wrapped(CivicEvent civicEvent) =>
-            new AdaptationOutcome(AdaptationOutcomeKind.Wrapped, civicEvent, "");
+        /// <summary>
+        /// A wrapped event. Throws on null rather than producing a <see cref="AdaptationOutcomeKind.Wrapped"/>
+        /// outcome carrying nothing, which would break the one invariant the kind exists to state.
+        /// </summary>
+        public static AdaptationOutcome Wrapped(CivicEvent civicEvent)
+        {
+            if (civicEvent == null) throw new ArgumentNullException(nameof(civicEvent));
+            return new AdaptationOutcome(AdaptationOutcomeKind.Wrapped, civicEvent, "");
+        }
 
         public static AdaptationOutcome Authored(string civicEventId) =>
             new AdaptationOutcome(AdaptationOutcomeKind.Authored, null, civicEventId ?? "");
@@ -417,18 +465,33 @@ namespace Agora.Core.Stories.Catalog
     /// <para>
     /// <b>AGORA-WAVE4(timeline issuePressure): every adapted event is politically inert today, and
     /// this is recorded rather than worked around.</b> Not one entry in <c>timeline_global.json</c>,
-    /// <c>timeline_eu.json</c> or <c>timeline_na.json</c> authors an <c>issuePressure</c> — the
-    /// property is optional in the timeline schema and no shipped event uses it — so
+    /// <c>timeline_eu.json</c> or <c>timeline_na.json</c> authors an <c>issuePressure</c>, so
     /// <see cref="TimelineEvent.IssuePressure"/> is <see cref="IssuePosition.Centre"/> on all 120, all
     /// six components zero. Combined with the empty effect lists above, a wrapped event currently
     /// changes no number in the engine: it is a story the player reads and answers, and the answer
     /// moves political power through the story cycle's own <c>enfranchisementWeight</c> and
-    /// <c>alienationWeight</c>, but it presses no issue. The fix is an authoring pass adding
-    /// <c>issuePressure</c> to the timeline catalogs, which are <b>frozen this wave</b> — so it is a
-    /// wave-4 item, and the mapping below is written to pick the numbers up the moment they exist.
-    /// Deriving a pressure here from tags instead was rejected: the direction could be guessed from a
-    /// tag, but the magnitude could not, and inventing one would mean a coefficient in C# that no
-    /// tuning key stands behind — which is what the severity threshold below was blocked for.
+    /// <c>alienationWeight</c>, but it presses no issue.
+    /// </para>
+    /// <para>
+    /// <b>The repair is two pieces of work and the second is the easy one to miss.</b>
+    /// <c>TimelineCatalogLoader</c> reads <c>issuePressure</c>, but
+    /// <c>data/schemas/timeline.schema.json</c> <b>does not declare it</b> and the event object is
+    /// <c>additionalProperties: false</c> — a one-sided sync between loader and schema that predates
+    /// this class. Authoring a pressure into a shipped catalog therefore fails the schema suite on the
+    /// spot. Wave 4 needs a <c>/schema-change</c> declaring the property (non-negotiable #9)
+    /// <b>and then</b> the authoring pass, on catalogs that are frozen this wave. The mapping below
+    /// picks the numbers up the moment both exist.
+    /// </para>
+    /// <para>
+    /// <b>The equal active / success / failure magnitudes are a placeholder ratio, not a settled
+    /// shape.</b> The owner ruling fixes the <i>direction</i> — all three point the same way and
+    /// nothing may flip a sign — but the authored convention is a volume knob: normally louder on
+    /// failure, quieter on success. A generic wrapper has no way to know how far it should rise or
+    /// fall, and any ratio invented here would be a coefficient in C# with no tuning key behind it,
+    /// which is what the severity threshold below was blocked for. Carrying the one authored number
+    /// unchanged on all three is the honest placeholder until wave 4 settles the shape — as a ratio in
+    /// tuning, or as three authored magnitudes per timeline event. Deriving a pressure from tags was
+    /// rejected on the same ground: the direction could be guessed from a tag, the magnitude could not.
     /// </para>
     /// <para>
     /// Pure and deterministic: no clock, no RNG, no dictionary iteration. The same event and tuning
@@ -594,9 +657,18 @@ namespace Agora.Core.Stories.Catalog
         /// </para>
         /// <para>
         /// Severity sets how much better than the baseline counts as an answer, and the demand falls
-        /// <b>linearly to zero</b> at <c>catalog.severityMax</c>: a severity-1 event is asked for the
-        /// full <c>stories.wrappedEventHappinessGoalPoints</c>, and at the top of the scale holding
-        /// the line <i>is</i> the goal.
+        /// linearly with severity: <c>goalPoints × (severityMax − severity + 1) / severityMax</c>, so a
+        /// severity-1 event is asked for the full <c>stories.wrappedEventHappinessGoalPoints</c> and
+        /// the most severe is asked for one <c>severityMax</c>-th of it.
+        /// </para>
+        /// <para>
+        /// <b>It falls to a nonzero floor, and that is an owner ruling rather than a rounding
+        /// choice.</b> An earlier version terminated at exactly +0.0, which made the top of the scale
+        /// "did the population mean happen to not drift down", decided by noise and — with
+        /// <see cref="Comparison.GreaterThanOrEqual"/> — passing an exactly flat city. That is the
+        /// <see cref="StoryTier.Mandatory"/> tier, the highest-stakes story class there is, so it is
+        /// the last one that should be settled by a coin flip. A floor makes the most severe events
+        /// ask for something small and real instead of for nothing.
         /// </para>
         /// <para>
         /// <b>The unit is happiness points on the 0–100 scale, and it has its own key for that
@@ -618,13 +690,17 @@ namespace Agora.Core.Stories.Catalog
             double goalPoints = tuning.Stories.WrappedEventHappinessGoalPoints;
             if (!IsFinite(goalPoints) || goalPoints < 0.0) goalPoints = 0.0;
 
-            int headroom = severityMax - severity;
-            if (headroom < 0) headroom = 0;
+            // One step above the headroom, which is what keeps the most severe events off zero: at
+            // severity == severityMax this is 1 rather than 0. Clamped at 1 rather than 0 for the same
+            // reason, so a severity above the tuned maximum still asks for the floor and not for
+            // nothing. severityMax is already at least 1, so the division is defined — and at
+            // severityMax == 1 the single tier gets the full demand, which is the only sensible
+            // reading of a scale with one point on it.
+            int steps = severityMax - severity + 1;
+            if (steps < 1) steps = 1;
+            if (steps > severityMax) steps = severityMax;
 
-            // severityMax == 1 leaves no range to fall across, and every event is then the most severe
-            // one there is: hold the line. Also the guard that keeps the division defined.
-            int span = severityMax - 1;
-            double threshold = span > 0 ? goalPoints * headroom / span : 0.0;
+            double threshold = goalPoints * steps / severityMax;
 
             return new CheckSpec
             {
