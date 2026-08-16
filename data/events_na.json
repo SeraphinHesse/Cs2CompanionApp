@@ -10,7 +10,7 @@
         "kind": "metric",
         "metricId": "serviceCoverage",
         "comparison": "lt",
-        "threshold": 0.55,
+        "threshold": 0.28,
         "scope": "city"
       },
       "check": {
@@ -18,7 +18,7 @@
           "kind": "metric",
           "metricId": "serviceCoverage",
           "comparison": "gte",
-          "threshold": 0.03,
+          "threshold": 0.02,
           "scope": "city"
         },
         "relativeToBaseline": true
@@ -31,7 +31,7 @@
       "failurePressure": { "services": 0.45, "costOfLiving": 0.2 },
       "districtAffinity": ["suburban"],
       "tags": ["ballot-measure", "budget", "services"],
-      "notes": "Mean service coverage below 0.55 is the ordinary condition of a city that has grown faster than its stations and clinics, so expect this once or twice a decade and mostly in the growth phase. The check is relative to the month the story opened, so it asks for three points of coverage the player did not already have rather than an absolute number a mature city passes by standing still.",
+      "notes": "Re-derived after review against the metric's real range. serviceCoverage is the mean of NINE channels but only five are measured — garbage, transit, water and electricity have no coverage concept in the game and the sensor writes literal zeros — so the attainable maximum is 5/9, about 0.5556, and a reading r means the five real channels average 1.8r. The old 0.55 trigger was 99 per cent of the ceiling and therefore permanently true. At 0.28 the trigger says the five measured channels average about 0.50 city-wide, which is a city that has outgrown its stations and clinics: common in the growth phase, and a mature well-covered city sits nearer 0.33 to 0.45 and stops seeing this. Once or twice a decade, as originally claimed, is now actually true of the number. The relative check asks for two points of reading, about three and a half points of real coverage, which is one building in the right place rather than a programme.",
       "name": "Bond Measure on the Ballot",
       "description": "Finance has run out of pay-as-you-go room and wants a general obligation bond on the next ballot. The service map is the argument: stations that answer late, clinics at capacity, a plant on borrowed time. Bond counsel needs an answer this month, and the ratings desk wants to know whether the city intends to borrow against a coverage gap it has never formally admitted to.",
       "ignoreText": "Leave the bond off the ballot and fund what can be funded out of the operating budget.",
@@ -274,7 +274,7 @@
         "kind": "metric",
         "metricId": "serviceCoverage",
         "comparison": "lt",
-        "threshold": 0.45,
+        "threshold": 0.15,
         "scope": "anyDistrict"
       },
       "check": {
@@ -282,7 +282,7 @@
           "kind": "metric",
           "metricId": "serviceCoverage",
           "comparison": "gte",
-          "threshold": 0.45,
+          "threshold": 0.15,
           "scope": "allDistricts"
         }
       },
@@ -294,7 +294,7 @@
       "failurePressure": { "services": 0.7, "environment": 0.45 },
       "districtAffinity": ["industrial", "working-class"],
       "tags": ["public-health", "services", "water"],
-      "notes": "The only severity 5 in this file, and the only one that should be. A district whose mean service coverage is under 0.45 is genuinely underserved rather than merely stretched, which happens where growth outran the build-out; it is common enough to be reachable in most saves and rare enough that a mandatory story does not repeat. Trigger and check are exact complements about the same line — any district under 0.45 opens it, and it is met only when no district is still under 0.45. All-districts is the whole point here: an any-district check would be answered by whichever block is already well served, which for the file's one mandatory story would mean it succeeded on the month it opened. The ask is a build order aimed at the worst district, and if two districts are under the line it is two build orders; that is honest rather than harsh.",
+      "notes": "The only severity 5 in this file, and the only one that should be. Re-derived after review: serviceCoverage averages NINE channels of which only five are measured, the other four being hard-zeroed by the sensor because the game has no coverage concept for them, so the attainable maximum is 5/9 — about 0.5556 — and a reading r means the five real channels average 1.8r. The previous 0.45 line was 81 per cent of the attainable maximum in EVERY district, which is not the build order this note claimed but a demand for near-perfect healthcare, education, police, fire and parks city-wide; paired with a correspondingly near-permanent trigger on a mandatory event, which ignores the reuse cooldown, it would have pooled and failed almost every cycle and charged the mandatory rate for it. At 0.15 the line means the five measured channels average about 0.27 — a district where the lights are barely on, which is what a fringe district looks like before anything is built in it and not what a merely stretched district looks like. Trigger and check remain exact complements about that line, so there is no band a district can sit in that fails without having contributed. Reachable during any expansion phase, and clearable by putting one or two service buildings in the district that lacks them, which is what makes it survivable as a mandatory story rather than a standing tax.",
       "name": "What Came Out of the Tap on Eighth Street",
       "description": "A pediatrician on the north side has sent the same letter three times and this time she copied the state. The service lines under that district were laid when nobody thought about what they were laid from, and the district is also the one waiting on everything else the city has been slow to build. The letter has stopped being a letter; it is now a hearing date, and the only defensible answer is a construction schedule.",
       "ignoreText": "Answer the letter and nothing else. The lines meet the standard they were laid to.",
@@ -318,11 +318,12 @@
       "check": {
         "spec": {
           "kind": "metric",
-          "metricId": "happiness",
+          "metricId": "population",
           "comparison": "gte",
-          "threshold": 65,
-          "scope": "anyDistrict"
-        }
+          "threshold": 400,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
       },
       "activeEffects": ["district-building-upkeep"],
       "successEffects": ["district-wellbeing"],
@@ -332,14 +333,14 @@
       "failurePressure": { "growth": -0.35, "heritageOrder": 0.3 },
       "districtAffinity": ["historic", "suburban"],
       "tags": ["growth", "planning", "zoning"],
-      "notes": "Three thousand residents added over twelve months is a normal growth year for a mid-size city and a strong one for a small city, so this should be available through most of the expansion phase and go quiet once growth flattens. The check asks only that at least one district be genuinely content at 65 happiness, which is reachable but not automatic; a city that answers a growth fight by neglecting every neighbourhood will miss it. Growth is pressed negative throughout: a rezoning fight is what makes the anti-development pole loud, whichever way the parcel goes.",
+      "notes": "Three thousand residents added over twelve months is a normal growth year for a mid-size city and a strong one for a small city, so this should be available through most of the expansion phase and go quiet once growth flattens. The check was an absolute 65 happiness in some district, which review flagged as the same near-free-pass shape as the old parking-minimums check — a growing city usually already has one contented district when the story opens. It now asks the question a downzoning fight is actually about: four hundred more residents than the month the story opened, city-scope and relative. That is roughly one and a half times the monthly rate the trigger implies, so it is demanding rather than automatic, and a city that answers the petition by refusing to zone anything will simply miss it. Growth is pressed negative throughout: a rezoning fight is what makes the anti-development pole loud, whichever way the parcel goes.",
       "name": "Neighbours Against the Rezoning",
       "description": "Four hundred people signed the petition and roughly forty of them came to the hearing, which in this city is a landslide. The parcel is a surface lot; the proposal is housing; the objection is everything from shadows to school capacity to the character of a street that has been rebuilt twice already. Planning staff recommend approval. Staff recommended approval last time too, and the surface lot is still a surface lot.",
       "ignoreText": "Let the hearing run its course and let the commission decide without a steer from the executive.",
-      "goalText": "Manage the growth so that at least one neighbourhood comes out of it genuinely content.",
+      "goalText": "Keep the housing coming — more people living here at the end of this than at the start.",
       "powerOverrideText": "Approve the rezoning over the commission and take the petition personally.",
-      "successText": "The parcel got built on and the neighbourhood it landed in is doing better, not worse.",
-      "failText": "The petition won, the lot is still a lot, and nowhere in the city is anyone particularly happy about it."
+      "successText": "The parcel got built on, and several hundred people live in a city that was arguing about whether to let them.",
+      "failText": "The petition won, the lot is still a lot, and the people who would have lived on it went somewhere else."
     },
     {
       "id": "na-opioid-response",
