@@ -228,6 +228,55 @@ namespace Agora.Core.Tests
             Assert.Equal("article-01", Assert.Single(loaded!.Articles).Id);
         }
 
+        // --- and the case that deliberately is not the signal ---------------------------------------
+
+        /// <summary>
+        /// A document with one good article and one story entry naming a story this catalog — like
+        /// every catalog here — does not hold.
+        /// </summary>
+        private static string WithAStaleStory() =>
+            @"{ ""schemaVersion"": " + FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture) +
+            @", ""generatedAtSimDate"": ""1997-06-01"",
+                ""partyFlavor"": [ { ""partyId"": ""party-riverside"", ""name"": ""Riverside Slate"" } ],
+                ""articles"": [ " + Kept("article-01") + @" ],
+                ""stories"": [ { ""storyId"": ""story-harbour-1994-02"",
+                                 ""headline"": ""The wharf waits on a decision"",
+                                 ""article"": ""Nobody has signed anything yet."" } ] }";
+
+        [Fact]
+        public void ARoundWhoseEveryStoryIsDroppedIsStillAGoodRound()
+        {
+            // The asymmetry with articles, pinned. A dropped article leaves a hole, because nothing
+            // else writes articles; a dropped story leaves the canned pool's prose, which was written
+            // first and which the CLI only ever adds to. There is deliberately no story equivalent of
+            // ArticlesAllDiscarded.
+            FlavorValidationResult result = Validator().Validate(WithAStaleStory(), Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+            Assert.Empty(result.Document!.Stories);
+            Assert.False(result.ArticlesAllDiscarded);
+            Assert.Equal("article-01", Assert.Single(result.Document.Articles).Id);
+        }
+
+        [Fact]
+        public void ACachedRoundWhoseStoriesHaveAllAgedOutStillLoads()
+        {
+            // And why it has to be an asymmetry rather than a symmetry: story ids turn over every few
+            // cycles, so a cache written a couple of years ago legitimately names nothing the story
+            // layer still holds, while its party names are as good as the day they were written.
+            // Treating that as a failed round would discard the file at exactly the age it is most
+            // needed.
+            string directory = TempRoot("cached-round-stale-stories");
+            var cache = new FileFlavorCache(directory, Validator(), Catalog(), null);
+            Write(directory, WithAStaleStory());
+
+            FlavorDocument loaded = cache.Load();
+
+            Assert.NotNull(loaded);
+            Assert.Empty(loaded!.Stories);
+            Assert.Equal("Riverside Slate", Assert.Single(loaded.PartyFlavor).Name);
+        }
+
         // --- fixtures ----------------------------------------------------------------------------
 
         private static void Write(string directory, string json) =>
