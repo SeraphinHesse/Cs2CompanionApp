@@ -77,7 +77,8 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | **1** | Sensors and city statistics — what the game's own statistics screen shows, plus tourism, progression and per-resource taxes. `CitySnapshot` v4. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **sixteen manual gates outstanding, none walked**, see below · 1442 → **1469 tests** |
 | **2** | Story engine core — the declarative trigger grammar, seeded drafting, the 2-of-3 resolution and the political-power currency. Pure `Agora.Core`. State v6, settings v4, `engine_tuning` v6. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **no new manual gates** — all of it is covered by the suite · 1469 → **1703 tests** |
 | **3** | Catalog and content — 58 authored civic events, a validating catalog loader, and the timeline adapter. Pure content plus `Agora.Core`. `engine_tuning` v7. | ✅ **code complete**, five lanes reviewed and merged, [PR #6](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/6) open into `EventSystemRefresh` · **no new manual gates of its own** · 1703 → **1978 tests** |
-| **4–7** | Tick wiring · prose · UI · retirement | not started |
+| **4** | Tick wiring, effects and persistence — the cycle runs, effects dispatch, power moves, and stories move votes. `engine_tuning` v8. | ✅ **code complete**, eight lanes reviewed and merged, [PR #7](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/7) open into `EventSystemRefresh` · **fifteen manual gates outstanding, none walked** · 1978 → **2109 tests** |
+| **5–7** | Prose · UI · retirement | not started |
 
 ### Wave 3 — the engine now has something to read, and still nothing runs it
 
@@ -205,6 +206,37 @@ The rest cluster into units that look plausible either way (a homeless share of 
 was meant; tax rates as `20.0` rather than `0.2`), counts that must move for events and not for
 menus (a placement preview must not raise the attraction count), and the per-save reset (load city A
 then city B without restarting; B's first snapshot must not carry A's figures).
+
+### Wave 4 — it runs, and nobody has seen it run
+
+The tick now drafts stories on one phase and resolves them on the next; `StoryCycle` sweeps stranded
+stories, trims the archive and suspends entirely under replay; `StoryEffects` turns authored effect
+ids into capped requests; `PowerLedger` accrues, awards, spends and charges debt; and
+`AffinityEngine` gained a **story term that did not previously exist** — so for the first time a
+story's issues and its verdict move votes. `AgoraRuntime` also **loads the civic catalog**, which
+nothing in the assembly had ever mentioned, and all 90 generically-wrapped timeline events now author
+an `issuePressure` where before they were politically inert.
+
+**What has only been built, not seen:** every word of that. No player has viewed a story — there is
+no card, no modal and no prose, and the four inbound commands (`SetStoryResponse`,
+`DeclareManualOutcome`, `ResolveNow`, `SpendPowerOverride`) compile, are reviewed, and **have no
+caller and no binding**. Wave 5 writes the prose; wave 6 builds the surface and owes **four** binding
+registrations rather than the three the plan's table lists.
+
+**Every one of the eight lanes was blocked at least once**, and every block was a real defect a green
+suite had waved through — but the family was different from wave 3's. Wave 3 produced checks that
+read like a goal and could not function as one. Wave 4 produced **derived numbers no green suite can
+see**:
+
+- severity clamped to a constant, so a severity-1 minor story did exactly as much damage as a
+  severity-5 catastrophe — and the cap test passed *because* all five clamped to the same value
+- **102 of 277 authored effect references (36.8%)** silently skipped for want of a district id, and
+  47 of 174 effect phases resolving to literally nothing, behind an honest comment
+- a breadth cap bounding one story against a ledger limit that 30 cycles of consequences overlapped
+- three lanes each appearing to have a rewind defect, all standing on one spine omission: wave 0's
+  watermark repair covered one field, and wave 4 added three more
+
+Every one was found by a reviewer probing arithmetic. **None was found by a test.**
 
 ### Wave 4's manual gates — the command surface and the watermark repair
 
