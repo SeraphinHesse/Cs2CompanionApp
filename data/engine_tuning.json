@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
@@ -410,6 +410,7 @@
       "district-building-fire-hazard":    { "scope": "district", "modifier": "BuildingFireHazard",         "magnitudeCap": 0.20, "durationCapMonths": 24, "fallbackEffectId": "district-wellbeing" },
       "district-bike-probability":        { "scope": "district", "modifier": "BikeProbability",            "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
       "district-car-reserve-probability": { "scope": "district", "modifier": "CarReserveProbability",      "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "district-wellbeing" },
+      "district-street-speed-limit":      { "scope": "district", "modifier": "StreetSpeedLimit",          "magnitudeCap": 0.15, "durationCapMonths": 24, "fallbackEffectId": "district-wellbeing" },
 
       "city-tax-happiness":               { "scope": "city", "modifier": "TaxHappiness",                        "magnitudeCap": 0.15, "durationCapMonths": 60, "fallbackEffectId": "" },
       "city-attractiveness":              { "scope": "city", "modifier": "Attractiveness",                      "magnitudeCap": 0.25, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
@@ -441,7 +442,9 @@
       "city-disaster-damage-rate":        { "scope": "city", "modifier": "DisasterDamageRate",                  "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
       "city-taxi-starting-fee":           { "scope": "city", "modifier": "TaxiStartingFee",                     "magnitudeCap": 0.25, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" },
       "city-oil-resource-amount":         { "scope": "city", "modifier": "OilResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
-      "city-ore-resource-amount":         { "scope": "city", "modifier": "OreResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" }
+      "city-ore-resource-amount":         { "scope": "city", "modifier": "OreResourceAmount",                   "magnitudeCap": 0.20, "durationCapMonths": 60, "fallbackEffectId": "city-tax-happiness" },
+      "city-office-software-efficiency":  { "scope": "city", "modifier": "OfficeSoftwareEfficiency",            "magnitudeCap": 0.30, "durationCapMonths": 24, "fallbackEffectId": "city-office-efficiency" },
+      "city-highway-traffic-safety":      { "scope": "city", "modifier": "HighwayTrafficSafety",                "magnitudeCap": 0.20, "durationCapMonths": 36, "fallbackEffectId": "city-tax-happiness" }
     }
   },
 
@@ -501,7 +504,9 @@
     "alienationWeight": 1.00,
     "enfranchisementWeight": 1.00,
 
-    "freeTextMaxLength": 500
+    "freeTextMaxLength": 500,
+    "_wrappedGoalComment": "In HAPPINESS POINTS on the 0-100 scale, for a severity-1 generically wrapped timeline event; the demand falls linearly to zero at catalog.severityMax. The unit is why this key exists. The wrapper's threshold was first derived from catalog.severityEffectScale, which is a dimensionless effect multiplier everywhere else it is used, producing demands of 0.8 down to 0.0 points out of 100 - narrower than the month-to-month drift of a population mean, so every severity collapsed to 'has happiness not fallen'. Calibrated against the happiness deltas the engine already spends: mandates.fulfilledHappinessBonus is 2.0 and defiedHappinessPenalty is 3.0.",
+    "wrappedEventHappinessGoalPoints": 2.0
   },
 
   "power": {

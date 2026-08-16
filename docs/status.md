@@ -76,7 +76,54 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | **0** | Tick correctness prerequisites — the reload double-tick, and trend memory that died at every save boundary. Not story-specific; stands on its own. | ✅ **code complete**, three lanes reviewed and merged, PR open into `EventSystemRefresh` · **five manual gates outstanding**, see below · 1415 → **1442 tests** |
 | **1** | Sensors and city statistics — what the game's own statistics screen shows, plus tourism, progression and per-resource taxes. `CitySnapshot` v4. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **sixteen manual gates outstanding, none walked**, see below · 1442 → **1469 tests** |
 | **2** | Story engine core — the declarative trigger grammar, seeded drafting, the 2-of-3 resolution and the political-power currency. Pure `Agora.Core`. State v6, settings v4, `engine_tuning` v6. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **no new manual gates** — all of it is covered by the suite · 1469 → **1703 tests** |
-| **3–7** | Catalog · tick wiring · prose · UI · retirement | not started |
+| **3** | Catalog and content — 58 authored civic events, a validating catalog loader, and the timeline adapter. Pure content plus `Agora.Core`. `engine_tuning` v7. | ✅ **code complete**, five lanes reviewed and merged, [PR #6](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/6) open into `EventSystemRefresh` · **no new manual gates of its own** · 1703 → **1978 tests** |
+| **4–7** | Tick wiring · prose · UI · retirement | not started |
+
+### Wave 3 — the engine now has something to read, and still nothing runs it
+
+`data/events_{global,eu,na}.json` carry **58 authored civic events** (27 global, 15 EU, 16 NA), each
+with a declarative trigger, a resolution check, capped effect ids, three issue pressures and seven
+prose fields. `CivicEventCatalogLoader` validates them at load. `TimelineEventAdapter` plus
+`data/timeline_adaptation.json` express the owner's 25/50/25 split over the 120 shipped timeline
+events **without deleting any of them** — the boring quarter is marked `none` and keeps firing as
+timeline events exactly as before.
+
+**Nothing calls any of it**, unchanged from wave 2. Wave 3's claim is that the content is authorable,
+reachable and honest — not that anything happens.
+
+**Every one of the five lanes was blocked at least once, and every block was a real defect a green
+suite had waved through.** The wave's whole defect family had one shape: *a check that reads like a
+goal and cannot function as one*. Six became load-time rules (`CatalogIssueCode` 116–121):
+
+- a relative check at district scope → `Unmeasurable` forever, scoring in neither half of the 2-of-3
+- an `anyDistrict` check answered by the city's healthiest block, not the one the story is about
+- a mirror-negated success pressure that rewards the party which opposed acting
+- a check threshold tighter than its trigger, failing the player over a district never mentioned
+- a check window outrunning the story's life, deciding half the verdict before the card appeared
+- a threshold above what the sensor can ever report
+
+**Three of those classes were the orchestrator's defect, not a lane's.** The sharpest: every content
+lane was handed `cycleMonths` (2) as the window a player can influence, when a story actually lives
+`cycleMonths - 1` — **one month**. Roughly 40 thresholds across two files had to be re-derived by
+hand, because a mechanical `2 → 1` would have silently *doubled* the difficulty on any threshold
+sized for the wider span.
+
+**Two sensor ceilings are now published** that nothing had recorded anywhere an author would look:
+`serviceCoverage` is the mean of **nine** channels with four hard-zeroed, so it tops out at
+**5/9 ≈ 0.5556**; `pollution` tops out at **0.75**. A threshold of 0.45 on service coverage is 81% of
+everything attainable, not "a bit over half". See `CivicEventCatalogLoader.AttainableMaximum`.
+
+**Two of the plan's authorable trigger kinds are not authorable.** `CitySnapshot.ActivePolicyIds` is
+written by no sensor at all, so a `Policy` trigger can never fire and an `Absent` policy trigger fires
+on every city forever — the loader now rejects the kind by name. And `Unlock` ids are raw prefab-name
+strings nobody has read, so wave 1's unwalked gate 11 gates that kind entirely.
+
+**The deploying `dotnet build Agora.sln` was run** (0/0), which also closes wave 2's outstanding
+"not walked" item retroactively.
+
+Full detail, including the ruling that event pressures are **salience rather than credit** and the
+`/schema-change` wave 4 must run *before* its `issuePressure` authoring pass, is in
+`docs/plans/0004-wave-3-handoff.md`.
 
 ### Wave 2 — built, and not yet reachable by a player
 

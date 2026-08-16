@@ -28,7 +28,7 @@ namespace Agora.Core.Tuning
         /// because every other test in the suite runs against <see cref="Default"/> rather than the
         /// file — so a value that differs here is a value the shipped engine never verified.
         /// </summary>
-        public int SchemaVersion { get; internal set; } = 6;
+        public int SchemaVersion { get; internal set; } = 7;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -1349,6 +1349,7 @@ namespace Agora.Core.Tuning
             District("district-building-fire-hazard", "BuildingFireHazard", 0.20, 24, DistrictFallback);
             District("district-bike-probability", "BikeProbability", 0.25, 36, DistrictFallback);
             District("district-car-reserve-probability", "CarReserveProbability", 0.20, 36, DistrictFallback);
+            District("district-street-speed-limit", "StreetSpeedLimit", 0.15, 24, DistrictFallback);
 
             // Game.City.CityModifierType — 40 members.
             City("city-tax-happiness", "TaxHappiness", 0.15, 60, "");
@@ -1382,6 +1383,15 @@ namespace Agora.Core.Tuning
             City("city-taxi-starting-fee", "TaxiStartingFee", 0.25, 36, CityFallback);
             City("city-oil-resource-amount", "OilResourceAmount", 0.20, 60, CityFallback);
             City("city-ore-resource-amount", "OreResourceAmount", 0.20, 60, CityFallback);
+
+            // Wave 3. All three are applied by the game rather than being dead enum members —
+            // ProcessingCompanySystem, RoadSafetySystem and LaneDataSystem respectively — and all
+            // three were already in ModifierRegistry's name table, which registers the complete enums.
+            // city-office-software-efficiency falls back to city-office-efficiency rather than to
+            // CityFallback: the narrower lever degrading to the broader one of the same kind keeps an
+            // event about the software sector about the office sector, instead of about tax mood.
+            City("city-office-software-efficiency", "OfficeSoftwareEfficiency", 0.30, 24, "city-office-efficiency");
+            City("city-highway-traffic-safety", "HighwayTrafficSafety", 0.20, 36, CityFallback);
 
             return m;
         }
@@ -1661,6 +1671,32 @@ namespace Agora.Core.Tuning
         /// </summary>
         public int FreeTextMaxLength { get; internal set; } = 500;
 
+        /// <summary>
+        /// The gain, <b>in happiness points on the 0–100 scale</b>, that a generically wrapped
+        /// timeline event of severity 1 asks for. The demand falls linearly to zero at
+        /// <c>catalog.severityMax</c>, so the most severe wrapped events ask only that the city hold
+        /// its mood.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The unit is the whole point of this key existing.</b> The wrapper's threshold was first
+        /// built from <c>catalog.severityEffectScale</c>, which is a dimensionless effect-magnitude
+        /// multiplier everywhere else it is used (<c>EffectResolution</c>,
+        /// <c>TimelineCatalogLoader</c>). Borrowing it produced demands of 0.8 down to 0.0 <i>points
+        /// out of 100</i> — a spread narrower than the month-to-month drift of a population mean, so
+        /// all five severities collapsed to "has happiness not fallen". Avoiding a literal by
+        /// borrowing a number that means something else is not the same as reading a value from
+        /// tuning.
+        /// </para>
+        /// <para>
+        /// Calibrated against the two happiness deltas the engine already spends:
+        /// <c>mandates.fulfilledHappinessBonus</c> is 2.0 and <c>defiedHappinessPenalty</c> is 3.0.
+        /// A severity-1 wrapped event therefore asks for about what fulfilling a whole mandate pays,
+        /// which is demanding but visible — and, unlike 0.8, distinguishable from noise.
+        /// </para>
+        /// </remarks>
+        public double WrappedEventHappinessGoalPoints { get; internal set; } = 2.0;
+
         internal static StoriesTuning Read(TuningReader r, StoriesTuning d) => new StoriesTuning
         {
             Enabled = r.Flag("enabled", d.Enabled),
@@ -1684,7 +1720,9 @@ namespace Agora.Core.Tuning
             FailureEffectScale = r.Num("failureEffectScale", d.FailureEffectScale),
             AlienationWeight = r.Num("alienationWeight", d.AlienationWeight),
             EnfranchisementWeight = r.Num("enfranchisementWeight", d.EnfranchisementWeight),
-            FreeTextMaxLength = r.Int("freeTextMaxLength", d.FreeTextMaxLength)
+            FreeTextMaxLength = r.Int("freeTextMaxLength", d.FreeTextMaxLength),
+            WrappedEventHappinessGoalPoints =
+                r.Num("wrappedEventHappinessGoalPoints", d.WrappedEventHappinessGoalPoints)
         };
     }
 
