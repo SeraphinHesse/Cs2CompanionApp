@@ -29,6 +29,7 @@
         }
       ],
       "headlineBrief": "East and West Germany unite. Large fiscal transfers east, rapid industrial restructuring and internal migration follow; a solidarity surcharge is levied on taxpayers. Parties split over who pays and for how long.",
+      "issuePressure": { "services": 0.35, "costOfLiving": 0.25, "growth": 0.15 },
       "tags": [
         "germany",
         "reunification",
@@ -59,6 +60,7 @@
         }
       ],
       "headlineBrief": "Slovenia and Croatia declare independence and fighting spreads. Western European states receive large numbers of asylum seekers and argue over quotas, recognition and intervention.",
+      "issuePressure": { "services": 0.2, "heritageOrder": 0.3 },
       "tags": [
         "balkans",
         "war",
@@ -118,6 +120,7 @@
         }
       ],
       "headlineBrief": "Speculative pressure forces sterling and the lira out of the Exchange Rate Mechanism after emergency interest-rate rises. Mortgage and municipal borrowing costs spike; monetary-union credibility is questioned.",
+      "issuePressure": { "costOfLiving": 0.4 },
       "tags": [
         "currency",
         "finance",
@@ -153,6 +156,7 @@
         }
       ],
       "headlineBrief": "Customs checks and most internal trade barriers end across the Community. Goods, capital and labour move freely; exposed local industries face competition while exporters gain, and services regulation moves to Brussels.",
+      "issuePressure": { "growth": 0.35, "heritageOrder": -0.15 },
       "tags": [
         "single-market",
         "trade",
@@ -182,6 +186,7 @@
         }
       ],
       "headlineBrief": "Seven states drop passport checks at internal borders and shift control to the external frontier. Cross-border commuting and tourism rise; opponents campaign on policing and smuggling.",
+      "issuePressure": { "transit": 0.2, "heritageOrder": 0.3 },
       "tags": [
         "schengen",
         "borders",
@@ -298,6 +303,7 @@
         }
       ],
       "headlineBrief": "Hauliers and farmers blockade refineries and depots across several member states over fuel duty as crude prices climb. Deliveries and public transport are disrupted; governments concede duty freezes.",
+      "issuePressure": { "costOfLiving": 0.35, "environment": -0.15 },
       "tags": [
         "cost-of-living",
         "fuel",
@@ -333,6 +339,7 @@
         }
       ],
       "headlineBrief": "Twelve national currencies are withdrawn and replaced with euro cash. Official inflation stays low but consumers report rounded-up prices for everyday goods; the gap between measured and perceived inflation becomes a standing political grievance.",
+      "issuePressure": { "costOfLiving": 0.45, "heritageOrder": 0.15 },
       "tags": [
         "euro",
         "cost-of-living",
@@ -368,6 +375,7 @@
         }
       ],
       "headlineBrief": "Weeks of record temperatures cause tens of thousands of excess deaths, concentrated among elderly people living alone. Hospitals and mortuaries are overwhelmed; inquiries target emergency planning, heat warnings and elderly care.",
+      "issuePressure": { "services": 0.5, "environment": 0.3 },
       "tags": [
         "climate",
         "heatwave",
@@ -404,6 +412,7 @@
         }
       ],
       "headlineBrief": "Poland, Hungary, the Czech Republic, Slovakia, Slovenia, the Baltic states, Malta and Cyprus accede. Some members open their labour markets immediately, others impose transition periods; wage competition and worker mobility become election issues.",
+      "issuePressure": { "costOfLiving": 0.3, "growth": 0.25, "heritageOrder": 0.2 },
       "tags": [
         "enlargement",
         "labour",
@@ -463,6 +472,7 @@
         }
       ],
       "headlineBrief": "Three weeks of nightly unrest spread from Paris estates to towns across the country after two teenagers die fleeing police. A state of emergency is declared. Debate centres on policing, unemployment and segregated social housing.",
+      "issuePressure": { "services": 0.25, "costOfLiving": 0.15, "heritageOrder": 0.4 },
       "tags": [
         "unrest",
         "policing",
@@ -529,6 +539,7 @@
         }
       ],
       "headlineBrief": "Euro-area leaders agree coordinated recapitalisations and interbank guarantees as credit markets freeze. Bank losses move onto public balance sheets; construction stalls and tax receipts fall, setting up the fight over who bears the cost.",
+      "issuePressure": { "services": 0.35, "costOfLiving": 0.3 },
       "tags": [
         "finance",
         "banking",
@@ -559,6 +570,7 @@
         }
       ],
       "headlineBrief": "A pricing dispute with Ukraine halts transit gas for two weeks in mid-winter; south-eastern member states lose heating and industry is curtailed. Supply diversification and storage become permanent items on the energy agenda.",
+      "issuePressure": { "services": 0.4, "costOfLiving": 0.25 },
       "tags": [
         "energy",
         "gas",
@@ -630,6 +642,7 @@
         }
       ],
       "headlineBrief": "Euro-area states and the IMF agree a rescue loan for Greece against a programme of pay cuts, pension cuts and privatisation; Ireland and Portugal follow within a year. Spreads widen, national budgets are supervised from Brussels, and austerity becomes the dominant domestic issue.",
+      "issuePressure": { "services": 0.5, "costOfLiving": 0.35 },
       "tags": [
         "eurozone",
         "debt",
@@ -660,6 +673,7 @@
         }
       ],
       "headlineBrief": "Occupations of central squares in Spain and Greece spread into a wider protest wave against budget cuts and youth unemployment. Turnout collapses for governing parties and new movements form outside the established party system.",
+      "issuePressure": { "services": 0.4, "costOfLiving": 0.3, "heritageOrder": -0.2 },
       "tags": [
         "austerity",
         "protest",
@@ -696,6 +710,7 @@
         }
       ],
       "headlineBrief": "After Fukushima, Germany sets a legal end date for nuclear power and other states review their programmes. Renewables levies raise electricity bills while coal covers the gap; energy prices and grid build-out enter local politics.",
+      "issuePressure": { "costOfLiving": 0.25, "environment": 0.35 },
       "tags": [
         "energy",
         "nuclear",
@@ -778,6 +793,7 @@
         }
       ],
       "headlineBrief": "Russia annexes Crimea after an unrecognised referendum and the EU adopts asset freezes and sectoral sanctions; Russia counter-bans European food imports. Exporters and farmers lose a market and defence spending returns to the agenda.",
+      "issuePressure": { "costOfLiving": 0.15, "heritageOrder": 0.3 },
       "tags": [
         "russia",
         "sanctions",
@@ -814,6 +830,7 @@
         }
       ],
       "headlineBrief": "Austria and Germany admit people stranded in Hungary and over a million asylum seekers arrive in the EU during the year. Emergency accommodation, school places and relocation quotas are contested; several states reimpose internal border checks and new parties gain on the issue.",
+      "issuePressure": { "services": 0.45, "costOfLiving": 0.2, "heritageOrder": 0.5 },
       "tags": [
         "migration",
         "asylum",
@@ -851,6 +868,7 @@
         }
       ],
       "headlineBrief": "Coordinated attacks in Paris kill 130 people and a state of emergency follows. Surveillance powers, armed policing of public spaces and border checks expand across member states; civil-liberties groups contest the permanence of the measures.",
+      "issuePressure": { "services": 0.15, "heritageOrder": 0.5 },
       "tags": [
         "security",
         "terrorism",
@@ -887,6 +905,7 @@
         }
       ],
       "headlineBrief": "A 52-48 vote to leave triggers the prime minister's resignation and a sterling slump. Firms delay investment while relocation of finance and regulatory functions begins; every member state's Eurosceptic parties test the exit argument at home.",
+      "issuePressure": { "costOfLiving": 0.15, "heritageOrder": 0.35 },
       "tags": [
         "brexit",
         "referendum",
@@ -923,6 +942,7 @@
         }
       ],
       "headlineBrief": "Germany's federal administrative court rules cities may ban older diesel vehicles to meet EU nitrogen-dioxide limits, following infringement action and the emissions-test scandal. Low-emission zones spread; drivers with older cars organise against them.",
+      "issuePressure": { "costOfLiving": 0.15, "environment": 0.3, "transit": 0.2 },
       "tags": [
         "air-quality",
         "transport",
@@ -959,6 +979,7 @@
         }
       ],
       "headlineBrief": "A planned carbon-linked fuel duty rise sets off months of blockades and Saturday demonstrations, strongest outside the big cities. The rise is cancelled. Climate policy is now argued in terms of who pays for it and where they live.",
+      "issuePressure": { "costOfLiving": 0.45, "environment": -0.3, "transit": -0.15 },
       "tags": [
         "protest",
         "fuel",
@@ -995,6 +1016,7 @@
         }
       ],
       "headlineBrief": "The Commission sets a 2050 climate-neutrality target with binding interim cuts, building renovation and transport rules attached. Compliance costs land on municipalities and industry; a just-transition fund is created for coal regions.",
+      "issuePressure": { "costOfLiving": 0.15, "environment": 0.45 },
       "tags": [
         "climate",
         "green-deal",
@@ -1031,6 +1053,7 @@
         }
       ],
       "headlineBrief": "After four days of negotiation, leaders agree 750 billion euro of common borrowing for grants and loans, tied to national plans for digital and green investment. Common debt is a precedent; disbursement is conditioned on reform milestones.",
+      "issuePressure": { "services": 0.2, "environment": 0.2, "growth": 0.3 },
       "tags": [
         "fiscal",
         "recovery",
@@ -1061,6 +1084,7 @@
         }
       ],
       "headlineBrief": "Customs declarations, rules of origin and sanitary checks return between the UK and the EU under a zero-tariff deal. Freight queues, paperwork costs and lost small-exporter trade follow; services access is not covered.",
+      "issuePressure": { "costOfLiving": 0.3 },
       "tags": [
         "brexit",
         "trade",
@@ -1097,6 +1121,7 @@
         }
       ],
       "headlineBrief": "Extreme rainfall destroys valley towns and kills more than 200 people weeks before a federal election. Warning chains and evacuation orders failed at local level; flood defence, building in floodplains and climate adaptation dominate the campaign.",
+      "issuePressure": { "services": 0.45, "environment": 0.35, "growth": -0.25 },
       "tags": [
         "disaster",
         "flooding",
@@ -1133,6 +1158,7 @@
         }
       ],
       "headlineBrief": "Days after the invasion the EU activates the temporary protection directive, granting residence, work and schooling without asylum procedures; millions arrive within months. Housing, school places and language provision are the binding constraints at municipal level.",
+      "issuePressure": { "services": 0.4, "costOfLiving": 0.25, "heritageOrder": 0.2 },
       "tags": [
         "ukraine",
         "refugees",
@@ -1163,6 +1189,7 @@
         }
       ],
       "headlineBrief": "With euro-area inflation heading to double digits the ECB ends negative rates and begins the fastest tightening cycle in its history. Mortgages, municipal borrowing and construction finance reprice; real wages fall.",
+      "issuePressure": { "services": 0.15, "costOfLiving": 0.4 },
       "tags": [
         "inflation",
         "ecb",
@@ -1199,6 +1226,7 @@
         }
       ],
       "headlineBrief": "With Russian pipeline flows cut and storage short, the EU regulation obliging member states to cut gas use by 15 per cent takes effect. Heating and lighting limits apply to public buildings, industry is paid to curtail output, and bill support is capped by national budgets.",
+      "issuePressure": { "services": 0.25, "costOfLiving": 0.4, "environment": 0.25 },
       "tags": [
         "energy",
         "gas",
@@ -1235,6 +1263,7 @@
         }
       ],
       "headlineBrief": "Tractor blockades in Germany, France, Poland and Belgium target diesel subsidy cuts, environmental conditions on subsidies and Ukrainian grain imports. The Commission withdraws a pesticide bill and softens fallow-land rules.",
+      "issuePressure": { "costOfLiving": 0.25, "environment": -0.35 },
       "tags": [
         "agriculture",
         "protest",
@@ -1287,6 +1316,7 @@
         }
       ],
       "headlineBrief": "The Bundestag amends the constitution to exempt defence spending from the debt brake and create a 500 billion euro infrastructure fund, part of it earmarked for states and municipalities. European yields rise; other capitals face the same guns-and-roads choice.",
+      "issuePressure": { "transit": 0.2, "growth": 0.3, "heritageOrder": 0.2 },
       "tags": [
         "fiscal",
         "defence",
