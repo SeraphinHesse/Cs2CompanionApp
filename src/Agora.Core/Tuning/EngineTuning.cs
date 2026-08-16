@@ -1688,14 +1688,35 @@ namespace Agora.Core.Tuning
         /// </remarks>
         public int MaxStoryEffectsPerModifier { get; internal set; } = 3;
 
+        /// <summary>
+        /// How long a story's <b>consequence</b> lasts, in months. Still clamped by each palette
+        /// entry's own <c>durationCapMonths</c>, so this can only ever shorten.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Without this the resolution effect ran for the palette entry's own duration cap</b> —
+        /// 24 to 60 months — against a two-month cadence, so 12 to 30 cycles overlapped and one
+        /// modifier could carry up to 180 live ledger entries against <c>effects.maxStackedPerModifier</c>
+        /// of 4. A cap is a ceiling, not a default, and reading it as one made
+        /// <see cref="MaxStoryEffectsPerModifier"/> a no-op against the problem it was written for:
+        /// that cap is per story, so it bounds one story's breadth and never the cycle's, and what
+        /// actually decides how many story effects are live at once is how many cycles can overlap.
+        /// </para>
+        /// <para>
+        /// Six months is three cycles — long enough that a verdict is still being felt when the next
+        /// story lands, short enough that the ledger limit binds on breadth rather than on age.
+        /// </para>
+        /// </remarks>
+        public int ResolutionEffectMonths { get; internal set; } = 6;
+
         /// <summary>Magnitude scale for effects applied while a story is live.</summary>
         public double ActiveEffectScale { get; internal set; } = 0.5;
 
         /// <summary>Magnitude scale for effects applied on a met slot.</summary>
-        public double SuccessEffectScale { get; internal set; } = 1.0;
+        public double SuccessEffectScale { get; internal set; } = 0.55;
 
         /// <summary>Magnitude scale for effects applied on a not-met slot.</summary>
-        public double FailureEffectScale { get; internal set; } = 1.0;
+        public double FailureEffectScale { get; internal set; } = 0.55;
 
         /// <summary>How far a failed outcome pushes voters away from the government.</summary>
         public double AlienationWeight { get; internal set; } = 1.0;
@@ -1753,6 +1774,7 @@ namespace Agora.Core.Tuning
             ArchiveRetention = r.Int("archiveRetention", d.ArchiveRetention),
             MinorPromotionEnabled = r.Flag("minorPromotionEnabled", d.MinorPromotionEnabled),
             MaxStoryEffectsPerModifier = r.Int("maxStoryEffectsPerModifier", d.MaxStoryEffectsPerModifier),
+            ResolutionEffectMonths = r.Int("resolutionEffectMonths", d.ResolutionEffectMonths),
             ActiveEffectScale = r.Num("activeEffectScale", d.ActiveEffectScale),
             SuccessEffectScale = r.Num("successEffectScale", d.SuccessEffectScale),
             FailureEffectScale = r.Num("failureEffectScale", d.FailureEffectScale),
