@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 using Agora.Core.Contracts;
+using Agora.Core.Stories;
+using Agora.Core.Stories.Catalog;
 using Agora.Mod.Llm;
 using Xunit;
 
@@ -31,11 +33,16 @@ namespace Agora.Core.Tests
     public class StaticPoolPressTests
     {
         private static readonly Guid Save = new Guid("9a4f10d2-0000-4000-8000-abcdefabcdef");
+
+        /// <summary>A second city, for the draws that must not be the same in both.</summary>
+        private static readonly Guid OtherSave = new Guid("1c7b3e55-0000-4000-8000-abcdefabcdef");
         private static readonly SimDate Founded = new SimDate(2018, 4, 1);
         private static readonly SimDate Date = new SimDate(2031, 5, 1);
 
-        private static StaticPoolProvider Pool(RegionTheme theme) =>
-            new StaticPoolProvider(Save, theme,
+        private static StaticPoolProvider Pool(RegionTheme theme) => Pool(Save, theme);
+
+        private static StaticPoolProvider Pool(Guid saveGuid, RegionTheme theme) =>
+            new StaticPoolProvider(saveGuid, theme,
                                    FlavorValidator.Create(null, NullFlavorLog.Instance),
                                    NullFlavorLog.Instance);
 
@@ -590,7 +597,485 @@ namespace Agora.Core.Tests
             Assert.Equal(Fingerprint(a), Fingerprint(b));
         }
 
+        // ---- stories and resolutions ----------------------------------------------------------------
+
+        [Fact]
+        public void AStoryCardOpensWithItsMajorEventsName()
+        {
+            // The headline is a transcription, not a draw: the card a player opens says the name of
+            // the thing the story is about, and the article walks the slots in the story's own order.
+            FlavorRequest request = Request(Date, FlavorWakeReason.StoryDraft, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            request.Stories.Add(Story("story-01", resolved: false));
+
+            FlavorDocument document = PoolWithCatalog().Generate(request);
+            Assert.NotNull(document);
+
+            StoryProseEntry entry = Assert.Single(document.Stories);
+            Assert.Empty(document.Resolutions);
+
+            Assert.Equal("story-01", entry.StoryId);
+            Assert.Equal("The major thing", entry.Headline);
+
+            // Every slot, name then description, in slot order and with nothing else between them.
+            Assert.Equal("The major thing. What the major thing is. The minor thing. " +
+                         "What the minor thing is.", entry.Article);
+        }
+
+        [Fact]
+        public void AResolvedStoryIsAResolutionAndSaysHowEachSlotWentOut()
+        {
+            // met takes the authored success line, not met the authored failure line - the two fields
+            // the brief does not carry and CivicEventCatalog.Find is the way back to.
+            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            request.Stories.Add(Story("story-01", resolved: true));
+
+            FlavorDocument document = PoolWithCatalog().Generate(request);
+            Assert.NotNull(document);
+
+            Assert.Empty(document.Stories);
+            StoryProseEntry entry = Assert.Single(document.Resolutions);
+
+            Assert.Equal("story-01", entry.StoryId);
+            Assert.Equal("The major thing", entry.Headline);
+            Assert.Equal(StaticPoolContent.ResolutionFailureLead +
+                         " The major thing. The major thing worked. The minor thing. " +
+                         "The minor thing did not.", entry.Article);
+        }
+
+        [Theory]
+        [InlineData("success", "story ended in success")]
+        [InlineData("failure", "story ended in failure")]
+        [InlineData("abandoned", "story was abandoned")]
+        [InlineData("", "brief arrived resolved with no word on it")]
+        public void AResolutionSaysTheStoryClosedEvenWhenNoSlotCanSayHow(string outcomeWord, string because)
+        {
+            // The three cases where slot text alone cannot tell a closing card from an opening one:
+            // an abandoned story leaves every slot Pending and so every slot word empty, an
+            // unmeasurable slot has no authored outcome to switch to, and a save whose civic catalog
+            // has not reached the pool resolves nothing at all. All three are here at once - no
+            // catalog, no slot words - so the only thing that can carry the news is the story's own
+            // outcome word.
+            FlavorRequest live = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                         parties: 2, districts: 2);
+            live.Stories.Add(Story("story-01", resolved: false));
+
+            FlavorRequest closed = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                           parties: 2, districts: 2);
+            StoryBrief story = Story("story-01", resolved: true);
+            story.OutcomeWord = outcomeWord;
+            for (int i = 0; i < story.Slots.Count; i++) story.Slots[i].OutcomeWord = "";
+            closed.Stories.Add(story);
+
+            // Pool(), not PoolWithCatalog(): the catalog is unwired, which is every save today.
+            FlavorDocument opening = Pool(RegionTheme.Eu).Generate(live);
+            FlavorDocument closing = Pool(RegionTheme.Eu).Generate(closed);
+            Assert.NotNull(opening);
+            Assert.NotNull(closing);
+
+            string opened = Assert.Single(opening.Stories).Article;
+            string ended = Assert.Single(closing.Resolutions).Article;
+
+            Assert.True(opened != ended, "the " + because + " reads exactly like the opening card.");
+            Assert.StartsWith(ClosingLead(outcomeWord), ended, StringComparison.Ordinal);
+
+            // Everything the opening card said is still there; the lead-in is added in front of it
+            // rather than displacing what the story was about.
+            Assert.EndsWith(opened, ended, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TheFourClosingLeadsAreFourDifferentSentences()
+        {
+            // Otherwise the outcome word is being read and thrown away, which the test above would
+            // not notice: it compares a resolution against a live card, not against another outcome.
+            var leads = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string word in new[] { "success", "failure", "abandoned", "" })
+            {
+                Assert.True(leads.Add(ClosingLead(word)), "two outcomes share a lead-in: " + word);
+            }
+        }
+
+        [Fact]
+        public void AStoryThatOutlivedItsContentStillGetsAWholeResolution()
+        {
+            // A data file edited between sessions, or a save opened on a build whose catalog dropped
+            // the event: Find answers null, which CivicEventCatalog documents as an ordinary answer.
+            // The slot still has its description on the brief, so the card says what the story was
+            // rather than how it went - and it is still a card, not a gap.
+            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            request.Stories.Add(Story("story-01", resolved: true));
+
+            // The default catalog, which is Empty: nothing is wired in.
+            FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
+            Assert.NotNull(document);
+
+            StoryProseEntry entry = Assert.Single(document.Resolutions);
+            Assert.Equal("The major thing", entry.Headline);
+
+            // What each slot was, because there is no authored outcome to be had - but still opening
+            // on the news that the file is closed, which is the part that needs no catalog.
+            Assert.Equal(StaticPoolContent.ResolutionFailureLead +
+                         " The major thing. What the major thing is. The minor thing. " +
+                         "What the minor thing is.", entry.Article);
+        }
+
+        [Fact]
+        public void AnUnmeasurableSlotFallsBackToWhatTheStoryWasAbout()
+        {
+            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+
+            StoryBrief story = Story("story-01", resolved: true);
+            story.Slots[1].OutcomeWord = "unmeasurable";
+            request.Stories.Add(story);
+
+            FlavorDocument document = PoolWithCatalog().Generate(request);
+            Assert.NotNull(document);
+
+            StoryProseEntry entry = Assert.Single(document.Resolutions);
+            Assert.Equal(StaticPoolContent.ResolutionFailureLead +
+                         " The major thing. The major thing worked. The minor thing. " +
+                         "What the minor thing is.", entry.Article);
+        }
+
+        [Fact]
+        public void ALongStoryDropsADescriptionRatherThanASlot()
+        {
+            // Three slots of authored description can pass the article cap between them, which is not
+            // hypothetical: the shipped NA catalog's longest triples do it. Names are short - the
+            // longest shipped one is a fifth of the headline cap - so the card can always say what
+            // every slot was and spend the rest of the cap on descriptions in slot order. Dropping a
+            // slot outright would lose the event's name too, with nothing on the card to say it
+            // happened.
+            string filler = SentenceOfLength(FlavorCacheMigration.StoryArticleMaxLength * 3 / 4);
+
+            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            StoryBrief story = Story("story-01", resolved: false);
+            for (int i = 0; i < story.Slots.Count; i++) story.Slots[i].HeadlineBrief = filler;
+            request.Stories.Add(story);
+
+            FlavorDocument document = PoolWithCatalog().Generate(request);
+            Assert.NotNull(document);
+
+            StoryProseEntry entry = Assert.Single(document.Stories);
+            Assert.True(entry.Article.Length <= FlavorCacheMigration.StoryArticleMaxLength,
+                        "article over the cap: " + entry.Article.Length);
+
+            // Both slots named, in slot order, with the first slot's description carried whole and
+            // the second's dropped whole. Nothing cut.
+            Assert.Equal("The major thing. " + filler + " The minor thing.", entry.Article);
+        }
+
+        [Fact]
+        public void AStoryWhoseEventNamesDoNotFitFallsBackToWholeGenericLines()
+        {
+            // Absurd input rather than shipped content: no authored name comes near either cap, so
+            // this is the floor that keeps a bad catalog from putting an over-cap entry through the
+            // schema and taking the whole document down with it. Whole lines, not cut ones - the same
+            // call Fitting makes for an article whose district name will not fit its headline.
+            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            request.Stories.Add(OverflowingStory("story-01", resolved: false));
+
+            FlavorDocument document = PoolWithCatalog().Generate(request);
+            Assert.NotNull(document);
+
+            StoryProseEntry entry = Assert.Single(document.Stories);
+            Assert.Contains(entry.Headline, StaticPoolContent.StoryHeadlines);
+            Assert.Contains(entry.Article, StaticPoolContent.StoryArticles);
+        }
+
+        [Fact]
+        public void AResolutionTooLongToTranscribeIsStillAWholeClosingLine()
+        {
+            // A resolution has no generic article pool behind it and does not need one: the lead-in
+            // is authored here, always fits, and already says the thing a closing card exists to say.
+            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            request.Stories.Add(OverflowingStory("story-01", resolved: true));
+
+            FlavorDocument document = PoolWithCatalog().Generate(request);
+            Assert.NotNull(document);
+
+            StoryProseEntry entry = Assert.Single(document.Resolutions);
+            Assert.Contains(entry.Headline, StaticPoolContent.ResolutionHeadlines);
+            Assert.Equal(StaticPoolContent.ResolutionFailureLead, entry.Article);
+        }
+
+        [Fact]
+        public void AStorysProseDoesNotChangeWithTheDateItWasRegeneratedFor()
+        {
+            // The defect this is written against is the one the party name draw already had: a story
+            // card is regenerated on every poll for as long as the story is open, and a headline that
+            // moved every sim month would change under a player mid-read. The story here overflows
+            // both caps, so the drawn fallback - the only draw a story entry makes - is what moves if
+            // anything does.
+            StoryProseEntry? first = null;
+
+            for (int month = 1; month <= 12; month++)
+            {
+                var date = new SimDate(2031, month, 1);
+                FlavorRequest request = Request(date, FlavorWakeReason.StoryDraft, RegionTheme.Eu,
+                                                parties: 2, districts: 2);
+                request.Stories.Add(OverflowingStory("story-01", resolved: false));
+
+                FlavorDocument document = PoolWithCatalog().Generate(request);
+                Assert.NotNull(document);
+
+                StoryProseEntry entry = Assert.Single(document.Stories);
+                if (first == null)
+                {
+                    first = entry;
+                    continue;
+                }
+
+                Assert.Equal(first.Headline, entry.Headline);
+                Assert.Equal(first.Article, entry.Article);
+            }
+        }
+
+        [Fact]
+        public void StoriesInOneSaveDoNotAllFallBackToTheSameLine()
+        {
+            // The fallback is drawn per story, on the story's own sub-stream. Asserted across six ids
+            // rather than on one pair, because a pair against a three-line pool is a coin flip that a
+            // fourth line could flip red for no reason at all.
+            List<string> articles = FallbackArticles(Save, 6);
+
+            Assert.True(new HashSet<string>(articles, StringComparer.Ordinal).Count > 1,
+                        "six stories in one save all opened on the same line.");
+        }
+
+        [Fact]
+        public void TwoSavesDoNotDrawTheSameFallbackLines()
+        {
+            // Structurally guaranteed - the save GUID is the first thing hashed into the seed - and
+            // cheap to hold, because the failure it would catch is a stream that quietly stopped
+            // reading it and made every city's fallback prose identical.
+            Assert.NotEqual(FallbackArticles(Save, 6), FallbackArticles(OtherSave, 6));
+        }
+
+        [Fact]
+        public void ReorderingTheStoriesDoesNotReorderTheCards()
+        {
+            FlavorRequest forwards = Request(Date, FlavorWakeReason.StoryDraft, RegionTheme.Eu,
+                                             parties: 2, districts: 2);
+            FlavorRequest backwards = Request(Date, FlavorWakeReason.StoryDraft, RegionTheme.Eu,
+                                              parties: 2, districts: 2);
+
+            foreach (string id in new[] { "story-01", "story-02", "story-03" })
+            {
+                forwards.Stories.Add(Story(id, resolved: false));
+                backwards.Stories.Add(Story(id, resolved: false));
+            }
+            backwards.Stories.Reverse();
+
+            FlavorDocument a = PoolWithCatalog().Generate(forwards);
+            FlavorDocument b = PoolWithCatalog().Generate(backwards);
+
+            Assert.Equal(StoryFingerprint(a), StoryFingerprint(b));
+        }
+
+        [Fact]
+        public void TheStoryPoolsFitBothCapsWithNothingSubstituted()
+        {
+            // The floor under the story fallback, as TheGenericPoolFitsBothCapsWithNothingSubstituted
+            // is the floor under the article one. Only if these fit is the word-boundary trim behind
+            // them unreachable, which is what lets a story card promise it never opens on a cut line.
+            foreach (string[] pool in new[] { StaticPoolContent.StoryHeadlines,
+                                              StaticPoolContent.ResolutionHeadlines })
+            {
+                for (int i = 0; i < pool.Length; i++)
+                {
+                    Assert.True(pool[i].Length <= FlavorCacheMigration.StoryHeadlineMaxLength,
+                                "story headline over the cap: " + pool[i]);
+                }
+            }
+
+            for (int i = 0; i < StaticPoolContent.StoryArticles.Length; i++)
+            {
+                Assert.True(StaticPoolContent.StoryArticles[i].Length <= FlavorCacheMigration.StoryArticleMaxLength,
+                            "story article over the cap: " + StaticPoolContent.StoryArticles[i]);
+            }
+
+            // The closing lines are not a floor - a resolution carries one every time - so they have
+            // to leave room for the story itself rather than merely fitting the cap on their own.
+            foreach (string lead in ClosingLeads())
+            {
+                Assert.True(lead.Length * 4 <= FlavorCacheMigration.StoryArticleMaxLength,
+                            "a closing line is eating the article cap: " + lead);
+            }
+        }
+
         // ---- fixtures and helpers -----------------------------------------------------------------
+
+        /// <summary>
+        /// Two slots, major first, in the order <c>Story.Slots</c> hands them over. Resolved stories
+        /// take one met slot and one not-met one, so a resolution exercises both authored fields.
+        /// </summary>
+        private static StoryBrief Story(string storyId, bool resolved)
+        {
+            return new StoryBrief
+            {
+                StoryId = storyId,
+                IsResolved = resolved,
+                OutcomeWord = resolved ? "failure" : "",
+                Slots =
+                {
+                    new StorySlotBrief
+                    {
+                        EventId = "event-major",
+                        IsMajor = true,
+                        Title = "The major thing",
+                        HeadlineBrief = "What the major thing is",
+                        OutcomeWord = resolved ? "met" : ""
+                    },
+                    new StorySlotBrief
+                    {
+                        EventId = "event-minor",
+                        IsMajor = false,
+                        Title = "The minor thing",
+                        HeadlineBrief = "What the minor thing is",
+                        OutcomeWord = resolved ? "not met" : ""
+                    }
+                }
+            };
+        }
+
+        /// <summary>
+        /// One slot, over both caps on its own: the only input that reaches the generic story pools.
+        /// </summary>
+        /// <remarks>
+        /// Nothing shipped is anywhere near this - the reviewer measured the longest name in the three
+        /// catalogs at a fifth of the headline cap - so this is a bad-catalog fixture rather than a
+        /// gameplay one. It is here because an entry over the cap fails the schema and takes the whole
+        /// document with it, which is a far worse failure than a generic paragraph.
+        /// </remarks>
+        private static StoryBrief OverflowingStory(string storyId, bool resolved)
+        {
+            StoryBrief story = Story(storyId, resolved);
+
+            // Unmeasurable, so a resolved slot falls back to its description too: the catalog's
+            // authored outcome lines are a couple of sentences each and would fit comfortably.
+            story.Slots[0].OutcomeWord = "unmeasurable";
+            story.Slots[0].Title = SentenceOfLength(FlavorCacheMigration.StoryArticleMaxLength + 100);
+            story.Slots[0].HeadlineBrief = SentenceOfLength(FlavorCacheMigration.StoryArticleMaxLength + 100);
+            story.Slots.RemoveAt(1);
+
+            return story;
+        }
+
+        /// <summary>
+        /// The fallback article each of <paramref name="count"/> overflowing stories draws in
+        /// <paramref name="saveGuid"/>, in story order.
+        /// </summary>
+        private static List<string> FallbackArticles(Guid saveGuid, int count)
+        {
+            FlavorRequest request = Request(Date, FlavorWakeReason.StoryDraft, RegionTheme.Eu,
+                                            parties: 2, districts: 2);
+            for (int i = 0; i < count; i++)
+            {
+                request.Stories.Add(OverflowingStory("story-" + i.ToString("00"), resolved: false));
+            }
+
+            FlavorDocument document = Pool(saveGuid, RegionTheme.Eu).Generate(request);
+            Assert.NotNull(document);
+            Assert.Equal(count, document.Stories.Count);
+
+            var articles = new List<string>();
+            for (int i = 0; i < document.Stories.Count; i++)
+            {
+                string article = document.Stories[i].Article;
+                Assert.Contains(article, StaticPoolContent.StoryArticles);
+                articles.Add(article);
+            }
+            return articles;
+        }
+
+        /// <summary>The closing line an outcome word selects, as the provider selects it.</summary>
+        private static string ClosingLead(string outcomeWord)
+        {
+            switch (outcomeWord)
+            {
+                case "success": return StaticPoolContent.ResolutionSuccessLead;
+                case "failure": return StaticPoolContent.ResolutionFailureLead;
+                case "abandoned": return StaticPoolContent.ResolutionAbandonedLead;
+                default: return StaticPoolContent.ResolutionClosedLead;
+            }
+        }
+
+        private static string[] ClosingLeads() => new[]
+        {
+            StaticPoolContent.ResolutionSuccessLead,
+            StaticPoolContent.ResolutionFailureLead,
+            StaticPoolContent.ResolutionAbandonedLead,
+            StaticPoolContent.ResolutionClosedLead
+        };
+
+        /// <summary>The pool with the two events <see cref="Story"/>'s slots point at.</summary>
+        private static StaticPoolProvider PoolWithCatalog()
+        {
+            StaticPoolProvider pool = Pool(RegionTheme.Eu);
+            pool.CivicCatalog = new CivicEventCatalog(
+                new List<CivicEvent>
+                {
+                    new CivicEvent
+                    {
+                        Id = "event-major",
+                        Name = "The major thing",
+                        Description = "What the major thing is",
+                        SuccessText = "The major thing worked",
+                        FailText = "The major thing did not"
+                    },
+                    new CivicEvent
+                    {
+                        Id = "event-minor",
+                        Name = "The minor thing",
+                        Description = "What the minor thing is",
+                        SuccessText = "The minor thing worked",
+                        FailText = "The minor thing did not"
+                    }
+                },
+                new List<string>());
+            return pool;
+        }
+
+        /// <summary>
+        /// A whole sentence of about <paramref name="length"/> characters, built from words rather
+        /// than from a run of one letter so that a cut is distinguishable from a clean drop.
+        /// </summary>
+        private static string SentenceOfLength(int length)
+        {
+            var sb = new StringBuilder();
+            while (sb.Length < length) sb.Append("the committee reconvened and adjourned again ");
+            return sb.ToString().TrimEnd() + ".";
+        }
+
+        /// <summary>Every story and resolution the document carries, in one comparable string.</summary>
+        private static string StoryFingerprint(FlavorDocument document)
+        {
+            Assert.NotNull(document);
+
+            var sb = new StringBuilder();
+            for (int i = 0; i < document.Stories.Count; i++)
+            {
+                StoryProseEntry entry = document.Stories[i];
+                sb.Append("story|").Append(entry.StoryId).Append('|').Append(entry.Headline)
+                  .Append('|').Append(entry.Article).Append('\n');
+            }
+            for (int i = 0; i < document.Resolutions.Count; i++)
+            {
+                StoryProseEntry entry = document.Resolutions[i];
+                sb.Append("resolution|").Append(entry.StoryId).Append('|').Append(entry.Headline)
+                  .Append('|').Append(entry.Article).Append('\n');
+            }
+            return sb.ToString();
+        }
+
 
         /// <summary>
         /// A district name too long for a headline and comfortably short enough for a body — the
@@ -700,6 +1185,10 @@ namespace Agora.Core.Tests
             yield return Pair("ElectionCoalitionHeadlines", StaticPoolContent.ElectionCoalitionHeadlines);
             yield return Pair("ElectionCoalitionBodies", StaticPoolContent.ElectionCoalitionBodies);
             yield return Pair("EventAngles", StaticPoolContent.EventAngles);
+            yield return Pair("StoryHeadlines", StaticPoolContent.StoryHeadlines);
+            yield return Pair("StoryArticles", StaticPoolContent.StoryArticles);
+            yield return Pair("ResolutionHeadlines", StaticPoolContent.ResolutionHeadlines);
+            yield return Pair("ClosingLeads", ClosingLeads());
         }
 
         private static KeyValuePair<string, string[]> Pair(string name, string[] pool) =>
