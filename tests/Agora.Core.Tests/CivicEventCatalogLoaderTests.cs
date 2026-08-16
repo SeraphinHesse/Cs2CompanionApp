@@ -71,6 +71,21 @@ namespace Agora.Core.Tests
         private static int MaxDeltaWindow =>
             Tuning.Scheduler.SnapshotRetention > 1 ? Tuning.Scheduler.SnapshotRetention - 1 : 1;
 
+        /// <summary>
+        /// A window a fixture uses when the window is not what is under test. Clamped, so a fixture
+        /// that only ever meant "some legal window" cannot start failing for a retention change it has
+        /// no opinion about — that is the bound's own test's job.
+        /// </summary>
+        private static int SomeLegalWindow(int preferred) =>
+            preferred < MaxDeltaWindow ? preferred : MaxDeltaWindow;
+
+        /// <summary><see cref="SomeLegalWindow"/> as a raw JSON fragment.</summary>
+        private static string Window(int preferred) =>
+            SomeLegalWindow(preferred).ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>The highest severity the catalog admits, read from tuning rather than typed as 5.</summary>
+        private static int SeverityMax => Tuning.Catalog.SeverityMax;
+
         private const string ValidSpec =
             "{\"kind\":\"metric\",\"metricId\":\"happiness\",\"comparison\":\"lt\",\"threshold\":0.4}";
 
@@ -238,7 +253,7 @@ namespace Agora.Core.Tests
         public void ThresholdNotFinite_OnADeltaSpec()
         {
             AssertRejected(LoadOne(EventJson(trigger: SpecJson(
-                kind: "\"delta\"", threshold: null, windowMonths: "3"))),
+                kind: "\"delta\"", threshold: null, windowMonths: Window(3)))),
                 CatalogIssueCode.ThresholdNotFinite);
         }
 
@@ -308,7 +323,7 @@ namespace Agora.Core.Tests
                     CatalogIssueCode.CensusGatedMetricNeedsDelta);
 
                 AssertClean(LoadOne(EventJson(trigger: SpecJson(
-                    kind: "\"delta\"", metricId: quoted, windowMonths: "3"))));
+                    kind: "\"delta\"", metricId: quoted, windowMonths: Window(3)))));
             }
 
             // An ungated metric is untouched by the rule.
@@ -445,12 +460,19 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// A broken allow-list is an error against the document, but it does not reject the document's
-        /// events — an event that never names a feature id is unaffected by it. Recorded here because
-        /// it is the one place in this suite where an error coexists with an accepted entry.
+        /// <b>The one error in the enum that rejects nothing.</b> A broken allow-list is document-
+        /// scoped: an event that names a feature fails separately and more precisely with
+        /// <c>UnlockIdNotDeclared</c>, and one that names none is unharmed.
         /// </summary>
+        /// <remarks>
+        /// Both halves are asserted, and the second is the reason the first is acceptable.
+        /// <c>IsClean</c> going false is what fails <c>ShippedCivicEventCatalogTests</c>, so a
+        /// malformed allow-list still breaks the build — it simply does so without discarding events
+        /// that were never in question. Pinning only "nothing was rejected" would document a silent
+        /// failure instead of a scoped one.
+        /// </remarks>
         [Fact]
-        public void MalformedFeatureIds_DoesNotRejectEventsThatNameNoFeature()
+        public void MalformedFeatureIds_ReportsWithoutRejectingEventsThatNameNoFeature()
         {
             CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
                 "events_global.json", Doc(featureIds: "[\"\"]", events: EventJson()), Tuning);
@@ -458,6 +480,11 @@ namespace Agora.Core.Tests
             Assert.Contains(result.Errors, e => e.Code == CatalogIssueCode.MalformedFeatureIds);
             Assert.Equal(0, result.RejectedEventCount);
             Assert.Single(result.Catalog.Events);
+
+            // The half that makes the half above acceptable: the build still goes red.
+            Assert.False(result.IsClean,
+                "a malformed featureIds allow-list must fail the shipped-catalog gate even though it " +
+                "discards no event");
         }
 
         // ================================================================== 111 MissingProse
@@ -591,12 +618,476 @@ namespace Agora.Core.Tests
         [InlineData("\"delta\"")]
         public void BaselineOnNonMetricCheck_IsNotRaisedOnAReadingShapedKind(string kind)
         {
-            string spec = string.CompareOrdinal(kind, "\"delta\"") == 0 ? DeltaSpec(3) : ValidSpec;
+            string spec = string.CompareOrdinal(kind, "\"delta\"") == 0 ? DeltaSpec(SomeLegalWindow(3)) : ValidSpec;
 
             CivicEventCatalogLoadResult result = LoadOne(EventJson(
                 check: "{\"spec\":" + spec + ",\"relativeToBaseline\":true}"));
 
             AssertClean(result);
+        }
+
+        // ================================================================== 116 BaselineCheckAtDistrictScope
+
+        /// <summary>
+        /// <b>An error, not a warning, because it is provable rather than a judgement.</b>
+        /// <c>StoryAssembler.Baseline</c> returns <c>null</c> for every non-city scope — nothing on
+        /// <c>StorySlot</c> records which district the story landed on — so a relative district check
+        /// resolves <c>Unmeasurable</c> on every save, in every month, forever. It scores in neither
+        /// half of the 2-of-3 and moves the power balance by zero, which is the worst kind of broken:
+        /// an event that reads like a working goal and contributes nothing.
+        /// </summary>
+        [Theory]
+        [InlineData("\"anyDistrict\"")]
+        [InlineData("\"allDistricts\"")]
+        public void BaselineCheckAtDistrictScope_IsRejectedAtEitherDistrictScope(string scope)
+        {
+            string spec = SpecJson(metricId: "\"" + MetricRegistry.CrimeRate + "\"", scope: scope);
+
+            AssertRejected(
+                LoadOne(EventJson(check: "{\"spec\":" + spec + ",\"relativeToBaseline\":true}")),
+                CatalogIssueCode.BaselineCheckAtDistrictScope);
+        }
+
+        /// <summary>
+        /// The positive pair. A relative check at city scope is the whole point of the two-month cycle
+        /// — drafting at M and resolving at M+1 is a genuinely later measurement — so the rule must
+        /// bite on scope alone and not on the flag.
+        /// </summary>
+        [Fact]
+        public void BaselineCheckAtCityScope_StaysClean()
+        {
+            AssertClean(LoadOne(EventJson(
+                check: "{\"spec\":" + ValidSpec + ",\"relativeToBaseline\":true}")));
+        }
+
+        /// <summary>
+        /// The other half of the pair: a district-scoped check is perfectly legal as long as it is not
+        /// asking to be measured against a baseline nobody recorded.
+        /// </summary>
+        [Theory]
+        [InlineData("\"anyDistrict\"")]
+        [InlineData("\"allDistricts\"")]
+        public void ADistrictCheckWithoutABaseline_StaysClean(string scope)
+        {
+            // A different metric from the trigger's, so this cannot also trip rule 117.
+            string spec = SpecJson(metricId: "\"" + MetricRegistry.CrimeRate + "\"", scope: scope);
+
+            AssertClean(LoadOne(EventJson(check: "{\"spec\":" + spec + "}")));
+        }
+
+        [Fact]
+        public void BaselineCheckAtDistrictScope_IsNotSuppressedByTheNonMetricWarning()
+        {
+            // relativeToBaseline on a delta at district scope: reading-shaped, so rule 115 stays quiet
+            // and only the provable impossibility is reported.
+            string spec = SpecJson(kind: "\"delta\"", metricId: "\"" + MetricRegistry.CrimeRate + "\"",
+                                   comparison: "\"lte\"", threshold: "-0.05",
+                                   windowMonths: Window(3), scope: "\"allDistricts\"");
+
+            CivicEventCatalogLoadResult result =
+                LoadOne(EventJson(check: "{\"spec\":" + spec + ",\"relativeToBaseline\":true}"));
+
+            AssertRejected(result, CatalogIssueCode.BaselineCheckAtDistrictScope);
+            Assert.DoesNotContain(result.Warnings, w => w.Code == CatalogIssueCode.BaselineOnNonMetricCheck);
+        }
+
+        // ================================================================== 117 DistrictCheckNotBoundToTrigger
+
+        /// <summary>
+        /// "Some district is bad" paired with "some district is fine on the same metric" is answered by
+        /// the healthiest block in the city, usually on the month the story opens — <c>AnyDistrict</c>
+        /// returns <c>Met</c> on the first district that clears the bar, and no district id survives
+        /// onto <c>StorySlot</c> to bind the check to the one the story is about.
+        /// </summary>
+        /// <remarks>
+        /// A warning rather than an error, so the event must still load — but the shipped-catalog gate
+        /// holds the catalogs to zero warnings, which is what stops one shipping unargued.
+        /// </remarks>
+        [Theory]
+        [InlineData("\"anyDistrict\"")]
+        [InlineData("\"allDistricts\"")]
+        public void DistrictCheckNotBoundToTrigger_WarnsButKeepsTheEvent(string triggerScope)
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: triggerScope),
+                check: "{\"spec\":" + SpecJson(metricId: metric, scope: "\"anyDistrict\"") + "}"));
+
+            Assert.Empty(result.Errors);
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Contains(result.Warnings, w => w.Code == CatalogIssueCode.DistrictCheckNotBoundToTrigger);
+            Assert.Single(result.Catalog.Events);
+        }
+
+        /// <summary>
+        /// <b>The first positive pair, and the repair the warning names.</b> <c>allDistricts</c> is a
+        /// real and rising ask — every district must clear the bar — so it must stay clean on the
+        /// trigger's own metric.
+        /// </summary>
+        [Fact]
+        public void AnAllDistrictsCheckOnTheTriggersOwnMetric_StaysClean()
+        {
+            string metric = "\"" + MetricRegistry.CrimeRate + "\"";
+
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: metric, comparison: "\"gte\"", threshold: "0.6",
+                                  scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: metric, scope: "\"allDistricts\"") + "}")));
+        }
+
+        /// <summary>
+        /// The second positive pair, and the reason the rule is restricted to a matching
+        /// <c>MetricId</c>: a district check on a <i>different</i> metric is a genuinely different
+        /// question and may well be intended. Widening the rule to every district check would train
+        /// authors to ignore it, which is the failure mode a noisy check has.
+        /// </summary>
+        [Fact]
+        public void ADistrictCheckOnADifferentMetric_StaysClean()
+        {
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: "\"" + MetricRegistry.CrimeRate + "\"",
+                                  comparison: "\"gte\"", threshold: "0.6", scope: "\"anyDistrict\""),
+                check: "{\"spec\":" + SpecJson(metricId: "\"" + MetricRegistry.Happiness + "\"",
+                                                scope: "\"anyDistrict\"") + "}")));
+        }
+
+        /// <summary>A city-scoped trigger cannot be unbound from anything; the rule must stay quiet.</summary>
+        [Fact]
+        public void ACityScopedTrigger_DoesNotTripTheBindingRule()
+        {
+            AssertClean(LoadOne(EventJson(
+                trigger: SpecJson(metricId: "\"" + MetricRegistry.Happiness + "\""),
+                check: "{\"spec\":" + SpecJson(metricId: "\"" + MetricRegistry.Happiness + "\"",
+                                                scope: "\"anyDistrict\"") + "}")));
+        }
+
+        // ================================================================== 118 PressureSignFlip
+
+        /// <summary>
+        /// <b>Pressures are salience, not credit.</b> The only consumer of an event's
+        /// <c>IssuePosition</c> is <c>AffinityEngine.EventTerm</c>, which dot-products it against each
+        /// party's platform — so a mirror-negated success pressure does not release the issue, it moves
+        /// voters to the <i>opposite pole</i> and rewards the party that opposed doing anything. All
+        /// three wave-3 content lanes independently invented the mirroring convention, which is why
+        /// this is machine-checked rather than only written down.
+        /// </summary>
+        [Theory]
+        [InlineData("successPressure")]
+        [InlineData("failurePressure")]
+        public void PressureSignFlip_WarnsWhenAnOutcomeReversesTheActivePressure(string key)
+        {
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                activePressure: "{\"services\":-0.4}",
+                successPressure: string.CompareOrdinal(key, "successPressure") == 0 ? "{\"services\":0.4}" : null,
+                failurePressure: string.CompareOrdinal(key, "failurePressure") == 0 ? "{\"services\":0.4}" : null));
+
+            Assert.Empty(result.Errors);
+            Assert.Equal(0, result.RejectedEventCount);
+            CatalogIssue flip = Assert.Single(result.Warnings, w => w.Code == CatalogIssueCode.PressureSignFlip);
+            Assert.Equal("events[0]." + key + ".services", flip.Path);
+            Assert.Single(result.Catalog.Events);
+        }
+
+        /// <summary>
+        /// The first positive pair: same sign, any magnitude. Louder on failure and quieter on success
+        /// is the expected shape, and the loader deliberately polices direction only.
+        /// </summary>
+        [Fact]
+        public void SameSignOutcomePressures_StayClean()
+        {
+            AssertClean(LoadOne(EventJson(
+                activePressure: "{\"services\":-0.4,\"costOfLiving\":0.3}",
+                successPressure: "{\"services\":-0.1,\"costOfLiving\":0.05}",
+                failurePressure: "{\"services\":-0.9,\"costOfLiving\":0.6}")));
+        }
+
+        /// <summary>
+        /// The second positive pair: zero on either side is not a flip. Dropping an issue at
+        /// resolution is a legitimate way to say "this stopped mattering", stated both by omitting the
+        /// component and by writing it as an explicit zero.
+        /// </summary>
+        [Fact]
+        public void ZeroedOutcomePressures_StayClean()
+        {
+            AssertClean(LoadOne(EventJson(
+                activePressure: "{\"services\":-0.4,\"environment\":0.5}",
+                successPressure: "{\"services\":0.0}",       // explicitly released
+                failurePressure: "{\"environment\":0.2}")));  // services simply unstated
+        }
+
+        /// <summary>
+        /// The flip is reported per issue, in <c>Issues.All</c> order — the fold order that makes the
+        /// output bit-stable — and not once per event.
+        /// </summary>
+        [Fact]
+        public void PressureSignFlip_IsReportedPerIssueInIssuesAllOrder()
+        {
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(
+                activePressure: "{\"services\":-0.4,\"transit\":0.3,\"environment\":-0.2}",
+                successPressure: "{\"services\":0.4,\"transit\":-0.3,\"environment\":0.2}"));
+
+            var flipped = new List<string>();
+            for (int i = 0; i < result.Warnings.Count; i++)
+            {
+                if (result.Warnings[i].Code == CatalogIssueCode.PressureSignFlip)
+                {
+                    flipped.Add(result.Warnings[i].Path);
+                }
+            }
+
+            var expected = new List<string>();
+            for (int i = 0; i < Issues.All.Count; i++)
+            {
+                string key = Issues.ToKey(Issues.All[i]);
+                if (string.CompareOrdinal(key, "services") == 0 ||
+                    string.CompareOrdinal(key, "transit") == 0 ||
+                    string.CompareOrdinal(key, "environment") == 0)
+                {
+                    expected.Add("events[0].successPressure." + key);
+                }
+            }
+
+            Assert.Equal(expected, flipped);
+        }
+
+        // ============================================== the entry shape: codes 20-52, this loader's own
+
+        /// <summary>
+        /// <b>The closed effect palette</b> — the loader's own remarks name it and the metric registry
+        /// as the two reasons this validator exists, and JSON Schema can express neither. The registry
+        /// half is checked above; this is the palette half.
+        /// </summary>
+        /// <remarks>
+        /// <c>ShippedCivicEventCatalogTests.ShippedCatalogs_NameOnlyReachableMetricsAndEffects</c> looks
+        /// like it covers this and does not: it re-derives against the <i>loaded</i> catalog, so a
+        /// rejected entry has already been discarded before it looks, and on near-empty catalogs it is
+        /// vacuously true. This is a fixture, so it keeps its teeth whatever ships.
+        /// </remarks>
+        [Theory]
+        [InlineData("activeEffects")]
+        [InlineData("successEffects")]
+        [InlineData("failureEffects")]
+        public void UnknownEffectId_ForAnIdOutsideTheClosedPalette(string key)
+        {
+            AssertRejected(LoadOne(EventJson(extra: "\"" + key + "\":[\"district-wellbeing-plus\"]")),
+                CatalogIssueCode.UnknownEffectId);
+        }
+
+        [Theory]
+        [InlineData("\"loan-interest-spike\"")]        // the timeline catalog's naming, never a palette id
+        [InlineData("\"District-Wellbeing\"")]         // palette ids are ordinal
+        [InlineData("\"district-wellbeing \"")]        // trailing space
+        [InlineData("\"Wellbeing\"")]                  // the modifier name, not the effect id
+        public void UnknownEffectId_ForNearMissesOnARealPaletteId(string effectId)
+        {
+            AssertRejected(LoadOne(EventJson(activeEffects: "[" + effectId + "]")),
+                CatalogIssueCode.UnknownEffectId);
+        }
+
+        /// <summary>
+        /// The positive sweep: <b>every</b> id in the shipped palette is nameable by an authored civic
+        /// event. Paired with the theories above, so neither "refuse everything" nor "accept
+        /// everything" could pass both — and it is what fails on the run a palette entry is renamed.
+        /// </summary>
+        [Fact]
+        public void EveryPaletteEntry_IsNameableByAnAuthoredEvent()
+        {
+            IReadOnlyList<string> ids = Tuning.Effects.EffectIds;
+            Assert.NotEmpty(ids);
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                CivicEventCatalogLoadResult result =
+                    LoadOne(EventJson(activeEffects: "[\"" + ids[i] + "\"]"));
+
+                Assert.True(result.IsClean, ids[i] + " should be nameable: " + Describe(result));
+                Assert.Equal(new[] { ids[i] }, Assert.Single(result.Catalog.Events).ActiveEffects);
+            }
+        }
+
+        // --- 28 SeverityOutOfRange ----------------------------------------------------------------
+
+        /// <summary>
+        /// The bound is <c>catalog.severityMax</c>, read from tuning rather than typed as 5.
+        /// <c>AffinityEngine.EventTerm</c> scales by <c>severity/5</c>, so an unbounded severity is an
+        /// uncapped effect magnitude wearing a different name.
+        /// </summary>
+        [Fact]
+        public void SeverityOutOfRange_OutsideOneToSeverityMax()
+        {
+            Assert.True(SeverityMax >= 1, "catalog.severityMax must admit at least one severity");
+
+            AssertClean(LoadOne(EventJson(severity: "1")));
+            AssertClean(LoadOne(EventJson(severity: SeverityMax.ToString(CultureInfo.InvariantCulture))));
+
+            AssertRejected(LoadOne(EventJson(severity: "0")), CatalogIssueCode.SeverityOutOfRange);
+            AssertRejected(LoadOne(EventJson(severity: "-1")), CatalogIssueCode.SeverityOutOfRange);
+            AssertRejected(LoadOne(EventJson(
+                severity: (SeverityMax + 1).ToString(CultureInfo.InvariantCulture))),
+                CatalogIssueCode.SeverityOutOfRange);
+        }
+
+        [Theory]
+        [InlineData("2.5")]     // severity is an integer tier, not a dial
+        [InlineData("\"3\"")]
+        [InlineData(null)]      // absent
+        public void SeverityOutOfRange_ForANonIntegerSeverity(string? severity)
+        {
+            AssertRejected(LoadOne(EventJson(severity: severity)), CatalogIssueCode.SeverityOutOfRange);
+        }
+
+        // --- 33 / 34 issue pressure ----------------------------------------------------------------
+
+        /// <summary>
+        /// The stance range is <c>[-1, +1]</c> on both sides, driven past the bound in both directions.
+        /// A cap that only holds one way is not a cap.
+        /// </summary>
+        [Theory]
+        [InlineData("{\"transit\":1.5}")]
+        [InlineData("{\"transit\":-1.5}")]
+        [InlineData("{\"services\":-0.2,\"growth\":42}")]
+        public void IssuePressureOutOfRange_BeyondTheStanceRange(string pressure)
+        {
+            AssertRejected(LoadOne(EventJson(activePressure: pressure)),
+                CatalogIssueCode.IssuePressureOutOfRange);
+        }
+
+        /// <summary>Exactly at the bound is inside it — the positive pair for the theory above.</summary>
+        [Fact]
+        public void IssuePressureAtTheStanceBounds_StaysClean()
+        {
+            CivicEventCatalogLoadResult result =
+                LoadOne(EventJson(activePressure: "{\"transit\":1.0,\"services\":-1.0}"));
+
+            AssertClean(result);
+            CivicEvent loaded = Assert.Single(result.Catalog.Events);
+            Assert.Equal(1.0, loaded.ActivePressure[Issue.Transit]);
+            Assert.Equal(-1.0, loaded.ActivePressure[Issue.Services]);
+        }
+
+        [Theory]
+        [InlineData("\"anxious\"")]                  // not an object
+        [InlineData("[-0.4]")]
+        [InlineData("{\"services\":\"-0.4\"}")]      // a string component
+        [InlineData("{\"services\":null}")]
+        [InlineData("{\"services\":{\"x\":1}}")]
+        public void MalformedIssuePressure_WhenItIsNotAnObjectOfNumbers(string pressure)
+        {
+            AssertRejected(LoadOne(EventJson(activePressure: pressure)),
+                CatalogIssueCode.MalformedIssuePressure);
+        }
+
+        /// <summary>
+        /// An unstated issue is simply not pressed, and every issue defaults to centre — the loader
+        /// must not require all six to be spelled out.
+        /// </summary>
+        [Fact]
+        public void AnUnstatedIssueIsCentreRatherThanAnError()
+        {
+            CivicEventCatalogLoadResult result = LoadOne(EventJson());
+
+            AssertClean(result);
+            CivicEvent loaded = Assert.Single(result.Catalog.Events);
+            for (int i = 0; i < Issues.All.Count; i++)
+            {
+                Assert.Equal(0.0, loaded.ActivePressure[Issues.All[i]]);
+            }
+        }
+
+        // --- 20 / 21 / 22 / 26 the entry itself ----------------------------------------------------
+
+        [Theory]
+        [InlineData("42")]
+        [InlineData("\"glob-one\"")]
+        [InlineData("[]")]
+        [InlineData("null")]
+        public void EventNotObject_ForAnEventsElementThatIsNotAnObject(string element)
+        {
+            AssertRejected(CivicEventCatalogLoader.Load("events_global.json", Doc(events: element), Tuning),
+                CatalogIssueCode.EventNotObject);
+        }
+
+        [Theory]
+        [InlineData("\"\"")]
+        [InlineData("42")]        // not a string
+        [InlineData("null")]
+        [InlineData(null)]        // absent
+        public void MissingEventId_WhenThereIsNoUsableId(string? id)
+        {
+            AssertRejected(LoadOne(EventJson(id: id)), CatalogIssueCode.MissingEventId);
+        }
+
+        /// <summary>
+        /// Ids are lowercase kebab-case, which is what makes the <c>glob-</c>/<c>eu-</c>/<c>na-</c>
+        /// prefix convention a mechanical guarantee against three blind content lanes colliding.
+        /// </summary>
+        [Theory]
+        [InlineData("\"GLOB-ONE\"")]
+        [InlineData("\"glob One\"")]
+        [InlineData("\"glob_one\"")]
+        [InlineData("\"glob.one\"")]
+        [InlineData("\"glob/one\"")]
+        [InlineData("\"glöb-one\"")]
+        public void MalformedEventId_ForAnythingOutsideLowercaseKebabCase(string id)
+        {
+            AssertRejected(LoadOne(EventJson(id: id)), CatalogIssueCode.MalformedEventId);
+        }
+
+        [Theory]
+        [InlineData("\"glob-one\"")]
+        [InlineData("\"eu-2\"")]
+        [InlineData("\"na-housing-crisis-2\"")]
+        [InlineData("\"a\"")]
+        public void AKebabCaseIdIsAccepted(string id)
+        {
+            AssertClean(LoadOne(EventJson(id: id)));
+        }
+
+        [Theory]
+        [InlineData("\"apac\"")]
+        [InlineData("\"EU\"")]        // the region vocabulary is ordinal
+        [InlineData("\"world\"")]
+        [InlineData("0")]
+        [InlineData(null)]            // absent
+        public void UnknownRegion_ForAnythingOutsideTheThreeThemes(string? region)
+        {
+            AssertRejected(LoadOne(EventJson(region: region)), CatalogIssueCode.UnknownRegion);
+        }
+
+        [Theory]
+        [InlineData("\"eu\"", EventRegion.Eu)]
+        [InlineData("\"na\"", EventRegion.Na)]
+        [InlineData("\"global\"", EventRegion.Global)]
+        public void EachDeclaredRegionIsAccepted(string region, EventRegion expected)
+        {
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(region: region));
+
+            AssertClean(result);
+            Assert.Equal(expected, Assert.Single(result.Catalog.Events).Region);
+        }
+
+        // --- 31 tags -------------------------------------------------------------------------------
+
+        [Theory]
+        [InlineData("\"housing\"")]
+        [InlineData("{\"a\":1}")]
+        [InlineData("[\"\"]")]
+        [InlineData("[5]")]
+        public void MalformedTags_WhenTagsAreNotAnArrayOfNonEmptyStrings(string tags)
+        {
+            AssertRejected(LoadOne(EventJson(tags: tags)), CatalogIssueCode.MalformedTags);
+        }
+
+        [Fact]
+        public void Tags_LoadSortedOrdinal()
+        {
+            CivicEventCatalogLoadResult result = LoadOne(EventJson(tags: "[\"transport\",\"budget\",\"crime\"]"));
+
+            AssertClean(result);
+            Assert.Equal(new[] { "budget", "crime", "transport" },
+                Assert.Single(result.Catalog.Events).Tags);
         }
 
         // ================================================================== the degradation contract
@@ -646,17 +1137,24 @@ namespace Agora.Core.Tests
             Assert.Equal(new[] { "glob-survivor" }, Ids(result));
         }
 
+        /// <summary>
+        /// A corrupt document reports and never throws — and it reports the <i>right</i> reason.
+        /// "Unparseable" and "parsed fine but is not a catalog" are different authoring mistakes with
+        /// different fixes, and a bare <c>NotEmpty(Errors)</c> would not tell them apart.
+        /// </summary>
         [Theory]
-        [InlineData("")]
-        [InlineData("   ")]
-        [InlineData("not json at all")]
-        [InlineData("[1, 2, 3]")]
-        [InlineData("{ \"schemaVersion\": 1, \"events\": [ { ")]
-        public void ACorruptDocument_NeverThrows(string json)
+        [InlineData("", CatalogIssueCode.MalformedJson)]
+        [InlineData("   ", CatalogIssueCode.MalformedJson)]
+        [InlineData("not json at all", CatalogIssueCode.MalformedJson)]
+        [InlineData("{ \"schemaVersion\": 1, \"events\": [ { ", CatalogIssueCode.MalformedJson)]
+        [InlineData("[1, 2, 3]", CatalogIssueCode.RootNotObject)]
+        [InlineData("\"events\"", CatalogIssueCode.RootNotObject)]
+        [InlineData("7", CatalogIssueCode.RootNotObject)]
+        public void ACorruptDocument_ReportsItsOwnReasonAndNeverThrows(string json, CatalogIssueCode expected)
         {
             CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load("events_global.json", json, Tuning);
 
-            Assert.NotEmpty(result.Errors);
+            Assert.Contains(result.Errors, e => e.Code == expected);
             Assert.Empty(result.Catalog.Events);
         }
 
@@ -893,6 +1391,18 @@ namespace Agora.Core.Tests
                     MixedFixture().Replace("alpha-event", "omega-event"), Tuning)));
         }
 
+        /// <summary>
+        /// The order the caller happened to enumerate the files in must not reach the output.
+        /// </summary>
+        /// <remarks>
+        /// <b>This does not by itself carry the name-ordering claim, and must not be read as if it
+        /// did.</b> With disjoint ids the accepted list is sorted by id and the outcome is
+        /// order-independent whether or not <c>OrderSources</c> sorts — so this test would still pass
+        /// with the name sort deleted. What the sort actually decides is <i>which copy of a duplicated
+        /// id survives</i>, and <see cref="DuplicateIdAcrossDocuments_NamesTheSecondAndKeepsTheFirstByName"/>
+        /// is the test that proves it. Delete that one and the guarantee is unowned, however green
+        /// this hash comparison looks.
+        /// </remarks>
         [Fact]
         public void Load_IsIndependentOfTheOrderSourcesAreHandedIn()
         {
@@ -1044,7 +1554,7 @@ namespace Agora.Core.Tests
             EventJson(id: "\"alpha-event\"", region: "\"eu\"", severity: "4",
                       activeEffects: "[\"district-wellbeing\",\"district-wellbeing\"]",
                       tags: "[\"housing\",\"budget\"]"),
-            EventJson(id: "\"beta-event\"", trigger: DeltaSpec(6),
+            EventJson(id: "\"beta-event\"", trigger: DeltaSpec(SomeLegalWindow(6)),
                       activePressure: "{\"services\":-0.4,\"costOfLiving\":0.25}",
                       districtAffinity: "[\"industrial\",\"affluent\"]"),
             EventJson(id: "\"broken-event\"", trigger: SpecJson(metricId: "\"notAMetric\"")),
@@ -1088,7 +1598,11 @@ namespace Agora.Core.Tests
             string? check = null,
             bool omitCheck = false,
             string? activeEffects = null,
+            string? successEffects = null,
+            string? failureEffects = null,
             string? activePressure = null,
+            string? successPressure = null,
+            string? failurePressure = null,
             string? districtAffinity = null,
             string? tags = null,
             string? omitProse = null,
@@ -1103,7 +1617,11 @@ namespace Agora.Core.Tests
             if (!omitTrigger) Add(parts, "trigger", trigger ?? ValidSpec);
             if (!omitCheck) Add(parts, "check", check ?? "{\"spec\":" + ValidSpec + "}");
             Add(parts, "activeEffects", activeEffects);
+            Add(parts, "successEffects", successEffects);
+            Add(parts, "failureEffects", failureEffects);
             Add(parts, "activePressure", activePressure);
+            Add(parts, "successPressure", successPressure);
+            Add(parts, "failurePressure", failurePressure);
             Add(parts, "districtAffinity", districtAffinity);
             Add(parts, "tags", tags);
 
