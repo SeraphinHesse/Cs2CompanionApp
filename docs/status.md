@@ -206,6 +206,73 @@ was meant; tax rates as `20.0` rather than `0.2`), counts that must move for eve
 menus (a placement preview must not raise the attraction count), and the per-save reset (load city A
 then city B without restarting; B's first snapshot must not carry A's figures).
 
+### Wave 4's manual gates — the command surface and the watermark repair
+
+Wave 4 is the first wave since 1 to open gates of its own, and it opens them for the reason the
+project keeps re-learning: `AgoraRuntime` and `AgoraRuntime.StoryCommands.cs` compile into **no
+test**, so every claim about them is reasoning or a gate row. No coverage was manufactured for any of
+this, and the wave's two most valuable fixes are both in here.
+
+**Gate 0 is the one that matters most, because it has no test by construction and three separate
+lanes were misdiagnosed before it was found.**
+
+0. **The rewound load reconciles EVERY watermark.** Roll a city save back past the oldest retained
+   Agora snapshot and load it. Within three sim months, confirm **a story drafts**, **power accrues**
+   (the balance moves on the ledger), and the reconciliation line names the story and accrual
+   watermarks alongside the tick one. **The failure it guards is silent**: before the fix the tick
+   gate opened, so polls ran, elections ran and failure penalties still debited, while no story
+   drafted, none resolved and nothing accrued — for every month between the city's date and the
+   stale watermark, with no log line at all. Confirm the line appears **once**, and **not at all** on
+   an ordinary mid-month reload.
+
+The command surface (`agora.stories.*`) needs a pressable story modal, which is **wave 6**. Rows 1–14
+below run when that lane wires them, and they are recorded here rather than in a transcript because
+wave 3's handoff records a commit message that described a file it never created.
+
+1. Set `Ignore` on a live slot, quit to menu, reload. The slot reads `Ignore`, and `state_*.json`
+   holds **exactly one** `PlayerCommands` row for that `(storyId, eventId)` — not two, not zero.
+2. Answer two different slots of one story in the same sim month. Both rows share a `DecidedMonth`
+   and carry `Sequence` 0 and 1 — **not 0 and 0**.
+3. Declare a manual success, reload, let the story resolve. The row carries `declaredMet: true`,
+   `ManualDeclared` survives the reload, and the award pays at the **minor** rate whatever the
+   event's tier — not the mandatory rate, and not zero.
+4. Declare a manual **failure** with an empty box: accepted, **exactly one** row with
+   `declaredMet: false`. Then declare a **success** with an empty box: `ValueRequired`, **zero** new
+   rows, `ManualDeclared` unchanged.
+5. Press `Resolve now` five times on one story: success each time, **exactly five** `ResolveNow` rows
+   with `Sequence` 0–4, and **no** other story's flag moved.
+6. Balance below the mandatory override cost, press the override: `InsufficientPower`, response
+   unchanged, **zero** new ledger entries. Set the balance to exactly the cost and repeat: `Ok`,
+   balance exactly 0, **exactly one** `OverrideSpend` entry.
+7. Balance **−10**, minor override costing 5: `InsufficientPower` — **not** `PowerDisabled`, not
+   silent acceptance. Then balance **+60** with debt in the ledger history and a 50-cost override:
+   `Ok`, balance 10. Debt is a state, not a bar to play.
+8. **The double-charge sequence, three steps, reading the balance at each.** Start at 100, mandatory
+   override costing 25. (a) Buy the slot: balance 75, one ledger entry, response `PowerOverride`.
+   (b) Press `Goal` on the same slot: `BadValue`, response **still** `PowerOverride`, balance **still
+   75**, **no** new `PlayerCommands` row. (c) Press the override again: `Ok` by the already-bought
+   guard, balance **still 75**, and **exactly one** `OverrideSpend` entry in total — the balance must
+   never read 50.
+9. `power.enabled` false, press an override: `PowerDisabled`, **not** `InsufficientPower`, and the
+   quoted cost renders 0 rather than a live price against a frozen balance.
+10. Hand-edit the minor `overrideCost` to 0 and buy a minor slot: `Ok`, response `PowerOverride`,
+    balance unmoved, **zero** ledger entries — and specifically **not** `InsufficientPower`. This is
+    the case the old balance-comparison heuristic got wrong.
+11. Paste 501 characters into an Ignore box under shipped tuning: `TooLong`, the slot keeps its
+    previous text, and nothing was truncated and stored.
+12. Pick `Manual`, type a justification, then buy the same slot off: `Ok`, `ManualDeclared` false,
+    and `PlayerText` **empty** — the justification must not appear anywhere the panel attributes to
+    the purchase.
+13. Let a story resolve, then press `Resolve now` from the archive: `AlreadyResolved`, **not**
+    `NotFound` — the record exists, the window closed. On an id no story carried: `NotFound`.
+14. Declare an outcome on a slot whose response is `Goal`: `BadValue`, response **still** `Goal`, and
+    **zero** new rows.
+
+**Wave 6 owes four binding registrations, not three.** None of `setResponse`, `declareManual`,
+`resolveNow` or `spendPowerOverride` is in `docs/contracts/ui_bindings.md`; the plan's §605 table
+lists three, on the assumption the panel would send `PowerOverride` through `setResponse`. Wave 4
+refuses that — it is the free-`Met` hole gate 8 exists for — so a fourth call binding is required.
+
 ### Wave 0's manual gates — code built, nothing seen in game
 
 `AgoraRuntime` is not linkable into the headless suite by design, so these are gate rows and no test
