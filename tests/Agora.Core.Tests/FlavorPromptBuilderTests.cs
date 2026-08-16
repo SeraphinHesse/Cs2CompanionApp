@@ -318,6 +318,394 @@ namespace Agora.Core.Tests
             return prompt.Substring(start, end + 1 - start);
         }
 
+        // ---- the story sections -------------------------------------------------------------------
+        //
+        // Two blocks before WRITE (the stories, as the events they are made of) and two bullets
+        // inside it (what to write about them). Both halves are gated on the same condition, and that
+        // condition is the subject of the first three tests here: it is what the round *carries*,
+        // never what the round is *called*.
+
+        [Fact]
+        public void RoundWithNoStories_AsksForNothingAboutStoriesAtAll()
+        {
+            // The baseline every other assertion in this section is read against, and the reason the
+            // sections are gated rather than always emitted: most rounds have no story running, and a
+            // prompt that asked for entries anyway would be asking the model to invent the one thing
+            // it has been shown nothing about.
+            string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
+
+            Assert.DoesNotContain("STORIES RUNNING", prompt);
+            Assert.DoesNotContain("STORIES JUST RESOLVED", prompt);
+            Assert.DoesNotContain("- stories:", prompt);
+            Assert.DoesNotContain("- resolutions:", prompt);
+        }
+
+        [Fact]
+        public void StoryArrivingUnderTheYearlyLabel_IsStillWrittenAbout()
+        {
+            // The defect this whole gating rule exists to prevent. StoryDraft is only ever the reason
+            // when no rarer reason coincided, so a story drafting in the yearly month arrives labelled
+            // Yearly — and a prompt keyed on the reason would then ask for nothing about it. The hole
+            // in the prose looks exactly like a model that ignored an instruction, which is close to
+            // untraceable from the outside: the request was well formed, the response validated, and
+            // the story simply has no prose.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = FlavorWakeReason.Yearly;
+            request.Stories.Add(RunningStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.Contains("STORIES RUNNING", prompt);
+            Assert.Contains("- stories: one entry for every story under STORIES RUNNING", prompt);
+        }
+
+        [Fact]
+        public void StoryDraftRoundCarryingNoStory_AsksForNoStoryEntries()
+        {
+            // The other direction of the same rule, and the one that would produce an entry referring
+            // to a story the model was never shown: the reason sets the round's emphasis and nothing
+            // more, so it cannot on its own conjure a stories section.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = FlavorWakeReason.StoryDraft;
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.DoesNotContain("STORIES RUNNING", prompt);
+            Assert.DoesNotContain("- stories:", prompt);
+
+            // The reason does reach the model, as the occasion line - which is the whole of what it
+            // is for. Pinned so that a future reason added to the enum cannot fall through to the
+            // yearly wording and describe the round as something it is not.
+            Assert.DoesNotContain("Occasion: the annual round-up", prompt);
+        }
+
+        [Fact]
+        public void RunningStory_IsListedAsItsSlotsWithExactlyOneLead()
+        {
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(RunningStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+            string block = StoryBlock(prompt, "STORIES RUNNING");
+
+            Assert.Contains("- story-transit-fight\n", block);
+
+            // The lead is marked and the other slot is not. Which slot the headline is written from
+            // is the one thing the model cannot work out for itself, and IsMajor is the only thing in
+            // the brief that says so.
+            Assert.Contains("  - lead | event-depot-closure | the depot closure | " +
+                            "the council votes to shut the depot\n", block);
+            Assert.Contains("  - strand | event-fare-freeze | the fare freeze | " +
+                            "fares are held where they are\n", block);
+            Assert.Equal(1, CountOf(block, "  - lead |"));
+
+            // An open story has come out no way at all, so no slot carries a trailing word. An empty
+            // word must arrive as an absent field rather than as a stand-in phrase: every phrase
+            // available is a claim the engine did not make, and "unmeasurable" is already a word a
+            // slot can genuinely come out as.
+            Assert.DoesNotContain("story-transit-fight |", block);
+            Assert.DoesNotContain("unmeasurable", block);
+        }
+
+        [Fact]
+        public void RunningStory_AsksForTheHeadlineFromTheLeadAndTheArticleFromAllOfIt()
+        {
+            // The three instructions the design document is explicit about, and each fails a different
+            // way if it goes missing: a headline written from a strand describes the wrong event, an
+            // article that lists the slots reads as three unrelated news items rather than as a story,
+            // and prose with no opposition in it turns a political story into a municipal bulletin.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(RunningStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+            string write = WriteSection(prompt);
+
+            Assert.Contains("the headline is written from that story's lead slot alone - its title and " +
+                            "its brief", write);
+            Assert.Contains("The other slots are not headline material", write);
+
+            Assert.Contains("the article is written from every slot in the story", write);
+            Assert.Contains("as one connected run of events rather than as a list of unrelated ones", write);
+
+            Assert.Contains("carry the opposition's reaction", write);
+            Assert.Contains("capitalising on a story that is going badly", write);
+            Assert.Contains("angered by one that is going well", write);
+        }
+
+        [Fact]
+        public void ResolvedStory_IsListedUnderResolutionsWithTheOutcomeWords()
+        {
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(ResolvedStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+            string block = StoryBlock(prompt, "STORIES JUST RESOLVED");
+
+            // IsResolved is what decides which array the entry goes in, and it is the only thing that
+            // does: a resolved story listed under STORIES RUNNING would be written into stories, where
+            // it is a live story that has already finished.
+            Assert.DoesNotContain("STORIES RUNNING", prompt);
+
+            Assert.Contains("- story-housing-pledge | failure\n", block);
+            Assert.Contains("  - lead | event-homes-pledge | the homes pledge | " +
+                            "the council promises new homes | not met\n", block);
+            Assert.Contains("  - strand | event-land-release | the land release | " +
+                            "sites are put up for building | met\n", block);
+            Assert.Contains(" | unmeasurable\n", block);
+
+            // The resolution is prompted from which slots failed, which is the only material it has:
+            // the brief carries no severity, no cost and no tally, so this wording is the whole of it.
+            string write = WriteSection(prompt);
+            Assert.Contains("- resolutions: one entry for every story under STORIES JUST RESOLVED", write);
+            Assert.Contains("write it from which slots came out and which did not", write);
+            Assert.Contains("a slot marked unmeasurable was never settled either way", write);
+        }
+
+        [Fact]
+        public void RunningAndResolvedStories_AreCarriedInTheSameRound()
+        {
+            // The ordinary shape of a draft month, not an edge case: the month a new story drafts is
+            // also the month the previous cycle's stories have just finished. A builder that treated
+            // the two as alternatives would drop one of them on the most common story round there is.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(ResolvedStory());
+            request.Stories.Add(RunningStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.Contains("- story-transit-fight\n", StoryBlock(prompt, "STORIES RUNNING"));
+            Assert.Contains("- story-housing-pledge | failure\n", StoryBlock(prompt, "STORIES JUST RESOLVED"));
+
+            string write = WriteSection(prompt);
+            Assert.Contains("- stories:", write);
+            Assert.Contains("- resolutions:", write);
+
+            // One copy of the shared closing paragraph however many blocks were emitted - it speaks
+            // for both, and a second copy would be the prompt saying the same thing twice.
+            Assert.Equal(1, CountOf(write, "Story headlines are at most"));
+            Assert.Equal(1, CountOf(write, "You have not been given what any of this cost the city"));
+        }
+
+        [Fact]
+        public void StoryTheCatalogDoesNotHold_IsNeverShownToTheModel()
+        {
+            // An id the catalog will not accept back is worse than an absent one: the model spends a
+            // headline and an article on it, the response validates, and the validator then drops the
+            // entry for referencing an unknown story. Sorting the walk over the catalog's own ids
+            // rather than over the briefs is what makes that unreachable by construction.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(RunningStory());
+            request.Stories.Add(ResolvedStory());
+            request.Catalog = new FlavorCatalog(
+                new List<string> { "party-01" }, null, null, null,
+                new List<string> { "story-housing-pledge" });
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.DoesNotContain("story-transit-fight", prompt);
+            Assert.DoesNotContain("STORIES RUNNING", prompt);
+            Assert.Contains("story-housing-pledge", prompt);
+        }
+
+        [Fact]
+        public void Stories_AreListedInCatalogIdOrderWhicheverOrderTheyArrivedIn()
+        {
+            // Two requests carrying the same stories in opposite orders must produce the same prompt.
+            // The lookup inside the builder is a dictionary, and a builder that iterated it would be
+            // stable within a run and different across runs - the classic silent divergence, and one
+            // that would show up here as two prompts that differ only in the order of two blocks.
+            var forwards = Request(districts: 6, districtIdLength: 12);
+            forwards.Stories.Add(SecondRunningStory());
+            forwards.Stories.Add(RunningStory());
+
+            var backwards = Request(districts: 6, districtIdLength: 12);
+            backwards.Stories.Add(RunningStory());
+            backwards.Stories.Add(SecondRunningStory());
+
+            Assert.Equal(FlavorPromptBuilder.Build(forwards), FlavorPromptBuilder.Build(backwards));
+
+            string block = StoryBlock(FlavorPromptBuilder.Build(forwards), "STORIES RUNNING");
+            Assert.True(block.IndexOf("- story-park-levy", System.StringComparison.Ordinal) <
+                        block.IndexOf("- story-transit-fight", System.StringComparison.Ordinal),
+                        "the blocks are ordered by story id, not by arrival");
+        }
+
+        [Fact]
+        public void StoryRound_PrintsBothStoryCapsFromTheMigrationConstants()
+        {
+            // The same drift arrangement the article caps use, on the pair that governs stories. The
+            // two pairs are equal today and are separate schema decisions: a test written against the
+            // article constants would keep passing through a retune of one of them, with the model
+            // writing to a limit the validator no longer holds.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(RunningStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.Contains(
+                "Story headlines are at most " + FlavorCacheMigration.StoryHeadlineMaxLength +
+                " characters and story articles at most " + FlavorCacheMigration.StoryArticleMaxLength +
+                " - a longer one fails validation and the whole response is discarded.",
+                prompt);
+        }
+
+        [Fact]
+        public void StoryRound_AddsNoFigureToTheWriteSectionBeyondTheTwoCaps()
+        {
+            // The story half of non-negotiable #1, swept the same way as the round without stories: a
+            // story is exactly the shape of prose that wants to say what it cost, and the brief
+            // carries words rather than figures precisely so that there is nothing here to quote. The
+            // two caps are the only digits the section is entitled to.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.ArticleCount = 5;
+            request.Stories.Add(RunningStory());
+            request.Stories.Add(ResolvedStory());
+
+            string write = StripRuleNumbers(WriteSection(FlavorPromptBuilder.Build(request)));
+
+            var expected = new List<string>
+            {
+                "5",                                                    // the article count asked for
+                FlavorCacheMigration.HeadlineMaxLength.ToString(),
+                FlavorCacheMigration.BodyMaxLength.ToString(),
+                FlavorCacheMigration.StoryHeadlineMaxLength.ToString(),
+                FlavorCacheMigration.StoryArticleMaxLength.ToString(),
+                "2031", "05", "01",                                     // the generatedAtSimDate echo
+                FlavorSchema.SupportedSchemaVersion.ToString()
+            };
+
+            Assert.Equal(expected, DigitRuns(write));
+        }
+
+        [Fact]
+        public void StoryListing_SaysNothingAboutWhatAStoryCost()
+        {
+            // The other half of the same sweep, over the block the briefs are printed into. It is the
+            // section a severity or a power cost would arrive in if StoryBrief ever gained one, and it
+            // would arrive silently: the prose would still read well, it would just be quoting an
+            // engine figure the player would take as authoritative.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Stories.Add(RunningStory());
+            request.Stories.Add(ResolvedStory());
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            Assert.Equal(new List<string>(), DigitRuns(StoryBlock(prompt, "STORIES RUNNING")));
+            Assert.Equal(new List<string>(), DigitRuns(StoryBlock(prompt, "STORIES JUST RESOLVED")));
+
+            // And the instruction says so outright rather than leaving the gap for the model to fill,
+            // which is the call AppendElectionCoverage makes about vote shares for the same reason.
+            Assert.Contains("no severity, no power spent, no movement in support, no tally of slots - " +
+                            "and you must not invent one", prompt);
+        }
+
+        /// <summary>
+        /// One listed story block, from its header to the blank line that closes it.
+        /// </summary>
+        /// <remarks>
+        /// The slice keeps the last record's own newline and drops only the blank line after it, so a
+        /// line-terminated assertion works on the last slot as well as on the others. Asserts the
+        /// header is present, so a test whose block has stopped being emitted fails on the slice
+        /// rather than passing on two empty strings.
+        /// </remarks>
+        private static string StoryBlock(string prompt, string header)
+        {
+            int start = prompt.IndexOf(header, System.StringComparison.Ordinal);
+            Assert.True(start >= 0, "the prompt must carry a \"" + header + "\" block");
+
+            int end = prompt.IndexOf("\n\n", start, System.StringComparison.Ordinal);
+            Assert.True(end > start, "the block is closed by a blank line");
+            return prompt.Substring(start, end + 1 - start);
+        }
+
+        private static int CountOf(string text, string needle)
+        {
+            int count = 0;
+            for (int i = text.IndexOf(needle, System.StringComparison.Ordinal); i >= 0;
+                 i = text.IndexOf(needle, i + needle.Length, System.StringComparison.Ordinal))
+            {
+                count++;
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// An open two-slot story. Digit-free throughout, like <see cref="Event"/>, so it cannot
+        /// disturb either numeric sweep.
+        /// </summary>
+        private static StoryBrief RunningStory() => new StoryBrief
+        {
+            StoryId = "story-transit-fight",
+            Slots =
+            {
+                new StorySlotBrief
+                {
+                    EventId = "event-depot-closure",
+                    IsMajor = true,
+                    Title = "the depot closure",
+                    HeadlineBrief = "the council votes to shut the depot"
+                },
+                new StorySlotBrief
+                {
+                    EventId = "event-fare-freeze",
+                    Title = "the fare freeze",
+                    HeadlineBrief = "fares are held where they are"
+                }
+            }
+        };
+
+        /// <summary>A second open story, sorting before <see cref="RunningStory"/> by id.</summary>
+        private static StoryBrief SecondRunningStory() => new StoryBrief
+        {
+            StoryId = "story-park-levy",
+            Slots =
+            {
+                new StorySlotBrief
+                {
+                    EventId = "event-park-levy-vote",
+                    IsMajor = true,
+                    Title = "the park levy",
+                    HeadlineBrief = "a levy for the parks goes before the council"
+                }
+            }
+        };
+
+        /// <summary>
+        /// A resolved story that failed, carrying one of each outcome word a slot can come out as -
+        /// the material the resolution prose is written from.
+        /// </summary>
+        private static StoryBrief ResolvedStory() => new StoryBrief
+        {
+            StoryId = "story-housing-pledge",
+            IsResolved = true,
+            OutcomeWord = "failure",
+            Slots =
+            {
+                new StorySlotBrief
+                {
+                    EventId = "event-homes-pledge",
+                    IsMajor = true,
+                    Title = "the homes pledge",
+                    HeadlineBrief = "the council promises new homes",
+                    OutcomeWord = "not met"
+                },
+                new StorySlotBrief
+                {
+                    EventId = "event-land-release",
+                    Title = "the land release",
+                    HeadlineBrief = "sites are put up for building",
+                    OutcomeWord = "met"
+                },
+                new StorySlotBrief
+                {
+                    EventId = "event-builder-talks",
+                    Title = "the talks with builders",
+                    HeadlineBrief = "the council sits down with the trade",
+                    OutcomeWord = "unmeasurable"
+                }
+            }
+        };
+
         // ---- the v4 city-statistics block ---------------------------------------------------------
         //
         // /schema-change step 3: a snapshot field the model cannot see is a contract break, because
