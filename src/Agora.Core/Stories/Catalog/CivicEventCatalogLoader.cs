@@ -728,9 +728,18 @@ namespace Agora.Core.Stories.Catalog
                     // (It did, briefly, and the test caught it.)
                     //
                     // A threshold above what the sensor can ever report says nothing about the city:
-                    // a gte can never be met, a lt is met always. Only a plain reading is checked —
-                    // a delta is a change, and a change may legitimately exceed the level's ceiling.
-                    if (kind == TriggerKind.Metric)
+                    // a gte can never be met, a lt is met always. A delta is deliberately excluded —
+                    // a change may legitimately exceed the level's own ceiling.
+                    //
+                    // Absent is included, and the first version of this rule wrongly left it out.
+                    // Absent NEGATES its inner condition, so an unmeetable inner condition is not
+                    // merely inert: `absent serviceCoverage gte 0.9` can never be Met on the inside,
+                    // and therefore fires Met on every city, forever, silently. That is the exact
+                    // outcome codes 108 and 109 exist to close, arriving through a different door —
+                    // which is why the ceiling has to be checked wherever a threshold is read, not
+                    // only where it is read positively.
+                    if (kind == TriggerKind.Metric ||
+                        (kind == TriggerKind.Absent && MetricRegistry.IsKnown(metricId, scope)))
                     {
                         double? ceiling = AttainableMaximum(metricId);
                         if (ceiling.HasValue && spec.Threshold > ceiling.Value)

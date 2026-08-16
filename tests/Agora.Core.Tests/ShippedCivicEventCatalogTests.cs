@@ -610,6 +610,60 @@ namespace Agora.Core.Tests
             Assert.Empty(atCeiling.Warnings);
         }
 
+        /// <summary>
+        /// An <c>absent</c> spec is checked against the ceiling too, because it <b>negates</b> what it
+        /// reads: an inner condition that can never be met is not inert, it is true forever.
+        /// </summary>
+        /// <remarks>
+        /// <c>absent serviceCoverage gte 0.9</c> has an inner condition above the 5/9 ceiling, so the
+        /// inside can never be <c>Met</c> — and the negation therefore fires on every city, in every
+        /// month, silently. That is the outcome codes 108 and 109 exist to close, arriving through a
+        /// door the first version of rule 121 left open by scoping itself to <c>metric</c> alone.
+        /// Found by lane 3e, which declined to write a test pinning the hole as correct — the right
+        /// instinct, since such a test would have blessed it.
+        /// </remarks>
+        [Fact]
+        public void AbsentSpec_AboveTheSensorCeiling_IsWarnedAbout()
+        {
+            double ceiling = CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.ServiceCoverageMean)!.Value;
+
+            CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
+                "synthetic.json", AbsentCeilingDocument(ceiling + 0.35), ShippedTuning());
+
+            Assert.Contains(result.Warnings,
+                issue => issue.Code == CatalogIssueCode.ThresholdAboveAttainableMaximum);
+
+            // The paired positive: an absent spec inside the attainable range negates something the
+            // city can actually satisfy, which is a real question and must stay silent.
+            CivicEventCatalogLoadResult within = CivicEventCatalogLoader.Load(
+                "synthetic.json", AbsentCeilingDocument(ceiling - 0.2), ShippedTuning());
+
+            Assert.True(within.IsClean, Describe(within.Errors));
+            Assert.Empty(within.Warnings);
+        }
+
+        private static string AbsentCeilingDocument(double threshold)
+        {
+            string t = threshold.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+            return @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""absent"", ""metricId"": ""serviceCoverage"",
+                                 ""comparison"": ""gte"", ""threshold"": " + t + @" },
+                  ""check"": { ""spec"": { ""kind"": ""metric"", ""metricId"": ""happiness"",
+                                           ""comparison"": ""gte"", ""threshold"": 55 } },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
+        }
+
         private static string CeilingDocument(string metricId, double threshold)
         {
             string t = threshold.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
