@@ -77,10 +77,17 @@ namespace Agora.Mod.Llm
             var situation = new StringBuilder(4096);
             AppendSituation(situation, request);
 
+            // Selected once and handed to both story sections: the listing and the instruction must
+            // describe the same set, or the model is asked for an entry it was shown no story for.
+            var running = new List<StoryBrief>();
+            var resolved = new List<StoryBrief>();
+            SelectStories(request, running, resolved);
+
             var tail = new StringBuilder(8192);
             AppendRoster(tail, request);
             AppendEvents(tail, request);
-            AppendTask(tail, request);
+            AppendStories(tail, running, resolved);
+            AppendTask(tail, request, running, resolved);
             AppendSchema(tail);
 
             int budget = MaxPromptCharacters - head.Length - tail.Length;
@@ -310,7 +317,124 @@ namespace Agora.Mod.Llm
             sb.Append('\n');
         }
 
-        private static void AppendTask(StringBuilder sb, FlavorRequest request)
+        /// <summary>
+        /// Splits the round's stories into the ones still running and the ones that have just
+        /// resolved, both sorted by story id.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The story sections key on this being non-empty, never on
+        /// <see cref="FlavorWakeReason.StoryDraft"/>.</b> That reason is only ever set when no rarer
+        /// one coincided, so a story that drafts in the yearly month arrives labelled
+        /// <see cref="FlavorWakeReason.Yearly"/> — a prompt gated on the reason would ask for nothing
+        /// about it, and the resulting hole in the prose reads exactly like a model that ignored the
+        /// instruction. The reason sets the round's emphasis and nothing else.
+        /// </para>
+        /// <para>
+        /// Every id printed is one <see cref="FlavorCatalog"/> will accept back, because the sort is
+        /// a walk over <see cref="FlavorCatalog.SortedStoryIds"/> rather than over the briefs: a
+        /// story shown to the model under an id the validator does not hold has its entry dropped
+        /// after the model has spent the round writing it. The dictionary below is a lookup only —
+        /// nothing iterates it — so the output order is the catalog's ordinal sort and not a hash
+        /// order that would differ between runs.
+        /// </para>
+        /// </remarks>
+        private static void SelectStories(FlavorRequest request, List<StoryBrief> running, List<StoryBrief> resolved)
+        {
+            if (request.Stories == null || request.Stories.Count == 0) return;
+
+            var byId = new Dictionary<string, StoryBrief>(StringComparer.Ordinal);
+            for (int i = 0; i < request.Stories.Count; i++)
+            {
+                StoryBrief story = request.Stories[i];
+                if (story == null || string.IsNullOrEmpty(story.StoryId)) continue;
+                byId[story.StoryId] = story;
+            }
+            if (byId.Count == 0) return;
+
+            IReadOnlyList<string> ids = request.EffectiveCatalog().SortedStoryIds();
+            for (int i = 0; i < ids.Count; i++)
+            {
+                StoryBrief story;
+                if (!byId.TryGetValue(ids[i], out story)) continue;
+
+                if (story.IsResolved) resolved.Add(story);
+                else running.Add(story);
+            }
+        }
+
+        /// <summary>
+        /// The stories the round is writing about, listed as the events they are made of.
+        /// </summary>
+        /// <remarks>
+        /// The two blocks are listed apart because they are written apart: a running story goes in
+        /// <c>stories</c> and a resolved one in <c>resolutions</c>, and a round frequently carries
+        /// both — the month a story drafts is also the month the previous cycle's stories finish.
+        /// </remarks>
+        private static void AppendStories(StringBuilder sb, List<StoryBrief> running, List<StoryBrief> resolved)
+        {
+            AppendStoryBlock(sb,
+                "STORIES RUNNING - each one chain of events, not several unrelated ones " +
+                "(storyId, then its slots: role | eventId | title | factual brief):\n",
+                running);
+
+            AppendStoryBlock(sb,
+                "STORIES JUST RESOLVED - the same shape, with a trailing word for how the story and " +
+                "each of its slots came out; a slot with no word after it did not come out either way:\n",
+                resolved);
+        }
+
+        private static void AppendStoryBlock(StringBuilder sb, string header, List<StoryBrief> stories)
+        {
+            if (stories.Count == 0) return;
+
+            sb.Append(header);
+            for (int i = 0; i < stories.Count; i++)
+            {
+                StoryBrief story = stories[i];
+                sb.Append("- ").Append(story.StoryId);
+                AppendOutcomeWord(sb, story.OutcomeWord);
+                sb.Append('\n');
+
+                List<StorySlotBrief> slots = story.Slots;
+                if (slots == null) continue;
+                for (int s = 0; s < slots.Count; s++)
+                {
+                    StorySlotBrief slot = slots[s];
+                    if (slot == null) continue;
+
+                    // Left in the order the brief carries, which is major-first then by event id -
+                    // the same total order the engine's own slot list holds. Re-sorting here would
+                    // put the lead somewhere other than where every other surface shows it.
+                    sb.Append("  - ").Append(slot.IsMajor ? "lead" : "strand")
+                      .Append(" | ").Append(slot.EventId)
+                      .Append(" | ").Append(Sanitize(slot.Title))
+                      .Append(" | ").Append(Sanitize(slot.HeadlineBrief));
+                    AppendOutcomeWord(sb, slot.OutcomeWord);
+                    sb.Append('\n');
+                }
+            }
+            sb.Append('\n');
+        }
+
+        /// <summary>
+        /// Appends an outcome word as a further pipe field, and nothing at all when there is none.
+        /// </summary>
+        /// <remarks>
+        /// A word, never a figure: <see cref="StoryBrief"/> carries no severity, no power cost and
+        /// no movement in support, deliberately (non-negotiable #1). An empty word is written as an
+        /// absent field rather than as a stand-in phrase, because every phrase available — "open",
+        /// "pending", "not measured" — is a claim about the slot that the engine did not make, and
+        /// <c>unmeasurable</c> is already one of the words a slot can genuinely come out as.
+        /// </remarks>
+        private static void AppendOutcomeWord(StringBuilder sb, string outcomeWord)
+        {
+            if (string.IsNullOrEmpty(outcomeWord)) return;
+            sb.Append(" | ").Append(Sanitize(outcomeWord));
+        }
+
+        private static void AppendTask(StringBuilder sb, FlavorRequest request,
+                                       List<StoryBrief> running, List<StoryBrief> resolved)
         {
             int articles = request.ArticleCount;
             if (articles < 0) articles = 0;
@@ -371,6 +495,7 @@ namespace Agora.Mod.Llm
             {
                 sb.Append("- eventProse for every event listed: how that event lands in THIS city specifically.\n");
             }
+            AppendStoryCoverage(sb, running, resolved);
             sb.Append("- generatedAtSimDate exactly \"").Append(request.Date.ToString()).Append("\".\n");
             sb.Append("- schemaVersion exactly ").Append(FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture));
             sb.Append(" (the only number allowed in your entire response).\n\n");
@@ -444,6 +569,72 @@ namespace Agora.Mod.Llm
             sb.Append("reactions as what a party says of the count, not as what the count decided.\n");
         }
 
+        /// <summary>
+        /// What the round asks for about its stories, emitted inside WRITE so that a round carrying
+        /// no story is unchanged byte for byte.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Present exactly when the round has stories to write about — see the remarks on
+        /// <see cref="SelectStories"/> for why that, and not the wake reason, is the condition.
+        /// Each bullet is emitted only for the block it belongs to, so a round with nothing but
+        /// resolutions does not ask for <c>stories</c> entries it has listed no story for.
+        /// </para>
+        /// <para>
+        /// Both lists are lettered rather than numbered: the article rules above are the section's
+        /// only numbered list, and <c>FlavorPromptBuilderTests</c> strips that enumerator out of its
+        /// numeric sweep by shape. A second numbered list would arrive in the sweep as figures the
+        /// prompt appears to be quoting at the model.
+        /// </para>
+        /// <para>
+        /// The closing paragraph is the story half of non-negotiable #1. <see cref="StoryBrief"/>
+        /// carries words and no figures on purpose, so there is nothing here for the model to quote
+        /// even if it were asked to — and a section that did not say so would leave the one gap where
+        /// inventing a figure is the obvious thing to do, because a story is exactly the shape of
+        /// prose that wants to say what it cost.
+        /// </para>
+        /// </remarks>
+        private static void AppendStoryCoverage(StringBuilder sb, List<StoryBrief> running, List<StoryBrief> resolved)
+        {
+            if (running.Count == 0 && resolved.Count == 0) return;
+
+            if (running.Count > 0)
+            {
+                sb.Append("- stories: one entry for every story under STORIES RUNNING, keyed by its storyId.\n");
+                sb.Append("  a) the headline is written from that story's lead slot alone - its title and ");
+                sb.Append("its brief. The other slots are not headline material; they are what the article ");
+                sb.Append("is for.\n");
+                sb.Append("  b) the article is written from every slot in the story, and writes them as one ");
+                sb.Append("connected run of events rather than as a list of unrelated ones: what the earlier ");
+                sb.Append("slot set up, and what the later one made of it.\n");
+                sb.Append("  c) carry the opposition's reaction: a party out of government capitalising on a ");
+                sb.Append("story that is going badly for the council, or angered by one that is going well ");
+                sb.Append("for it. Name that party by id, as every other reference is named.\n");
+            }
+
+            if (resolved.Count > 0)
+            {
+                sb.Append("- resolutions: one entry for every story under STORIES JUST RESOLVED, keyed by its ");
+                sb.Append("storyId, in the same shape as a story entry.\n");
+                sb.Append("  a) write it from which slots came out and which did not - a story whose lead slot ");
+                sb.Append("was not met reads nothing like one where only a strand fell short.\n");
+                sb.Append("  b) a slot marked unmeasurable was never settled either way. Say so; do not decide ");
+                sb.Append("it for the engine.\n");
+                sb.Append("  c) the word on the story itself is how the whole of it came out, and the article ");
+                sb.Append("has to end where that word says it ended.\n");
+            }
+
+            sb.Append("  Story headlines are at most ")
+              .Append(FlavorCacheMigration.StoryHeadlineMaxLength.ToString(CultureInfo.InvariantCulture))
+              .Append(" characters and story articles at most ")
+              .Append(FlavorCacheMigration.StoryArticleMaxLength.ToString(CultureInfo.InvariantCulture))
+              .Append(" - a longer one fails validation and the whole response is discarded.\n");
+            sb.Append("  You have not been given what any of this cost the city - no severity, no power ");
+            sb.Append("spent, no movement in support, no tally of slots - and you must not invent one; the ");
+            sb.Append("dashboard carries the figures. The words above are the whole of what you know about ");
+            sb.Append("how any of it came out.\n");
+        }
+
         private static void AppendSchema(StringBuilder sb)
         {
             sb.Append("SCHEMA - your output is validated against this and silently discarded if it fails:\n");
@@ -481,6 +672,11 @@ namespace Agora.Mod.Llm
             {
                 case FlavorWakeReason.Election: return "an election has just been decided";
                 case FlavorWakeReason.Manual: return "a mid-cycle news round, requested by the desk";
+                // The occasion line is the whole of what this reason does: it says the round's
+                // emphasis is the story that just drafted. Whether story prose is asked for at all is
+                // decided by the request carrying stories - see the remarks on SelectStories - so a
+                // story arriving in the yearly month under the Yearly label still gets written about.
+                case FlavorWakeReason.StoryDraft: return "a story in the city's politics has just begun to run";
                 default: return "the annual round-up";
             }
         }
