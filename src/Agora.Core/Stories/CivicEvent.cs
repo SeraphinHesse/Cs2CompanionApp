@@ -257,14 +257,51 @@ namespace Agora.Core.Stories
         public List<string> FailureEffects { get; set; } = new List<string>();
 
         /// <summary>
-        /// Voter pressure while live. Together with the two below this is the mechanism the whole
-        /// rework exists for: a positive outcome moves voters toward the government and a negative
-        /// one away.
+        /// Voter pressure while the story is live: <b>which position on which issue gains politically
+        /// while this is happening</b>, and how strongly.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>These three are salience, not credit — owner ruling, wave 3.</b> All three point the
+        /// <i>same way</i> on the axis and differ only in magnitude, because the issue does not
+        /// change sides depending on the outcome: a clinic crisis makes pro-services parties look
+        /// right while it runs, more right if it is botched, and less salient once it is fixed. The
+        /// authored shape is therefore a rising and falling volume knob, never a sign flip:
+        /// </para>
+        /// <code>
+        /// activePressure   services: +0.30   // the crisis is hot
+        /// successPressure  services: +0.10   // resolved, salience falls
+        /// failurePressure  services: +0.45   // the crisis deepens
+        /// </code>
+        /// <para>
+        /// <b>Do not mirror-negate a success pressure.</b> The only consumer of an event's
+        /// <see cref="IssuePosition"/> is <c>AffinityEngine.EventTerm</c>, which dot-products it
+        /// against each party's <c>Platform</c> — so a negated success does not "release" pressure,
+        /// it moves voters toward the <i>opposite pole</i>. Fixing the clinics would reward the
+        /// anti-services party. All three wave-3 content lanes independently invented a mirroring
+        /// convention, which is why this is written down here rather than in a lane brief.
+        /// </para>
+        /// <para>
+        /// <b>Government credit and blame are not authored at all.</b> The rework's "a positive
+        /// outcome moves voters toward the government and a negative one away" is real, but an
+        /// <see cref="IssuePosition"/> cannot express it — it has no idea who governs. It is derived
+        /// instead from the slot's own outcome and tier, through the two weights that already exist
+        /// for exactly this: <c>stories.enfranchisementWeight</c> and <c>stories.alienationWeight</c>.
+        /// Content states which issue is hot; the engine decides who is blamed for it.
+        /// </para>
+        /// </remarks>
         public IssuePosition ActivePressure { get; set; } = IssuePosition.Centre;
 
+        /// <summary>
+        /// Salience once the slot resolves met — same direction as <see cref="ActivePressure"/>,
+        /// normally smaller. See its remarks; this is not a reward signal.
+        /// </summary>
         public IssuePosition SuccessPressure { get; set; } = IssuePosition.Centre;
 
+        /// <summary>
+        /// Salience once the slot resolves not-met — same direction as <see cref="ActivePressure"/>,
+        /// normally larger. See its remarks; this is not a punishment signal.
+        /// </summary>
         public IssuePosition FailurePressure { get; set; } = IssuePosition.Centre;
 
         /// <summary>

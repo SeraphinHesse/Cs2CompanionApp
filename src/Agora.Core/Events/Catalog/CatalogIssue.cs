@@ -4,9 +4,27 @@ namespace Agora.Core.Events.Catalog
 {
     /// <summary>How badly a catalog entry is broken.</summary>
     /// <remarks>
+    /// <para>
     /// An <see cref="Error"/> rejects the entry it is attached to — a broken event never reaches the
     /// scheduler, and a broken document contributes no events at all. A <see cref="Warning"/> is
     /// authoring feedback: the entry loads unchanged.
+    /// </para>
+    /// <para>
+    /// <b>One error is scoped to neither an event nor a document, and the sentence above overstated
+    /// the rule until it was found.</b> <see cref="CatalogIssueCode.MalformedFeatureIds"/> is raised
+    /// against a document's <c>featureIds</c> allow-list, which is not an entry and whose breakage
+    /// does not by itself invalidate any event: an event that actually names a feature fails
+    /// separately and more precisely with <see cref="CatalogIssueCode.UnlockIdNotDeclared"/>, and one
+    /// that names none is unharmed. So it reports without rejecting, and a document carrying it can
+    /// have <c>RejectedEventCount == 0</c> while <c>IsClean</c> is false.
+    /// </para>
+    /// <para>
+    /// That combination is deliberately not silent: <c>IsClean</c> going false is what fails
+    /// <c>ShippedCivicEventCatalogTests</c>, so a malformed allow-list still breaks the build — it
+    /// simply does so without discarding events that were never in question. Read
+    /// <see cref="Error"/> as "this is wrong and the build should fail", not as "something was
+    /// dropped".
+    /// </para>
     /// </remarks>
     public enum CatalogIssueSeverity
     {
@@ -184,7 +202,14 @@ namespace Agora.Core.Events.Catalog
         /// </summary>
         UnlockIdNotDeclared = 109,
 
-        /// <summary><c>featureIds</c> is present but is not an array of non-empty strings.</summary>
+        /// <summary>
+        /// <c>featureIds</c> is present but is not an array of non-empty strings.
+        /// </summary>
+        /// <remarks>
+        /// <b>Document-scoped, and rejects nothing on its own</b> — the one error in this enum that
+        /// does not discard what it is attached to. See the remarks on
+        /// <see cref="CatalogIssueSeverity"/> for why, and why that is not a silent failure.
+        /// </remarks>
         MalformedFeatureIds = 110,
 
         /// <summary>One of the seven prose fields is absent, not a string, or blank.</summary>
@@ -207,7 +232,59 @@ namespace Agora.Core.Events.Catalog
         /// A <c>check</c> declared <c>relativeToBaseline</c> on a spec kind that has no baseline to be
         /// relative to. Warning only — the flag is ignored.
         /// </summary>
-        BaselineOnNonMetricCheck = 115
+        BaselineOnNonMetricCheck = 115,
+
+        /// <summary>
+        /// A <c>check</c> declared <c>relativeToBaseline</c> at a district scope. <b>Provably
+        /// unscoreable, forever.</b>
+        /// </summary>
+        /// <remarks>
+        /// <c>StoryAssembler.Baseline</c> returns <c>null</c> for any scope other than
+        /// <c>City</c> — and says why: nothing on <c>StorySlot</c> records which district the story
+        /// landed on, so there is no single district whose opening reading could be captured. A
+        /// relative check with no baseline resolves <c>Unmeasurable</c> on every save, in every
+        /// month, forever. It is scored in neither half of the 2-of-3 and moves the power balance by
+        /// zero, so the event silently contributes nothing while reading like a working goal.
+        /// </remarks>
+        BaselineCheckAtDistrictScope = 116,
+
+        /// <summary>
+        /// A district-scoped check reads the same metric as its district-scoped trigger, so it is
+        /// answered by whichever district happens to satisfy it — not by the one the story is about.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>TriggerEvaluator</c>'s <c>AnyDistrict</c> walks <b>every</b> district and returns
+        /// <c>Met</c> on the first that clears the bar, and nothing binds a check to the district
+        /// that fired the trigger — again because <c>StorySlot</c> carries no district id. So
+        /// "some district is bad" paired with "some district is good on the same metric" is
+        /// typically satisfied the moment the story opens, by a district the player never touched.
+        /// </para>
+        /// <para>
+        /// A <b>warning</b> rather than an error, because it is a judgement about shape rather than a
+        /// provable impossibility — a genuinely different question at district scope can be
+        /// legitimate. But the shipped-catalog gate holds the catalogs to zero warnings, so this
+        /// still stops such an event shipping without someone arguing for it. The usual repairs are
+        /// <c>allDistricts</c> (every district clears the bar, which is a real and rising ask) or a
+        /// city-scope <c>relativeToBaseline</c> check.
+        /// </para>
+        /// </remarks>
+        DistrictCheckNotBoundToTrigger = 117,
+
+        /// <summary>
+        /// An outcome pressure points the opposite way on an issue from the event's own
+        /// <c>activePressure</c>. Pressures are salience, not credit — see the remarks on
+        /// <c>CivicEvent.ActivePressure</c>.
+        /// </summary>
+        /// <remarks>
+        /// The only consumer of an event's <c>IssuePosition</c> is <c>AffinityEngine.EventTerm</c>,
+        /// which dot-products it against each party's platform. So a mirror-negated success pressure
+        /// does not release the issue — it moves voters to the <b>opposite pole</b>, rewarding the
+        /// party that opposed doing anything. All three wave-3 content lanes independently invented
+        /// a mirroring convention, which is why the rule is machine-checked rather than only written
+        /// down.
+        /// </remarks>
+        PressureSignFlip = 118
     }
 
     /// <summary>

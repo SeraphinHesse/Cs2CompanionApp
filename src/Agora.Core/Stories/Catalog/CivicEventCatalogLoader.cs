@@ -387,6 +387,13 @@ namespace Agora.Core.Stories.Catalog
             CheckSpec check = ReadCheck(Member(node, "check"), path + ".check", id, source, tuning,
                                          featureSet, errors, warnings, ref ok);
 
+            // --- the trigger and the check, considered together ------------------------------
+            //
+            // Everything else in this loader validates one spec at a time. This rule cannot be: it is
+            // about the RELATIONSHIP between the two, and it is the shape that produces a story which
+            // opens on the city's worst district and is scored against its best.
+            WarnIfCheckIsNotBoundToTrigger(trigger, check, path, id, source, warnings);
+
             // --- effect lists ----------------------------------------------------------------
             List<string> activeEffects = ReadEffectList(node, "activeEffects", path, id, source, tuning,
                                                         errors, warnings, ref ok);
@@ -402,6 +409,13 @@ namespace Agora.Core.Stories.Catalog
                                                               errors, warnings, ref ok);
             IssuePosition failurePressure = ReadIssuePressure(node, "failurePressure", path, id, source,
                                                               errors, warnings, ref ok);
+
+            // Salience, not credit: an outcome pressure may be louder or quieter than the active one
+            // but must not point the other way. See CivicEvent.ActivePressure's remarks.
+            WarnOnPressureSignFlip(activePressure, successPressure, "successPressure",
+                                   path, id, source, warnings);
+            WarnOnPressureSignFlip(activePressure, failurePressure, "failurePressure",
+                                   path, id, source, warnings);
 
             // --- string lists ----------------------------------------------------------------
             List<string> districtAffinity = ReadStringList(node, "districtAffinity", path, id, source,
@@ -503,6 +517,21 @@ namespace Agora.Core.Stories.Catalog
                         warnings.Add(Warn(CatalogIssueCode.BaselineOnNonMetricCheck, source.Name, id,
                             path + ".relativeToBaseline",
                             "only a metric or delta check has a baseline; the flag is ignored here"));
+                    }
+
+                    // An ERROR, not a warning, because it is provable rather than a judgement:
+                    // StoryAssembler.Baseline returns null for every non-City scope, so this check
+                    // resolves Unmeasurable on every save forever. It would score in neither half of
+                    // the 2-of-3 and move the power balance by zero — an event that reads like a
+                    // working goal and silently contributes nothing.
+                    if (check.RelativeToBaseline && check.Spec.Scope != TriggerScope.City)
+                    {
+                        errors.Add(Error(CatalogIssueCode.BaselineCheckAtDistrictScope, source.Name, id,
+                            path + ".relativeToBaseline",
+                            "a relative check is city-scope only: nothing on StorySlot records which " +
+                            "district the story landed on, so a district-scoped baseline is never " +
+                            "captured and this check would resolve Unmeasurable forever"));
+                        ok = false;
                     }
                 }
             }
@@ -691,6 +720,43 @@ namespace Agora.Core.Stories.Catalog
         }
 
         /// <summary>
+        /// Warns when a district-scoped check reads the same metric as its district-scoped trigger,
+        /// which makes it answerable by a district that has nothing to do with the story.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>AnyDistrict</c> returns <c>Met</c> on the first district that clears the bar, walking
+        /// all of them, and no district id survives onto <c>StorySlot</c> — so "some district is
+        /// bad" followed by "some district is fine on the same metric" is answered by the healthiest
+        /// block in the city, usually on the month the story opens.
+        /// </para>
+        /// <para>
+        /// Restricted to the same <c>MetricId</c> deliberately. A district check on a <i>different</i>
+        /// metric is a genuinely different question and may well be intended, so flagging it would
+        /// train authors to ignore this warning — which is the failure mode a noisy check has.
+        /// </para>
+        /// </remarks>
+        private static void WarnIfCheckIsNotBoundToTrigger(TriggerSpec trigger, CheckSpec check,
+                                                           string path, string id,
+                                                           CivicEventCatalogSource source,
+                                                           List<CatalogIssue> warnings)
+        {
+            if (trigger == null || check == null || check.Spec == null) return;
+
+            TriggerSpec spec = check.Spec;
+            if (spec.Scope != TriggerScope.AnyDistrict) return;
+            if (trigger.Scope != TriggerScope.AnyDistrict && trigger.Scope != TriggerScope.AllDistricts) return;
+            if (string.CompareOrdinal(trigger.MetricId, spec.MetricId) != 0) return;
+            if (string.IsNullOrEmpty(spec.MetricId)) return;
+
+            warnings.Add(Warn(CatalogIssueCode.DistrictCheckNotBoundToTrigger, source.Name, id,
+                path + ".check.spec.scope",
+                "this check reads '" + spec.MetricId + "' at anyDistrict scope, the same metric the " +
+                "trigger reads, so it is satisfied by whichever district already clears it rather " +
+                "than by the one the story is about; use allDistricts, or a city-scope relative check"));
+        }
+
+        /// <summary>
         /// The registry check, plus the census gate. Shared by <c>metric</c>, <c>delta</c> and the
         /// registry-resolving half of <c>absent</c>.
         /// </summary>
@@ -857,6 +923,45 @@ namespace Agora.Core.Stories.Catalog
             }
 
             return pressure;
+        }
+
+        /// <summary>
+        /// Warns when an outcome pressure points the opposite way on any issue from the event's own
+        /// active pressure.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Walks <c>Issues.All</c> rather than reflecting over the struct, for the same reason the
+        /// pressure reader does: the fold order is what makes the result bit-stable.
+        /// </para>
+        /// <para>
+        /// Only a genuine sign flip is reported — a zero on either side is not a flip, because
+        /// dropping an issue entirely at resolution is a legitimate way to say "this stopped
+        /// mattering". Magnitude is not policed at all: louder on failure and quieter on success is
+        /// the expected shape, but the reverse can be authored deliberately and this loader has no
+        /// basis to judge it.
+        /// </para>
+        /// </remarks>
+        private static void WarnOnPressureSignFlip(IssuePosition active, IssuePosition outcome,
+                                                   string key, string parentPath, string id,
+                                                   CivicEventCatalogSource source,
+                                                   List<CatalogIssue> warnings)
+        {
+            for (int i = 0; i < Issues.All.Count; i++)
+            {
+                Issue issue = Issues.All[i];
+                double a = active[issue];
+                double o = outcome[issue];
+
+                if (a == 0.0 || o == 0.0) continue;
+                if ((a > 0.0) == (o > 0.0)) continue;
+
+                warnings.Add(Warn(CatalogIssueCode.PressureSignFlip, source.Name, id,
+                    parentPath + "." + key + "." + Issues.ToKey(issue),
+                    "points the opposite way from activePressure (" + Describe(a) + " -> " +
+                    Describe(o) + "); pressures are salience, not credit, so a flipped sign moves " +
+                    "voters to the opposite pole rather than releasing the issue"));
+            }
         }
 
         private static List<string> ReadStringList(JsonNode node, string key, string parentPath, string id,
