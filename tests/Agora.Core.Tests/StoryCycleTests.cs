@@ -215,10 +215,18 @@ namespace Agora.Core.Tests
 
         /// <summary>A story due in a later month is not touched at all.</summary>
         /// <remarks>
+        /// <para>
         /// The second half of the test is the control, and it is what stops the first half asserting
         /// nothing: the same story on the same state <i>does</i> resolve once its due month arrives,
         /// so "not touched" is a claim about the month rather than about a cycle that never touches
         /// anything.
+        /// </para>
+        /// <para>
+        /// <b>Every assertion names <c>story-due-later</c>.</b> The months this runs on are draft
+        /// phases with a populated catalog, so the cycle legitimately opens stories of its own on the
+        /// same ticks — asserting that the live list holds exactly one entry would fail on those and
+        /// say nothing whatever about the story under test.
+        /// </para>
         /// </remarks>
         [Fact]
         public void AStoryDueLaterIsNotTouched()
@@ -228,13 +236,13 @@ namespace Agora.Core.Tests
 
             StoryCycleResult early = Run(state, Start, catalog: Catalog());
 
-            Assert.Empty(early.ResolvedStories);
-            Story live = Assert.Single(state.LiveStories);
+            Assert.DoesNotContain(early.ResolvedStories, s => s.Id == "story-due-later");
+            Story live = Only(state.LiveStories, "story-due-later");
             Assert.Equal(StoryOutcome.Pending, live.Outcome);
 
             StoryCycleResult onTime = Run(state, Start.AddMonths(StoryLifeMonths), catalog: Catalog());
 
-            Assert.Single(onTime.ResolvedStories);
+            Assert.Contains(onTime.ResolvedStories, s => s.Id == "story-due-later");
         }
 
         /// <summary>
@@ -409,9 +417,15 @@ namespace Agora.Core.Tests
         /// the first lived one.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The suspension is of the whole cycle, not of drafting alone. Abandoning a story during
         /// replay would be the engine deciding, inside a window the player never lived, that they
         /// never got to answer it — and the sweep on the lived month reaches the same verdict anyway.
+        /// </para>
+        /// <para>
+        /// The lived run drafts stories of its own, which is correct, so the closing assertion names
+        /// <c>story-stranded</c> rather than asking whether the live list is empty.
+        /// </para>
         /// </remarks>
         [Fact]
         public void ReplayDoesNotSweepAStrandedStory()
@@ -425,12 +439,12 @@ namespace Agora.Core.Tests
             StoryCycleResult replayed = Run(state, afterTheGap, catalog: Catalog(), replay: true);
 
             Assert.Empty(replayed.ResolvedStories);
-            Assert.Single(state.LiveStories);
+            Assert.Contains(state.LiveStories, s => s.Id == "story-stranded");
 
             StoryCycleResult lived = Run(state, afterTheGap, catalog: Catalog());
 
-            Assert.Single(lived.ResolvedStories);
-            Assert.Empty(state.LiveStories);
+            Assert.Contains(lived.ResolvedStories, s => s.Id == "story-stranded");
+            Assert.DoesNotContain(state.LiveStories, s => s.Id == "story-stranded");
         }
 
         // ---------------------------------------------------------------- recorded evidence
@@ -536,10 +550,19 @@ namespace Agora.Core.Tests
         /// A story resolved early is not resolved a second time on the month it was originally due.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The idempotence guard has to survive the one path that reaches a verdict off-phase. Without
         /// it the ordinary resolve pass finds a story whose <c>ResolvesDate</c> is today and scores it
         /// again — this time against the live city, which is the very measurement the recorded
         /// evidence exists to avoid.
+        /// </para>
+        /// <para>
+        /// <b>The due month is not an empty month.</b> A story lives <c>cycleMonths - 1</c> months,
+        /// which is one, so anything the first run drafted at <c>Start</c> is genuinely due on the
+        /// month this re-runs — and resolving it is correct. Both assertions therefore name
+        /// <c>story-early</c>; asserting the resolved list was empty would fail on the draft and
+        /// would have said nothing about the story under test.
+        /// </para>
         /// </remarks>
         [Fact]
         public void AStoryResolvedEarlyIsNotResolvedAgainOnItsDueMonth()
@@ -552,21 +575,19 @@ namespace Agora.Core.Tests
             state.LiveStories.Add(story);
 
             var catalog = new List<CivicEvent> { HappinessEvent };
-            Assert.Single(Run(state, Start, catalog: catalog).ResolvedStories);
-
-            int archived = state.StoryArchive.Count;
+            Assert.Equal(1, Count(Run(state, Start, catalog: catalog).ResolvedStories, "story-early"));
 
             SimDate due = Start.AddMonths(StoryLifeMonths);
             StoryCycleResult onTheDueMonth = Run(state, due, catalog: catalog);
 
-            Assert.Empty(onTheDueMonth.ResolvedStories);
-            Assert.Equal(archived, state.StoryArchive.Count);
+            Assert.DoesNotContain(onTheDueMonth.ResolvedStories, s => s.Id == "story-early");
+            Assert.Equal(1, Count(state.StoryArchive, "story-early"));
         }
 
         // ---------------------------------------------------------------- double reachability
 
         /// <summary>
-        /// <b>A story two passes can both reach resolves exactly once.</b>
+        /// <b>A story two passes can both reach resolves exactly once, and is paid exactly once.</b>
         /// </summary>
         /// <remarks>
         /// <para>
@@ -576,10 +597,15 @@ namespace Agora.Core.Tests
         /// the assertion here and would pass while the story resolved twice; the count is.
         /// </para>
         /// <para>
-        /// The control is the same story reached by one pass alone. Comparing against it rather than
-        /// against a written-down number is what makes this survive a balance pass: whatever one
-        /// resolution costs in power and in effect requests, two passes must cost exactly that and
-        /// not twice it.
+        /// <b>The subject carries <see cref="Story.ResolutionEvidence"/>, and that is what gives this
+        /// test teeth.</b> A stranded story with no evidence is <see cref="StoryOutcome.Abandoned"/>
+        /// and pays nothing, so a double payment could not show up in it — the test would pass on two
+        /// zeroes. With evidence the sweep scores it for real, which is the only arrangement where
+        /// paying twice is possible and therefore the only one where "paid once" is a claim.
+        /// </para>
+        /// <para>
+        /// Every count is scoped to <c>story-contested</c>. Both runs land on months the cycle
+        /// legitimately drafts on, so a whole-list count would be measuring the draft.
         /// </para>
         /// </remarks>
         [Fact]
@@ -592,62 +618,90 @@ namespace Agora.Core.Tests
             PoliticalState control = StoryTestFixtures.State(Start);
             control.LiveStories.Add(WonStory("story-contested", Start));
             StoryCycleResult once = Run(control, due, catalog: Catalog());
-            AssertResolved(once);
 
-            // Subject: stranded AND asked to resolve early, on one tick.
+            Assert.Equal(1, Count(once.ResolvedStories, "story-contested"));
+            int paidOnce = LedgerEntriesFor(control.Power, "story-contested");
+            int effectsOnce = EffectRequestsFor(once, "story-contested");
+
+            // Subject: stranded, asked to resolve early, and carrying the reading that lets the sweep
+            // reach a real verdict rather than abandoning it.
             PoliticalState state = StoryTestFixtures.State(Start);
             Story contested = WonStory("story-contested", Start);
             contested.ResolveEarlyRequested = true;
+            contested.ResolutionEvidence.Add(StoryTestFixtures.Reading(MetricHistory.Happiness, 90.0));
             state.LiveStories.Add(contested);
 
             StoryCycleResult twice = Run(state, afterTheGap, catalog: Catalog());
 
-            // Single, not NotEmpty: two entries is the failure this test exists for, and it fails
-            // reporting the count rather than reporting that something was there.
-            Assert.Single(twice.ResolvedStories);
+            Assert.Equal(1, Count(twice.ResolvedStories, "story-contested"));
             Assert.Equal(1, Count(state.StoryArchive, "story-contested"));
-            Assert.Empty(state.LiveStories);
+            Assert.DoesNotContain(state.LiveStories, s => s.Id == "story-contested");
 
-            // One resolution's worth of consequence, not two.
-            Assert.Equal(once.PowerDelta, twice.PowerDelta);
-            Assert.Equal(control.Power.Balance, state.Power.Balance);
-            Assert.Equal(once.EffectRequests.Count, twice.EffectRequests.Count);
-            Assert.Equal(control.Power.Ledger.Count, state.Power.Ledger.Count);
-
-            // And one pressure, since the affinity stage reads this list per story.
-            Assert.Equal(once.Pressures.Count, twice.Pressures.Count);
+            // One resolution's worth of consequence, not two. The comparison is against the control
+            // rather than against a written-down number, so a balance pass moves both together.
+            Assert.Equal(paidOnce, LedgerEntriesFor(state.Power, "story-contested"));
+            Assert.Equal(effectsOnce, EffectRequestsFor(twice, "story-contested"));
+            Assert.Equal(1, Count(twice.Pressures, "story-contested"));
         }
 
         /// <summary>
-        /// The same story, reached by both passes, is archived once and appears in the ledger under
-        /// its own id exactly as often as a singly-resolved one does.
+        /// <b>A stranded story with no evidence, reached by both passes, is
+        /// <see cref="StoryOutcome.Abandoned"/> and pays nothing.</b>
         /// </summary>
         /// <remarks>
-        /// Stated separately from the counts above because it is a different failure: a cycle can
-        /// return one <see cref="StoryCycleResult.ResolvedStories"/> entry and still have paid the
-        /// award twice into <c>State.Power</c>, which is the half that survives into the save.
+        /// <para>
+        /// The other half of the sweep's rule, and it is a ruling rather than an accident: the due
+        /// month has gone and the story carries no reading, so scoring it now would measure a verdict
+        /// against a city that has moved on by the whole catch-up gap — the hazard replay suspension
+        /// exists to prevent, where a check evaluates 2005's crime wave against 2031's crime rate.
+        /// Abandoned pays nothing in either direction, because charging for months the scheduler
+        /// declined to run would be the engine billing the player for its own truncation.
+        /// </para>
+        /// <para>
+        /// <b>An earlier version of this test asserted the ledger equalled an on-time resolution's,
+        /// and that was wrong.</b> It conflated "not paid twice" with "paid exactly as if it had
+        /// resolved on time", which are different claims and only the first is the property the test
+        /// is named for. What is asserted now is the named property and its sharp form: no payment at
+        /// all here, and in no arrangement twice a single one.
+        /// </para>
+        /// <para>
+        /// <see cref="Story.ResolveEarlyRequested"/> does not change the verdict. The button says
+        /// "score this now", not "score this on evidence that was never taken" — nothing the player
+        /// can press makes an unrecorded month readable.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void AStoryBothPassesReachIsPaidForOnce()
+        public void AStrandedStoryWithNoEvidenceIsAbandonedEvenWhenAskedToResolveEarly()
         {
             SimDate due = Start.AddMonths(StoryLifeMonths);
             SimDate afterTheGap = due.AddMonths(Tuning.Scheduler.CatchUpMaxMonths + 1);
 
+            // What one on-time resolution of this story costs, so "twice" below is derived.
             PoliticalState control = StoryTestFixtures.State(Start);
             control.LiveStories.Add(WonStory("story-contested", Start));
             AssertResolved(Run(control, due, catalog: Catalog()));
 
             int paidOnce = LedgerEntriesFor(control.Power, "story-contested");
-            Assert.True(paidOnce > 0, "A story resolved Success must move the balance, or this asserts nothing.");
+            Assert.True(paidOnce > 0,
+                "An on-time Success must move the balance, or the bound below would be zero.");
 
             PoliticalState state = StoryTestFixtures.State(Start);
             Story contested = WonStory("story-contested", Start);
-            contested.ResolveEarlyRequested = true;
+            contested.ResolveEarlyRequested = true;   // and no ResolutionEvidence: nothing was recorded
             state.LiveStories.Add(contested);
+            state.Power.Balance = 100;
 
-            Run(state, afterTheGap, catalog: Catalog());
+            StoryCycleResult swept = Run(state, afterTheGap, catalog: Catalog(),
+                                         governingVoteShare: 0.0);
 
-            Assert.Equal(paidOnce, LedgerEntriesFor(state.Power, "story-contested"));
+            Story reaped = Only(swept.ResolvedStories, "story-contested");
+            Assert.Equal(StoryOutcome.Abandoned, reaped.Outcome);
+
+            // Pays nothing in either direction, and in particular never twice a real resolution.
+            int paid = LedgerEntriesFor(state.Power, "story-contested");
+            Assert.Equal(0, paid);
+            Assert.True(paid < 2 * paidOnce, "The story was paid for twice.");
+            Assert.Equal(100, state.Power.Balance);
         }
 
         // ---------------------------------------------------------------- housekeeping
@@ -851,12 +905,70 @@ namespace Agora.Core.Tests
             return state;
         }
 
+        /// <summary>
+        /// How many entries carry this id.
+        /// </summary>
+        /// <remarks>
+        /// <b>Every count in this file is scoped to one story, and that is not fussiness.</b> Most of
+        /// these fixtures run on months that are draft phases with a populated catalog, so the cycle
+        /// legitimately opens stories of its own on the same tick it resolves the one under test.
+        /// <c>Assert.Single</c> over a whole list would then fail on the draft — red for a reason
+        /// unrelated to what the test guards, which is the defect family this wave keeps finding.
+        /// </remarks>
         private static int Count(IReadOnlyList<Story> stories, string id)
         {
             int found = 0;
             for (int i = 0; i < stories.Count; i++)
             {
                 if (string.Equals(stories[i].Id, id, StringComparison.Ordinal)) found++;
+            }
+
+            return found;
+        }
+
+        private static int Count(IReadOnlyList<StoryPressureContribution> pressures, string id)
+        {
+            int found = 0;
+            for (int i = 0; i < pressures.Count; i++)
+            {
+                if (string.Equals(pressures[i].StoryId, id, StringComparison.Ordinal)) found++;
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// The one entry carrying this id, failing with the count when there is not exactly one.
+        /// </summary>
+        private static Story Only(IReadOnlyList<Story> stories, string id)
+        {
+            Story? found = null;
+            int seen = 0;
+
+            for (int i = 0; i < stories.Count; i++)
+            {
+                if (!string.Equals(stories[i].Id, id, StringComparison.Ordinal)) continue;
+                found = stories[i];
+                seen++;
+            }
+
+            Assert.True(seen == 1, "Expected exactly one " + id + ", found " + seen + ".");
+            return found!;
+        }
+
+        /// <summary>
+        /// Effect requests this story asked for. <c>StoryEffects</c> stamps
+        /// <see cref="EffectRequest.SourceId"/> as <c>storyId/eventId</c>, so the story is the prefix.
+        /// </summary>
+        private static int EffectRequestsFor(StoryCycleResult result, string storyId)
+        {
+            string prefix = storyId + "/";
+            int found = 0;
+
+            for (int i = 0; i < result.EffectRequests.Count; i++)
+            {
+                string source = result.EffectRequests[i].SourceId ?? "";
+                if (source.StartsWith(prefix, StringComparison.Ordinal)) found++;
             }
 
             return found;
