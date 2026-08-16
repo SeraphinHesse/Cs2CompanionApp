@@ -386,33 +386,135 @@ namespace Agora.Core.Tests
         /// and must not warn. Without this, a loader that warned on every district check would pass
         /// the test above while making the rule useless.
         /// </summary>
+        /// <remarks>
+        /// The threshold here is the trigger's own, and that is load-bearing rather than incidental.
+        /// The first version of this fixture demanded <c>0.25</c> against a trigger at <c>0.4</c> —
+        /// itself a trap band, which the rule below caught the moment it was written. A positive
+        /// fixture carrying the defect a sibling rule exists to find is worth more as a warning than
+        /// as a passing test.
+        /// </remarks>
         [Fact]
         public void AllDistrictsCheck_OnTheTriggersOwnMetric_IsClean()
         {
-            string json = @"{
+            CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
+                "synthetic.json", DistrictPairDocument("gte", 0.4, "lt", 0.4), ShippedTuning());
+
+            Assert.True(result.IsClean, Describe(result.Errors));
+            Assert.Empty(result.Warnings);
+        }
+
+        /// <summary>
+        /// A check tighter than its trigger leaves a band of districts that never contributed to the
+        /// trigger and can still fail the story.
+        /// </summary>
+        [Theory]
+        [InlineData("gte", 0.40, "lt", 0.35)]   // high-is-bad: districts in [0.35, 0.40) are trapped
+        [InlineData("lte", 0.30, "gt", 0.35)]   // low-is-bad, mirrored
+        public void CheckTighterThanItsTrigger_IsWarnedAbout(string triggerCmp, double triggerAt,
+                                                             string checkCmp, double checkAt)
+        {
+            CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
+                "synthetic.json", DistrictPairDocument(triggerCmp, triggerAt, checkCmp, checkAt),
+                ShippedTuning());
+
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Contains(result.Warnings,
+                issue => issue.Code == CatalogIssueCode.CheckThresholdLeavesTrapBand);
+        }
+
+        /// <summary>
+        /// The boundary cases: an exact complement is silent whichever way the strictness falls, and
+        /// a check <i>looser</i> than its trigger is not a trap. The rule is about the band, not the
+        /// boundary — without these it could degrade into "any district check warns".
+        /// </summary>
+        [Theory]
+        [InlineData("gte", 0.40, "lt", 0.40)]   // exact complement
+        [InlineData("gt", 0.40, "lte", 0.40)]   // exact complement, opposite strictness
+        [InlineData("gte", 0.40, "lt", 0.50)]   // looser than the trigger: no trapped district
+        public void CheckThatLeavesNoBand_IsClean(string triggerCmp, double triggerAt,
+                                                  string checkCmp, double checkAt)
+        {
+            CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
+                "synthetic.json", DistrictPairDocument(triggerCmp, triggerAt, checkCmp, checkAt),
+                ShippedTuning());
+
+            Assert.True(result.IsClean, Describe(result.Errors));
+            Assert.Empty(result.Warnings);
+        }
+
+        private static string DistrictPairDocument(string triggerCmp, double triggerAt,
+                                                   string checkCmp, double checkAt)
+        {
+            string t = triggerAt.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+            string c = checkAt.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+            return @"{
               ""schemaVersion"": 1,
               ""events"": [
                 {
                   ""id"": ""synthetic-event"",
                   ""severity"": 2,
                   ""region"": ""global"",
-                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""gte"",
-                                 ""threshold"": 0.4, ""scope"": ""anyDistrict"" },
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": """ +
+                  triggerCmp + @""", ""threshold"": " + t + @", ""scope"": ""anyDistrict"" },
                   ""check"": {
-                    ""spec"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""lt"",
-                                ""threshold"": 0.25, ""scope"": ""allDistricts"" }
+                    ""spec"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": """ +
+                    checkCmp + @""", ""threshold"": " + c + @", ""scope"": ""allDistricts"" }
                   },
                   ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
                   ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
                 }
               ]
             }";
+        }
 
-            CivicEventCatalogLoadResult result =
-                CivicEventCatalogLoader.Load("synthetic.json", json, ShippedTuning());
+        /// <summary>
+        /// A delta check may not read back further than the story has existed. A story lives
+        /// <c>cycleMonths - 1</c> months, not <c>cycleMonths</c> — the cadence and the life differ by
+        /// one, which is the distinction every wave-3 content lane was handed wrongly.
+        /// </summary>
+        [Fact]
+        public void DeltaCheck_ReadingBackFurtherThanTheStoryLives_IsWarnedAbout()
+        {
+            EngineTuning tuning = ShippedTuning();
+            int life = tuning.Stories.CycleMonths - 1;
 
-            Assert.True(result.IsClean, Describe(result.Errors));
-            Assert.Empty(result.Warnings);
+            CivicEventCatalogLoadResult beyond = CivicEventCatalogLoader.Load(
+                "synthetic.json", DeltaCheckDocument(life + 1), tuning);
+
+            Assert.Contains(beyond.Warnings,
+                issue => issue.Code == CatalogIssueCode.CheckWindowOutrunsStoryLife);
+
+            // The paired positive: exactly the story's life is the whole window the player owns.
+            CivicEventCatalogLoadResult atLife = CivicEventCatalogLoader.Load(
+                "synthetic.json", DeltaCheckDocument(life), tuning);
+
+            Assert.True(atLife.IsClean, Describe(atLife.Errors));
+            Assert.Empty(atLife.Warnings);
+        }
+
+        private static string DeltaCheckDocument(int windowMonths)
+        {
+            string w = windowMonths.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            return @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""happiness"", ""comparison"": ""lt"",
+                                 ""threshold"": 50 },
+                  ""check"": {
+                    ""spec"": { ""kind"": ""delta"", ""metricId"": ""happiness"", ""comparison"": ""gte"",
+                                ""threshold"": 1, ""windowMonths"": " + w + @" }
+                  },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
         }
 
         /// <summary>
@@ -466,6 +568,63 @@ namespace Agora.Core.Tests
                                            ""comparison"": ""gte"", ""threshold"": 55 } },
                   ""activePressure"": { ""services"": 0.30 },
                   """ + outcomeKey + @""": { ""services"": " + value + @" },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
+        }
+
+        /// <summary>
+        /// A threshold above what a metric's sensor can ever report is warned about, and the two
+        /// known ceilings are asserted against the arithmetic that produces them rather than as
+        /// remembered numbers.
+        /// </summary>
+        /// <remarks>
+        /// The ceilings exist because both metrics are means over channels the game does not all
+        /// expose: <c>serviceCoverage</c> is five measured of nine, <c>pollution</c> three of four.
+        /// If a sensor ever starts reporting one of the missing channels, the arithmetic here changes
+        /// with it and this test says so.
+        /// </remarks>
+        [Fact]
+        public void ThresholdAboveTheSensorCeiling_IsWarnedAbout()
+        {
+            Assert.Equal(5.0 / 9.0, CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.ServiceCoverageMean));
+            Assert.Equal(3.0 / 4.0, CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.PollutionMean));
+            Assert.Null(CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.Happiness));
+
+            double ceiling = CivicEventCatalogLoader.AttainableMaximum(MetricRegistry.ServiceCoverageMean)!.Value;
+
+            CivicEventCatalogLoadResult above = CivicEventCatalogLoader.Load(
+                "synthetic.json", CeilingDocument(MetricRegistry.ServiceCoverageMean, ceiling + 0.05),
+                ShippedTuning());
+            Assert.Contains(above.Warnings,
+                issue => issue.Code == CatalogIssueCode.ThresholdAboveAttainableMaximum);
+
+            // The paired positive: at the ceiling is attainable, and must stay silent. Demanding is
+            // not the same as impossible, and this loader only claims to catch the second.
+            CivicEventCatalogLoadResult atCeiling = CivicEventCatalogLoader.Load(
+                "synthetic.json", CeilingDocument(MetricRegistry.ServiceCoverageMean, ceiling),
+                ShippedTuning());
+            Assert.True(atCeiling.IsClean, Describe(atCeiling.Errors));
+            Assert.Empty(atCeiling.Warnings);
+        }
+
+        private static string CeilingDocument(string metricId, double threshold)
+        {
+            string t = threshold.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+            return @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": """ + metricId + @""",
+                                 ""comparison"": ""gte"", ""threshold"": " + t + @" },
+                  ""check"": { ""spec"": { ""kind"": ""metric"", ""metricId"": ""happiness"",
+                                           ""comparison"": ""gte"", ""threshold"": 55 } },
                   ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
                   ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
                 }
