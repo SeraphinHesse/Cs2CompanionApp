@@ -4,9 +4,27 @@ namespace Agora.Core.Events.Catalog
 {
     /// <summary>How badly a catalog entry is broken.</summary>
     /// <remarks>
+    /// <para>
     /// An <see cref="Error"/> rejects the entry it is attached to — a broken event never reaches the
     /// scheduler, and a broken document contributes no events at all. A <see cref="Warning"/> is
     /// authoring feedback: the entry loads unchanged.
+    /// </para>
+    /// <para>
+    /// <b>One error is scoped to neither an event nor a document, and the sentence above overstated
+    /// the rule until it was found.</b> <see cref="CatalogIssueCode.MalformedFeatureIds"/> is raised
+    /// against a document's <c>featureIds</c> allow-list, which is not an entry and whose breakage
+    /// does not by itself invalidate any event: an event that actually names a feature fails
+    /// separately and more precisely with <see cref="CatalogIssueCode.UnlockIdNotDeclared"/>, and one
+    /// that names none is unharmed. So it reports without rejecting, and a document carrying it can
+    /// have <c>RejectedEventCount == 0</c> while <c>IsClean</c> is false.
+    /// </para>
+    /// <para>
+    /// That combination is deliberately not silent: <c>IsClean</c> going false is what fails
+    /// <c>ShippedCivicEventCatalogTests</c>, so a malformed allow-list still breaks the build — it
+    /// simply does so without discarding events that were never in question. Read
+    /// <see cref="Error"/> as "this is wrong and the build should fail", not as "something was
+    /// dropped".
+    /// </para>
     /// </remarks>
     public enum CatalogIssueSeverity
     {
@@ -184,7 +202,14 @@ namespace Agora.Core.Events.Catalog
         /// </summary>
         UnlockIdNotDeclared = 109,
 
-        /// <summary><c>featureIds</c> is present but is not an array of non-empty strings.</summary>
+        /// <summary>
+        /// <c>featureIds</c> is present but is not an array of non-empty strings.
+        /// </summary>
+        /// <remarks>
+        /// <b>Document-scoped, and rejects nothing on its own</b> — the one error in this enum that
+        /// does not discard what it is attached to. See the remarks on
+        /// <see cref="CatalogIssueSeverity"/> for why, and why that is not a silent failure.
+        /// </remarks>
         MalformedFeatureIds = 110,
 
         /// <summary>One of the seven prose fields is absent, not a string, or blank.</summary>
