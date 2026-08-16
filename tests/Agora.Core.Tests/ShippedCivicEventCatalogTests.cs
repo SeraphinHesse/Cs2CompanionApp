@@ -309,6 +309,112 @@ namespace Agora.Core.Tests
             Assert.Contains(result.Errors, issue => issue.Code == CatalogIssueCode.WindowMonthsOutOfRange);
         }
 
+        /// <summary>
+        /// A relative check at district scope is refused, because it is provably unscoreable rather
+        /// than merely unwise: <c>StoryAssembler.Baseline</c> returns null for every non-city scope.
+        /// </summary>
+        [Fact]
+        public void RelativeCheck_AtDistrictScope_IsRejected()
+        {
+            string json = @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""gte"",
+                                 ""threshold"": 0.4, ""scope"": ""anyDistrict"" },
+                  ""check"": {
+                    ""relativeToBaseline"": true,
+                    ""spec"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""lt"",
+                                ""threshold"": -0.05, ""scope"": ""anyDistrict"" }
+                  },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
+
+            CivicEventCatalogLoadResult result =
+                CivicEventCatalogLoader.Load("synthetic.json", json, ShippedTuning());
+
+            Assert.Equal(1, result.RejectedEventCount);
+            Assert.Contains(result.Errors,
+                issue => issue.Code == CatalogIssueCode.BaselineCheckAtDistrictScope);
+        }
+
+        /// <summary>
+        /// A district check reading the same metric as its district trigger is warned about, because
+        /// the best district in the city answers it rather than the one the story is about. The
+        /// shipped catalogs are held to zero warnings, so this stops such an event shipping.
+        /// </summary>
+        [Fact]
+        public void DistrictCheck_OnTheTriggersOwnMetric_IsWarnedAbout()
+        {
+            string json = @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""gte"",
+                                 ""threshold"": 0.4, ""scope"": ""anyDistrict"" },
+                  ""check"": {
+                    ""spec"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""lt"",
+                                ""threshold"": 0.25, ""scope"": ""anyDistrict"" }
+                  },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
+
+            CivicEventCatalogLoadResult result =
+                CivicEventCatalogLoader.Load("synthetic.json", json, ShippedTuning());
+
+            // A warning, so the entry still loads — the shape is a judgement, not an impossibility.
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Single(result.Catalog.Events);
+            Assert.Contains(result.Warnings,
+                issue => issue.Code == CatalogIssueCode.DistrictCheckNotBoundToTrigger);
+        }
+
+        /// <summary>
+        /// The paired positive case: <c>allDistricts</c> on the trigger's own metric is the repair,
+        /// and must not warn. Without this, a loader that warned on every district check would pass
+        /// the test above while making the rule useless.
+        /// </summary>
+        [Fact]
+        public void AllDistrictsCheck_OnTheTriggersOwnMetric_IsClean()
+        {
+            string json = @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""gte"",
+                                 ""threshold"": 0.4, ""scope"": ""anyDistrict"" },
+                  ""check"": {
+                    ""spec"": { ""kind"": ""metric"", ""metricId"": ""crimeRate"", ""comparison"": ""lt"",
+                                ""threshold"": 0.25, ""scope"": ""allDistricts"" }
+                  },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
+
+            CivicEventCatalogLoadResult result =
+                CivicEventCatalogLoader.Load("synthetic.json", json, ShippedTuning());
+
+            Assert.True(result.IsClean, Describe(result.Errors));
+            Assert.Empty(result.Warnings);
+        }
+
         /// <summary>A corrupt document contributes nothing and does not throw (non-negotiable #7).</summary>
         [Fact]
         public void MalformedJson_ReportsRatherThanThrows()

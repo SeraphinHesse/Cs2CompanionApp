@@ -232,7 +232,44 @@ namespace Agora.Core.Events.Catalog
         /// A <c>check</c> declared <c>relativeToBaseline</c> on a spec kind that has no baseline to be
         /// relative to. Warning only — the flag is ignored.
         /// </summary>
-        BaselineOnNonMetricCheck = 115
+        BaselineOnNonMetricCheck = 115,
+
+        /// <summary>
+        /// A <c>check</c> declared <c>relativeToBaseline</c> at a district scope. <b>Provably
+        /// unscoreable, forever.</b>
+        /// </summary>
+        /// <remarks>
+        /// <c>StoryAssembler.Baseline</c> returns <c>null</c> for any scope other than
+        /// <c>City</c> — and says why: nothing on <c>StorySlot</c> records which district the story
+        /// landed on, so there is no single district whose opening reading could be captured. A
+        /// relative check with no baseline resolves <c>Unmeasurable</c> on every save, in every
+        /// month, forever. It is scored in neither half of the 2-of-3 and moves the power balance by
+        /// zero, so the event silently contributes nothing while reading like a working goal.
+        /// </remarks>
+        BaselineCheckAtDistrictScope = 116,
+
+        /// <summary>
+        /// A district-scoped check reads the same metric as its district-scoped trigger, so it is
+        /// answered by whichever district happens to satisfy it — not by the one the story is about.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>TriggerEvaluator</c>'s <c>AnyDistrict</c> walks <b>every</b> district and returns
+        /// <c>Met</c> on the first that clears the bar, and nothing binds a check to the district
+        /// that fired the trigger — again because <c>StorySlot</c> carries no district id. So
+        /// "some district is bad" paired with "some district is good on the same metric" is
+        /// typically satisfied the moment the story opens, by a district the player never touched.
+        /// </para>
+        /// <para>
+        /// A <b>warning</b> rather than an error, because it is a judgement about shape rather than a
+        /// provable impossibility — a genuinely different question at district scope can be
+        /// legitimate. But the shipped-catalog gate holds the catalogs to zero warnings, so this
+        /// still stops such an event shipping without someone arguing for it. The usual repairs are
+        /// <c>allDistricts</c> (every district clears the bar, which is a real and rising ask) or a
+        /// city-scope <c>relativeToBaseline</c> check.
+        /// </para>
+        /// </remarks>
+        DistrictCheckNotBoundToTrigger = 117
     }
 
     /// <summary>
