@@ -2890,6 +2890,25 @@ namespace Agora.Mod.Core
             // here — this request is built locally, at the ordinary article count, and never handed to
             // the CLI worker — but two assignment sites with opposite treatment is how the rule rots.
             _flavor.Pool.Roster = request.RosterCopy();
+
+            // The authored civic text, which a roster cannot carry. A resolution's canned prose reads
+            // the event's SuccessText or FailText, and the only route to those is
+            // CivicEventCatalog.Find — a StorySlotBrief carries the event's name and its factual
+            // description and deliberately not its outcome blurbs, because the prompt has no use for
+            // them and a brief carrying every authored string would be most of the catalog.
+            //
+            // Without this the pool holds CivicEventCatalog.Empty and every resolution degrades to
+            // the slot's description: whole, valid, schema-passing prose that says what the story WAS
+            // rather than how it went. Nothing errors and no count is wrong, so the only symptom is
+            // that closing cards read oddly like opening ones. Note this is no longer the difference
+            // between a resolution card and an open one — lane 5c's closing lead-in is keyed on the
+            // story's own outcome word and needs no catalog — but it is the difference between a
+            // closing card that names the outcome and one that also says what happened.
+            //
+            // Assigned beside the roster because the two are the pool's whole view of the world and
+            // drift apart the moment they are set in different places. Safe: the pool never crosses
+            // to the CLI worker thread, and CivicEventCatalog is immutable after construction.
+            _flavor.Pool.CivicCatalog = _civicCatalog;
         }
 
         /// <summary>
