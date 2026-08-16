@@ -442,6 +442,94 @@ namespace Agora.Mod.Llm
             "the argument as give both sides a fresh way to make it."
         };
 
+        // ---- stories ---------------------------------------------------------------------------
+        //
+        // WHY THERE ARE SO FEW LINES DOWN HERE.
+        //
+        // A story's canned prose is a transcription, not a draw: the headline is the major event's
+        // authored name and the article is the authored text of its slots, in the story's own order.
+        // That is content the catalog already wrote, checked by the same tests that check the catalog,
+        // and it is about this city's story rather than about stories in general. The three pools below
+        // are only the floor under it - what a card opens with when the authored text will not fit its
+        // cap whole, which the house rule (prune, never truncate) says is the one case where a generic
+        // whole line beats a specific cut one. The four closing lines after them are not a floor: a
+        // resolution carries one every time, because saying that the story closed is the one thing a
+        // closing card owes the player and the only part of it the catalog cannot supply.
+
+        /// <summary>
+        /// Headlines for a live story whose own major event name will not fit
+        /// <c>FlavorCacheMigration.StoryHeadlineMaxLength</c>. Placeholder-free and inside the cap
+        /// unsubstituted; a test pins both.
+        /// </summary>
+        public static readonly string[] StoryHeadlines =
+        {
+            "The council takes something on, and the city waits to see",
+            "A file opens at City Hall, and the clock starts with it",
+            "The chamber picks up a question it has been walking past"
+        };
+
+        /// <inheritdoc cref="StoryHeadlines"/>
+        public static readonly string[] StoryArticles =
+        {
+            "The council has taken this one on, which is the first thing that has happened to it in a " +
+            "while. What follows is committee work: a report, a budget line, an evening of deputations " +
+            "and a vote that will be reported in one sentence. The city will know how it went long " +
+            "before the chamber says so.",
+
+            "It is on the agenda now, and being on the agenda is not the same as being decided. The " +
+            "administration has a plan, the objections have a hearing date, and between the two there " +
+            "is a winter to get through.",
+
+            "The file is open. Officers are costing it, the committee has an evening set aside for it, " +
+            "and everyone involved has said in public that they want the same thing, which is how these " +
+            "start and rarely how they end."
+        };
+
+        /// <summary>
+        /// Headlines for a resolved story whose own major event name will not fit. Closing rather than
+        /// opening, because a resolution card is the last thing a player reads about a story.
+        /// </summary>
+        public static readonly string[] ResolutionHeadlines =
+        {
+            "The file closes, and the city gets the outcome it was given",
+            "That is the end of that one, whatever the chamber says next",
+            "The council draws a line under it and moves down the agenda"
+        };
+
+        /// <summary>
+        /// How a resolution card opens: one line saying that the story closed and how it went.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Constants selected by <c>StoryBrief.OutcomeWord</c>, never drawn.</b> A closing card
+        /// whose only difference from the opening card was the tense of three catalog paragraphs is
+        /// not a closing card, and there are three shipped cases where even that difference vanishes:
+        /// an abandoned story leaves every slot <c>Pending</c> and so every slot word empty, a slot
+        /// that came out <c>unmeasurable</c> has no authored outcome text to switch to, and a save
+        /// whose civic catalog has not reached the pool resolves nothing at all. The lead-in is the
+        /// one part of a resolution that needs neither the catalog nor a slot word, so it is what
+        /// carries the news that the story is over.
+        /// </para>
+        /// <para>
+        /// Four words, four lines, and the fourth is not decoration: <c>OutcomeWord</c> is empty while
+        /// a story is open, and a brief that arrives resolved with no word is a caller bug that should
+        /// still produce a whole card rather than a card that says nothing.
+        /// </para>
+        /// </remarks>
+        public const string ResolutionSuccessLead =
+            "The file is closed, and it closed the way the council was working for.";
+
+        /// <inheritdoc cref="ResolutionSuccessLead"/>
+        public const string ResolutionFailureLead =
+            "The file is closed, and it did not close the way the council was working for.";
+
+        /// <inheritdoc cref="ResolutionSuccessLead"/>
+        public const string ResolutionAbandonedLead =
+            "The council let this one go, and the file closed with it unfinished.";
+
+        /// <inheritdoc cref="ResolutionSuccessLead"/>
+        public const string ResolutionClosedLead = "The file is closed.";
+
         /// <summary>Deterministic pick: index derived from the caller's seeded stream, never from a hash.</summary>
         public static string Pick(string[] pool, Agora.Core.Determinism.DeterministicRng rng)
         {

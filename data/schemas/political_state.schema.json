@@ -402,7 +402,7 @@
         "system": { "type": "string", "enum": ["Proportional", "FirstPastThePost"] },
         "wakeCadence": {
           "type": "string",
-          "$comment": "Flags enum serialized as a comma-separated member list, e.g. 'Yearly, Election, Manual'."
+          "$comment": "Flags enum serialized as a comma-separated member list, e.g. 'Yearly, Election, Manual, Story'."
         },
         "snapshotRetention": { "type": "integer", "minimum": 1 },
         "enabled": { "type": "boolean" },

@@ -28,7 +28,7 @@ namespace Agora.Core.Tuning
         /// because every other test in the suite runs against <see cref="Default"/> rather than the
         /// file — so a value that differs here is a value the shipped engine never verified.
         /// </summary>
-        public int SchemaVersion { get; internal set; } = 8;
+        public int SchemaVersion { get; internal set; } = 9;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -1072,6 +1072,19 @@ namespace Agora.Core.Tuning
         public bool LlmWakeOnElection { get; internal set; } = true;
         public bool LlmWakeManualEnabled { get; internal set; } = true;
 
+        /// <summary>
+        /// Whether the LLM wakes on the month a story drafts.
+        /// </summary>
+        /// <remarks>
+        /// The global half of the gate on <c>LlmWakeCadence.Story</c>; the per-save half is the flag
+        /// in the sidecar. This is the dial that decides how often the mod starts a subprocess — at
+        /// the shipped <c>stories.cycleMonths</c> of 2 it is about six wakes a year against
+        /// <see cref="LlmWakeYearly"/>'s one — so it is the first thing to turn off when the CLI is
+        /// slow or expensive. Doing so costs no content: the canned pool writes every story either
+        /// way, and the model's prose is added to that rather than replacing it.
+        /// </remarks>
+        public bool LlmWakeOnStoryDraft { get; internal set; } = true;
+
         /// <summary>Month (1–12) the yearly LLM wake fires on.</summary>
         public int LlmWakeMonth { get; internal set; } = 1;
 
@@ -1099,6 +1112,7 @@ namespace Agora.Core.Tuning
             LlmWakeYearly = r.Flag("llmWakeYearly", d.LlmWakeYearly),
             LlmWakeOnElection = r.Flag("llmWakeOnElection", d.LlmWakeOnElection),
             LlmWakeManualEnabled = r.Flag("llmWakeManualEnabled", d.LlmWakeManualEnabled),
+            LlmWakeOnStoryDraft = r.Flag("llmWakeOnStoryDraft", d.LlmWakeOnStoryDraft),
             LlmWakeMonth = r.Int("llmWakeMonth", d.LlmWakeMonth),
             CatchUpMaxMonths = r.Int("catchUpMaxMonths", d.CatchUpMaxMonths),
             WarmupMonths = r.Int("warmupMonths", d.WarmupMonths)

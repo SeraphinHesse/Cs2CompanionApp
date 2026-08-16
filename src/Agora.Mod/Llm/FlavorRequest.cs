@@ -14,7 +14,17 @@ namespace Agora.Mod.Llm
     {
         Yearly = 0,
         Election = 1,
-        Manual = 2
+        Manual = 2,
+
+        /// <summary>A story drafted this month and wants prose for it.</summary>
+        /// <remarks>
+        /// The most frequent reason by a wide margin — see <c>LlmWakeCadence.Story</c>. It is only
+        /// ever the reason when no rarer one coincided, so a story that drafts in the yearly month
+        /// arrives labelled <see cref="Yearly"/>; the prompt's story sections key on
+        /// <see cref="FlavorRequest.Stories"/> being non-empty rather than on this value, so the
+        /// label never decides whether stories are written about.
+        /// </remarks>
+        StoryDraft = 3
     }
 
     /// <summary>
@@ -135,6 +145,62 @@ namespace Agora.Mod.Llm
         public List<string> Tags = new List<string>();
     }
 
+    /// <summary>One slot inside a story, as the prompt sees it.</summary>
+    public sealed class StorySlotBrief
+    {
+        public string EventId = string.Empty;
+
+        /// <summary>True for the story's lead event; exactly one slot per story carries it.</summary>
+        public bool IsMajor;
+
+        /// <summary>Engine-authored title of the event in this slot.</summary>
+        public string Title = string.Empty;
+
+        /// <summary>The catalog's factual one-liner. A prompt input, never published as-is.</summary>
+        public string HeadlineBrief = string.Empty;
+
+        /// <summary>
+        /// How the slot came out, as a word: <c>met</c>, <c>not met</c>, <c>unmeasurable</c>, or
+        /// empty while the story is still open.
+        /// </summary>
+        /// <remarks>
+        /// A word rather than the enum, and never a score or a ratio. The resolution prose is
+        /// prompted from <i>which slots failed</i>, and handing the model a figure to describe is
+        /// how a figure comes back slightly wrong in text the player reads as authoritative
+        /// (non-negotiable #1).
+        /// </remarks>
+        public string OutcomeWord = string.Empty;
+    }
+
+    /// <summary>
+    /// One story, as the prompt sees it.
+    /// </summary>
+    /// <remarks>
+    /// Carries the events and how they came out, and nothing about what the story <i>cost</i>: no
+    /// power figure, no vote movement, no severity. Those are the numbers the story moves, they are
+    /// shown two panels away, and a prompt that recites them invites prose that recites them back
+    /// wrong.
+    /// </remarks>
+    public sealed class StoryBrief
+    {
+        public string StoryId = string.Empty;
+
+        /// <summary>Sorted major-first, then by event id ordinal — the same total order as <c>Story.Slots</c>.</summary>
+        public List<StorySlotBrief> Slots = new List<StorySlotBrief>();
+
+        /// <summary>
+        /// True once the story has resolved, which is what puts it in <c>resolutions</c> rather than
+        /// in <c>stories</c>.
+        /// </summary>
+        public bool IsResolved;
+
+        /// <summary>
+        /// How the whole story came out, as a word: <c>success</c>, <c>failure</c>, <c>abandoned</c>,
+        /// or empty while it is open. See <see cref="StorySlotBrief.OutcomeWord"/> on why a word.
+        /// </summary>
+        public string OutcomeWord = string.Empty;
+    }
+
     /// <summary>
     /// Everything one generation needs. Assembled by the caller on the sim thread, then handed to the
     /// worker; treat it as immutable once <c>RequestFlavor</c> has been called with it.
@@ -155,6 +221,20 @@ namespace Agora.Mod.Llm
         public List<PartyBrief> Parties { get; set; } = new List<PartyBrief>();
         public List<FactionBrief> Factions { get; set; } = new List<FactionBrief>();
         public List<EventBrief> Events { get; set; } = new List<EventBrief>();
+
+        /// <summary>
+        /// The stories to write about — live ones for <c>stories</c>, resolved ones for
+        /// <c>resolutions</c>, told apart by <see cref="StoryBrief.IsResolved"/>.
+        /// </summary>
+        /// <remarks>
+        /// <b>Every consumer of this request reads this list, so anything that copies a request must
+        /// carry it.</b> There is exactly one such copier — <see cref="RosterCopy"/> — and it is a
+        /// hand-maintained field-by-field copy that does not fail to compile when it forgets a new
+        /// property; the story simply arrives absent, and the canned pool, which is the only thing
+        /// that reads a roster, writes prose for no stories at all while every log line reports
+        /// success. <c>FlavorRosterCopyTests</c> enumerates this type reflectively for that reason.
+        /// </remarks>
+        public List<StoryBrief> Stories { get; set; } = new List<StoryBrief>();
 
         /// <summary>The ordinary round's article count. A prompt instruction, not engine state.</summary>
         public const int DefaultArticleCount = 4;
@@ -231,6 +311,7 @@ namespace Agora.Mod.Llm
                 Parties = Parties,
                 Factions = Factions,
                 Events = Events,
+                Stories = Stories,
                 Catalog = Catalog,
                 ArticleCount = DefaultArticleCount
             };
@@ -257,6 +338,26 @@ namespace Agora.Mod.Llm
             var eventIds = new List<string>();
             for (int i = 0; i < Events.Count; i++) eventIds.Add(Events[i].EventId);
 
+            // Both the story ids and the event ids inside their slots. A story's events are drawn
+            // from the civic catalog rather than from the timeline, so they are not in ActiveEvents
+            // and would otherwise be unknown ids — which would make the validator drop every article
+            // an LLM wrote about the very events the story asked it to write about.
+            var storyIds = new List<string>();
+            for (int i = 0; i < Stories.Count; i++)
+            {
+                StoryBrief story = Stories[i];
+                if (story == null) continue;
+
+                storyIds.Add(story.StoryId);
+
+                List<StorySlotBrief> slots = story.Slots;
+                if (slots == null) continue;
+                for (int s = 0; s < slots.Count; s++)
+                {
+                    if (slots[s] != null) eventIds.Add(slots[s].EventId);
+                }
+            }
+
             var districtIds = new List<string>();
             if (Snapshot != null && Snapshot.Districts != null)
             {
@@ -267,7 +368,7 @@ namespace Agora.Mod.Llm
                 }
             }
 
-            return new FlavorCatalog(partyIds, factionIds, districtIds, eventIds);
+            return new FlavorCatalog(partyIds, factionIds, districtIds, eventIds, storyIds);
         }
 
         /// <summary>The catalog to validate against, building one if the caller did not.</summary>

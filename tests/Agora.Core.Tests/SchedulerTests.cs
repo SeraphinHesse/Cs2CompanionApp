@@ -729,19 +729,72 @@ namespace Agora.Core.Tests
         {
             var settings = new AgoraSettings();
 
+            // Masked, because this test is about the yearly and election cadences and the story
+            // cadence rides along on any month whose cycle phase is zero - which, at the shipped
+            // cadence of 2, is half of them including both dates below. Asserting the raw flags
+            // would make this test fail whenever stories.cycleMonths is retuned, for a reason that
+            // has nothing to do with what it guards. TickPlan_LlmWakesOnAStoryDraft is where the
+            // story flag is the subject.
+            LlmWakeCadence Without(LlmWakeCadence wake) => wake & ~LlmWakeCadence.Story;
+
             Assert.Equal(LlmWakeCadence.Yearly,
-                TickPlanner.Plan(Start, new SimDate(1991, 1, 1), settings, null, false, false, Tuning).LlmWake);
+                Without(TickPlanner.Plan(Start, new SimDate(1991, 1, 1), settings, null, false, false, Tuning).LlmWake));
 
             Assert.Equal(LlmWakeCadence.None,
-                TickPlanner.Plan(Start, new SimDate(1991, 5, 1), settings, null, false, false, Tuning).LlmWake);
+                Without(TickPlanner.Plan(Start, new SimDate(1991, 5, 1), settings, null, false, false, Tuning).LlmWake));
 
             Assert.Equal(LlmWakeCadence.Election,
-                TickPlanner.Plan(Start, new SimDate(1991, 5, 1), settings, null, true, false, Tuning).LlmWake);
+                Without(TickPlanner.Plan(Start, new SimDate(1991, 5, 1), settings, null, true, false, Tuning).LlmWake));
 
-            // Per-save settings win over the tuning switch (non-negotiable #10).
+            // Per-save settings win over the tuning switch (non-negotiable #10). Unmasked: None must
+            // mean none, story cadence included.
             var quiet = new AgoraSettings { WakeCadence = LlmWakeCadence.None };
             Assert.Equal(LlmWakeCadence.None,
                 TickPlanner.Plan(Start, new SimDate(1991, 1, 1), quiet, null, true, true, Tuning).LlmWake);
+        }
+
+        /// <summary>
+        /// The story wake fires on the draft month, is silent between drafts, and is gated three
+        /// ways.
+        /// </summary>
+        /// <remarks>
+        /// This is the most frequent wake in the build - roughly six a year against the yearly
+        /// wake's one - so each gate on it is what stands between a player who has switched
+        /// something off and a subprocess starting every other month regardless.
+        /// </remarks>
+        [Fact]
+        public void TickPlan_LlmWakesOnAStoryDraft_AndIsGatedThreeWays()
+        {
+            var settings = new AgoraSettings();
+
+            // Derived from tuning rather than assumed, so this reads the same at any cadence.
+            int cycle = Tuning.Stories.CycleMonths;
+            if (cycle < 2) cycle = 2;
+
+            SimDate draft = Start.AddMonths(cycle * 4);
+            SimDate between = Start.AddMonths(cycle * 4 + 1);
+
+            Assert.True((TickPlanner.Plan(Start, draft, settings, null, false, false, Tuning).LlmWake
+                         & LlmWakeCadence.Story) != 0);
+
+            // The month after a draft is not a draft. At cycle 2 this is also the resolve month,
+            // which is deliberately NOT when prose is fetched: the story wake exists to write about
+            // stories as they open, not about ones the player has been reading for a full cycle.
+            Assert.True((TickPlanner.Plan(Start, between, settings, null, false, false, Tuning).LlmWake
+                         & LlmWakeCadence.Story) == 0);
+
+            // Gate 1: the per-save cadence flag.
+            var noStoryWake = new AgoraSettings { WakeCadence = LlmWakeCadence.Default & ~LlmWakeCadence.Story };
+            Assert.True((TickPlanner.Plan(Start, draft, noStoryWake, null, false, false, Tuning).LlmWake
+                         & LlmWakeCadence.Story) == 0);
+
+            // Gate 2: the per-save story layer. IsStoryDraft stays true on a save with stories off -
+            // the switch is honoured downstream in StoryCycle - so without this gate the mod would
+            // fetch prose every cycle for stories that will never exist.
+            var noStories = new AgoraSettings { StoriesEnabled = false };
+            Assert.True((TickPlanner.Plan(Start, draft, noStories, null, false, false, Tuning).LlmWake
+                         & LlmWakeCadence.Story) == 0);
+            Assert.True(TickPlanner.Plan(Start, draft, noStories, null, false, false, Tuning).IsStoryDraft);
         }
 
         [Fact]

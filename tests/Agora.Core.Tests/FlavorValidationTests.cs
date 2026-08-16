@@ -40,7 +40,8 @@ namespace Agora.Core.Tests
             new[] { "party-riverside" },
             new[] { "faction-riverside-left" },
             new[] { "district-harbour" },
-            new[] { "event-harbour-flood" });
+            new[] { "event-harbour-flood" },
+            new[] { "story-harbour-1997-06" });
 
         /// <summary>The schema the deployed mod validates against.</summary>
         private static JObject ShippedSchema() => FlavorSchema.Load(null, null);
@@ -79,6 +80,14 @@ namespace Agora.Core.Tests
   ],
   ""eventProse"": [
     { ""eventId"": ""event-harbour-flood"", ""localAngle"": ""The tide came up the slipway again."" }
+  ],
+  ""stories"": [
+    { ""storyId"": ""story-harbour-1997-06"", ""headline"": ""The wharf waits on a decision"",
+      ""article"": ""Three months of tide reports, and still nobody has signed anything."" }
+  ],
+  ""resolutions"": [
+    { ""storyId"": ""story-harbour-1997-06"", ""headline"": ""The wharf gets its answer"",
+      ""article"": ""The council signed, eventually, and the slipway is to be raised."" }
   ]
 }";
 
@@ -199,6 +208,11 @@ namespace Agora.Core.Tests
             Assert.Equal("The Wharf Group", Assert.Single(document.FactionFlavor).Name);
             Assert.Equal("article-01", Assert.Single(document.Articles).Id);
             Assert.Equal("event-harbour-flood", Assert.Single(document.EventProse).EventId);
+
+            // The same story id in both collections is the ordinary case, not a duplicate: one entry
+            // is the opening and the other the closing, and both survive.
+            Assert.Equal("The wharf waits on a decision", Assert.Single(document.Stories).Headline);
+            Assert.Equal("The wharf gets its answer", Assert.Single(document.Resolutions).Headline);
         }
 
         [Fact]
@@ -288,6 +302,102 @@ namespace Agora.Core.Tests
             Assert.True(result.IsValid, string.Join("; ", result.Errors));
             Assert.Empty(result.Document!.Articles);
             Assert.Contains(result.Discarded, d => d.Contains("article-02") && d.Contains("no refs"));
+        }
+
+        // --- storyId: the ids the two ends of a story are hung on ---------------------------------
+
+        /// <summary>
+        /// A document carrying nothing but the given <c>stories</c> and <c>resolutions</c> bodies, so
+        /// that what survives the filter is the only thing the assertions can be reading.
+        /// </summary>
+        private static string StoryJson(string stories, string resolutions) =>
+            @"{ ""schemaVersion"": " + FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture) +
+            @", ""generatedAtSimDate"": ""1997-06-01"",
+                ""stories"": [ " + stories + @" ],
+                ""resolutions"": [ " + resolutions + @" ] }";
+
+        private static string Story(string storyId) =>
+            @"{ ""storyId"": """ + storyId + @""", ""headline"": ""The wharf waits on a decision"",
+                ""article"": ""Three months of tide reports, and still nobody has signed anything."" }";
+
+        [Fact]
+        public void AStoryEntryNamingAnUnknownStoryIsDropped()
+        {
+            // A story id the engine does not hold cannot be shown against anything — the prose would
+            // land beside whatever story now occupies that slot. Dropped per entry like every other
+            // catalog miss, and the discard line names the id so a log reader can see which.
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(
+                StoryJson(Story("story-harbour-1997-06") + ", " + Story("story-invented"),
+                          Story("story-invented")),
+                Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+            Assert.Equal("story-harbour-1997-06", Assert.Single(result.Document!.Stories).StoryId);
+            Assert.Empty(result.Document.Resolutions);
+
+            Assert.Contains(result.Discarded, d => d.Contains("stories") && d.Contains("story-invented"));
+            Assert.Contains(result.Discarded, d => d.Contains("resolutions") && d.Contains("story-invented"));
+        }
+
+        [Fact]
+        public void AStoryEntryWithAnEmptyStoryIdIsDropped()
+        {
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(
+                StoryJson(Story(string.Empty), Story(string.Empty)), Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+            Assert.Empty(result.Document!.Stories);
+            Assert.Empty(result.Document.Resolutions);
+            Assert.Contains(result.Discarded, d => d.Contains("stories") && d.Contains("empty storyId"));
+        }
+
+        [Fact]
+        public void ASecondEntryForOneStoryInOneCollectionIsDropped()
+        {
+            // Two openings for one story is ambiguous the same way two names for one party are, and
+            // which one won would depend on the model's output order. The first is kept.
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(
+                StoryJson(Story("story-harbour-1997-06") + ", " +
+                          @"{ ""storyId"": ""story-harbour-1997-06"", ""headline"": ""A second opinion"",
+                              ""article"": ""The same story, told again."" }",
+                          Story("story-harbour-1997-06")),
+                Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+            Assert.Equal("The wharf waits on a decision",
+                         Assert.Single(result.Document!.Stories).Headline);
+            Assert.Contains(result.Discarded, d => d.Contains("duplicate stories"));
+
+            // And the resolution carrying that same id is untouched: the two collections are filtered
+            // independently, because one story legitimately appears in both.
+            Assert.Equal("story-harbour-1997-06", Assert.Single(result.Document.Resolutions).StoryId);
+        }
+
+        [Fact]
+        public void AnUnknownStoryCostsItsOwnEntryAndNothingElse()
+        {
+            // The rule the whole filter runs on, stated where it can fail: a bad id costs its entry,
+            // never the document. Story ids turn over every few cycles, so a stale response naming one
+            // is routine — and losing a year of party names over it would be far worse than losing
+            // that story's prose.
+            var validator = new FlavorValidator(ShippedSchema(), null);
+
+            FlavorValidationResult result = validator.Validate(
+                @"{ ""schemaVersion"": " + FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture) +
+                @", ""generatedAtSimDate"": ""1997-06-01"",
+                    ""partyFlavor"": [ { ""partyId"": ""party-riverside"", ""name"": ""Riverside Slate"" } ],
+                    ""stories"": [ " + Story("story-invented") + @" ] }",
+                Catalog(), RequestDate);
+
+            Assert.True(result.IsValid, string.Join("; ", result.Errors));
+            Assert.Empty(result.Document!.Stories);
+            Assert.Equal("Riverside Slate", Assert.Single(result.Document.PartyFlavor).Name);
         }
 
         // --- schemaVersion: the one number, and what it is allowed to do -------------------------

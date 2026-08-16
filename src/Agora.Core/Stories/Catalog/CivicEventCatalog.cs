@@ -44,12 +44,26 @@ namespace Agora.Core.Stories.Catalog
     {
         private readonly ReadOnlyCollection<CivicEvent> _events;
         private readonly ReadOnlyCollection<string> _featureIds;
+        private readonly Dictionary<string, CivicEvent> _byId;
 
         public CivicEventCatalog(IList<CivicEvent> events, IList<string> declaredFeatureIds)
         {
             var ordered = new List<CivicEvent>(events ?? new List<CivicEvent>());
             ordered.Sort(CompareById);
             _events = new ReadOnlyCollection<CivicEvent>(ordered);
+
+            _byId = new Dictionary<string, CivicEvent>(StringComparer.Ordinal);
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                CivicEvent authored = ordered[i];
+                if (authored == null || string.IsNullOrEmpty(authored.Id)) continue;
+
+                // First wins, matching the sorted order above, so the resolution is a function of
+                // the catalog's contents rather than of which document happened to be read first.
+                // The loader already rejects duplicate ids, so this is a tiebreak that should never
+                // be reached rather than a policy anyone relies on.
+                if (!_byId.ContainsKey(authored.Id)) _byId.Add(authored.Id, authored);
+            }
 
             var features = new List<string>(declaredFeatureIds ?? new List<string>());
             features.Sort(StringComparer.Ordinal);
@@ -86,6 +100,32 @@ namespace Agora.Core.Stories.Catalog
         public IReadOnlyList<string> DeclaredFeatureIds
         {
             get { return _featureIds; }
+        }
+
+        /// <summary>
+        /// The authored event with this id, or null when the catalog does not have it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A story slot persists an event <i>id</i> and nothing else, so every reader that wants the
+        /// event's text — its name, its description, the four response blurbs — has to come back
+        /// through here. Before this existed each of them built its own dictionary, which is fine
+        /// inside a loop over the whole catalog and wasteful for the far commoner case of resolving
+        /// the three slots of one story.
+        /// </para>
+        /// <para>
+        /// <b>Null is an ordinary answer, not an error.</b> A save's live stories can outlast the
+        /// content that authored them — a data file edited between sessions, or a save opened on a
+        /// build whose catalog dropped an event — and the story is still real, still on screen and
+        /// still owed a verdict. Callers show what they have rather than dropping the slot.
+        /// </para>
+        /// </remarks>
+        public CivicEvent? Find(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+
+            CivicEvent? found;
+            return _byId.TryGetValue(id, out found) ? found : null;
         }
 
         /// <summary>

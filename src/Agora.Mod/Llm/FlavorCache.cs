@@ -126,6 +126,26 @@ namespace Agora.Mod.Llm
                     return null;
                 }
 
+                // Said out loud, at Warn, on the success path. A load that drops cached entries one
+                // at a time is the failure this whole class is written around, and until now the
+                // only branch that reported a discard was ArticlesAllDiscarded - so every OTHER
+                // total loss returned a document, logged "restored N entries" at Debug, and looked
+                // exactly like a clean load.
+                //
+                // The case that made this necessary: story ids are minted per cycle, so a load that
+                // rebuilds state without its stories - a lost state_*.json beside an intact
+                // flavor_cache.json, or a rewind - hands the filter a catalog that recognises no
+                // story at all. Every story and resolution entry goes, the party names survive, and
+                // the player simply finds the prose gone. Reporting the count rather than staying
+                // silent is the difference between a one-line diagnosis and an unfalsifiable
+                // "the mod lost my story text".
+                if (result.Discarded != null && result.Discarded.Count > 0)
+                {
+                    _log.Warn("cached flavor at " + path + " lost " + result.Discarded.Count +
+                              " entries to the catalog filter (the rest was kept): " +
+                              Join(result.Discarded));
+                }
+
                 _log.Debug("restored " + result.Document.EntryCount + " cached flavor entries from " + path);
                 return result.Document;
             }

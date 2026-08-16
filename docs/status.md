@@ -2,7 +2,7 @@
 
 **Current milestone:** M6 · The Spectacle (in progress) — with a **fix-plan pass** (`fixplan.md`)
 running ahead of it against defects found in the first real play session.
-**Updated:** 2026-08-16
+**Updated:** 2026-08-17
 
 > **The fix-plan pass is code complete across all seven workstreams.** W0–W6 and the backlog are
 > merged and independently reviewed; W5's popup lane, the largest remaining piece, was planned in
@@ -78,7 +78,8 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | **2** | Story engine core — the declarative trigger grammar, seeded drafting, the 2-of-3 resolution and the political-power currency. Pure `Agora.Core`. State v6, settings v4, `engine_tuning` v6. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **no new manual gates** — all of it is covered by the suite · 1469 → **1703 tests** |
 | **3** | Catalog and content — 58 authored civic events, a validating catalog loader, and the timeline adapter. Pure content plus `Agora.Core`. `engine_tuning` v7. | ✅ **code complete**, five lanes reviewed and merged, [PR #6](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/6) open into `EventSystemRefresh` · **no new manual gates of its own** · 1703 → **1978 tests** |
 | **4** | Tick wiring, effects and persistence — the cycle runs, effects dispatch, power moves, and stories move votes. `engine_tuning` v8. | ✅ **code complete**, eight lanes reviewed and merged, [PR #7](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/7) open into `EventSystemRefresh` · **fifteen manual gates outstanding, none walked** · 1978 → **2109 tests** |
-| **5–7** | Prose · UI · retirement | not started |
+| **5** | Prose — both writers now produce a headline and an article for every story. The canned pool transcribes from the civic catalog and is the everyday voice; Claude is woken on the story-draft month and its prose is **added beside** the pool's, never over it. `politics_flavor` v3, `engine_tuning` v9, **settings v5 and state v7** — the first real sidecar migration since wave 1. | ✅ **code complete**, four lanes reviewed and merged, [PR #8](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/8) open into `EventSystemRefresh` · **seven manual gates outstanding, none walked** · 2109 → **2178 tests** | 
+| **6–7** | UI · retirement | not started |
 
 ### Wave 3 — the engine now has something to read, and still nothing runs it
 
@@ -237,6 +238,63 @@ see**:
   watermark repair covered one field, and wave 4 added three more
 
 Every one was found by a reviewer probing arithmetic. **None was found by a test.**
+
+### Wave 5's manual gates — the wake, the migration and the write-back
+
+Wave 5 opens seven. Unlike wave 4's, most of wave 5 **is** covered by tests — `FlavorPromptBuilder`,
+`FlavorValidator`, `StaticPoolProvider`, `FlavorCacheMigration` and `StoryProseLedger` are all
+`<Compile Link>`-ed into `Agora.Core.Tests`, and the suite went 2109 → 2175. These six are what is
+left over: the runtime wiring in `AgoraRuntime.cs`, which compiles into no test, and the two things
+only a real save can show. **No coverage was manufactured for any of them.**
+
+Gates 1 and 2 guard an owner decision; gate 3 guards the migration that reaches every existing save;
+gate 7 covers the one seam no test in this suite can reach.
+
+1. **The story wake fires, and only when it should.** With `llmWakeOnStoryDraft` true and a CLI
+   installed, confirm `Agora flavor: StoryDraft wake requested at <date>` appears on a **draft**
+   month and **not** on the month between drafts. At the shipped cadence of 2 that is every other
+   month. Then turn `storiesEnabled` **off** for the save and confirm **no story wake at all** for
+   at least three cycles — the phase arithmetic still says "draft month", and the gate that stops a
+   subprocess starting every two months for stories that will never exist is the one being tested.
+2. **The yearly round still writes about stories.** Force a draft on the yearly wake month
+   (`llmWakeMonth`, default 1). The round must be labelled `Yearly` **and** still carry story
+   sections — the prompt keys on stories being present, not on the wake reason, and a round labelled
+   `Yearly` that omitted them would look exactly like the model ignoring an instruction.
+3. **An existing save gains the story wake; a customised one does not.** Take a save written before
+   this wave (settings v4) whose `wakeCadence` reads `"Yearly, Election, Manual"`, load it, and
+   confirm the file now reads `"Yearly, Election, Manual, Story"` at settings v5 / state v7. Then
+   take a save whose player had **narrowed** the cadence — e.g. `"Election, Manual"` — load it, and
+   confirm it is **unchanged**. Turning a wake back on for someone who turned it off would override
+   a decision about how often this mod starts a subprocess.
+4. **`localAngle` finally reaches the screen.** After a successful CLI round, confirm a timeline
+   event in the News panel shows its local angle. This prose has been parsed, validated, id-checked
+   and cached since M3 and written nowhere — the panel published a field no code path ever assigned.
+   Confirm too that a later **canned** poll does not overwrite it: the text must not change back.
+5. **Claude's story prose is added, not substituted.** Open a story card and read it (canned prose —
+   the pool answers immediately). Let a CLI round land for that same story. The text you already
+   read must **still be there**, with the model's version alongside it. Nothing a player has read
+   may change under them. Then reload: the canned half must come back identical, and the model's
+   half must return from `flavor_cache.json`.
+6. **A short catalog says so.** Load a save whose `state_*.json` is missing or unreadable while
+   `flavor_cache.json` is intact. Confirm the re-validation line reports `0 stories` among its five
+   counts **and** a Warn line names the dropped entries. Before this wave the load returned a
+   document, logged "restored N entries" at Debug, and was indistinguishable from a clean one.
+
+7. **Story brief fidelity (`AgoraRuntime.BuildStoryBrief`).** Load a save and open a story card for a
+   three-slot story whose **major** event's id sorts **last** of the three slot event ids. Confirm
+   (a) the headline is the major event's `Name` exactly as authored in the civic catalog — not a
+   minor's, not an event id; (b) the article names all three events in the order **major first, then
+   the two minors ascending by event id ordinal**, each name followed by that event's `Description`;
+   (c) after the story resolves, the card appears under resolutions with a closing lead-in, and each
+   `met` / `not met` slot shows its authored `SuccessText` / `FailText` rather than its description.
+   **Fails if** the headline names a minor event, any slot is missing from the article, the order
+   differs from major-then-ascending-id, or any slot shows a raw event id where a name belongs.
+   **Why manual:** `BuildStoryBrief` lives in `AgoraRuntime.cs`, which no `<Compile Link>` line pulls
+   into `Agora.Core.Tests`. The automated coverage stops at the `StorySlotBrief` boundary and assumes
+   the runtime fills it correctly — every fixture in the suite hand-builds that brief. Wave 5's
+   review found the flag half of this was exercised by **nothing** in the repo and added
+   `Headline_FollowsTheMajorFlagRatherThanTheSlotPosition` to close the pool's half; this row is the
+   runtime half, which no test can reach.
 
 ### Wave 4's manual gates — the command surface and the watermark repair
 

@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <!--
-    Thirty-five Agora.Mod files compiled in BY LINK, not by project reference.
+    Thirty-six Agora.Mod files compiled in BY LINK, not by project reference.
 
     politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
     this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
@@ -124,7 +124,15 @@
     because they are what the fixtures are written against; the ECS-walking sensor systems, which do
     name game types, deliberately stay out.
 
-    All thirty-five files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
+    StoryProseLedger is the newest, and it is here because the rule it holds is invisible in the
+    code and decisive on screen: two writers produce story prose on different rhythms, the canned one
+    answers hundreds of times more often, and whether the model's prose survives contact with it is
+    one dictionary branch. "Latest wins" and "first wins" are a character apart to read and are the
+    difference between the model's prose reaching the player and being erased on the next poll. It
+    was written against System.* and Agora.Core only so that it could be asserted here rather than
+    reasoned about in AgoraRuntime, which no test can load.
+
+    All thirty-six files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
     use only System.*, Newtonsoft and Agora.Core), so linking them keeps the property this suite
     exists to protect: it still builds and passes on a machine with no copy of Cities: Skylines II.
     Adding a file here that does reference the game will fail this project's build immediately, which
@@ -160,6 +168,7 @@
     <Compile Include="..\..\src\Agora.Mod\Llm\NumericFieldScanner.cs" Link="ModLlm\NumericFieldScanner.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\FlavorValidator.cs" Link="ModLlm\FlavorValidator.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\FlavorCache.cs" Link="ModLlm\FlavorCache.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Llm\StoryProseLedger.cs" Link="ModLlm\StoryProseLedger.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolContent.cs" Link="ModLlm\StaticPoolContent.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\StaticPoolProvider.cs" Link="ModLlm\StaticPoolProvider.cs" />
     <Compile Include="..\..\src\Agora.Mod\Llm\ClaudeCliOptions.cs" Link="ModLlm\ClaudeCliOptions.cs" />

@@ -137,6 +137,24 @@ namespace Agora.Mod.Core
 
         private static TimelineCatalog _catalog = TimelineCatalog.Empty;
         private static CivicEventCatalog _civicCatalog = CivicEventCatalog.Empty;
+
+        /// <summary>
+        /// The prose each writer has produced for each story. See <see cref="StoryProseLedger"/> for
+        /// why both are kept rather than one replacing the other.
+        /// </summary>
+        /// <remarks>
+        /// AGORA-SEAM(wave-5/spine): wave 6's story panel reads this through
+        /// <see cref="StoryProse"/> to render a card. It is deliberately not persisted — pool prose
+        /// rebuilds identically and CLI prose returns from <c>flavor_cache.json</c>.
+        /// </remarks>
+        private static readonly StoryProseLedger _storyProse = new StoryProseLedger();
+
+        /// <summary>The story prose ledger, for the UI publishers.</summary>
+        public static StoryProseLedger StoryProse
+        {
+            get { return _storyProse; }
+        }
+
         private static PoliticalState _state;
         private static SimDate _startDate;
         private static readonly List<CitySnapshot> _snapshotHistory = new List<CitySnapshot>();
@@ -1103,12 +1121,19 @@ namespace Agora.Mod.Core
 
             // Logged because the failure mode is silent: a catalog that came out short drops cached
             // entries one at a time, and the player sees names quietly revert with nothing in the log
-            // to say why. Four counts here turn that into a one-line diagnosis.
+            // to say why. Five counts here turn that into a one-line diagnosis.
+            //
+            // Stories are the fifth, and they were nearly the counterexample this comment warns
+            // about: the count existed for a wave with no call site, while story ids are the entry
+            // most likely to come back empty — they are minted per cycle, and a load that rebuilds
+            // state without them (a lost state_*.json beside an intact flavor_cache.json, or a
+            // rewind) drops every cached story entry with nothing above Debug to say so.
             AgoraMod.Log.Info("Agora flavor: cache re-validation catalog — " +
                               catalog.PartyCount + " parties, " +
                               catalog.FactionCount + " factions, " +
                               catalog.DistrictCount + " districts, " +
-                              catalog.EventCount + " events.");
+                              catalog.EventCount + " events, " +
+                              catalog.StoryCount + " stories.");
 
             _flavor = FlavorProviders.Create(saveGuid, _saveSettings.Theme, directory, catalog);
         }
@@ -2525,11 +2550,18 @@ namespace Agora.Mod.Core
             if (tick.LlmWake == LlmWakeCadence.None) return;
 
             // One generation per tick even when several reasons coincide. Election outranks manual
-            // outranks yearly: the rarer the trigger, the more the prose should be about it.
+            // outranks yearly outranks the story draft: the rarer the trigger, the more the prose
+            // should be about it.
+            //
+            // The story draft ranks LAST despite being the most frequent, and that costs nothing:
+            // the prompt's story sections key on request.Stories being non-empty, not on this label,
+            // so a story that drafts in the yearly month is still written about — it is written
+            // about inside a round whose emphasis is the year in review, which is the better piece.
             FlavorWakeReason reason;
             if ((tick.LlmWake & LlmWakeCadence.Election) != 0) reason = FlavorWakeReason.Election;
             else if ((tick.LlmWake & LlmWakeCadence.Manual) != 0) reason = FlavorWakeReason.Manual;
-            else reason = FlavorWakeReason.Yearly;
+            else if ((tick.LlmWake & LlmWakeCadence.Yearly) != 0) reason = FlavorWakeReason.Yearly;
+            else reason = FlavorWakeReason.StoryDraft;
 
             var request = new FlavorRequest
             {
@@ -2556,6 +2588,108 @@ namespace Agora.Mod.Core
             if (_flavor.RequestFlavor(request))
             {
                 AgoraMod.Log.Info("Agora flavor: " + reason + " wake requested at " + today + ".");
+            }
+        }
+
+        /// <summary>
+        /// Files this round's story prose, keeping whatever was already filed.
+        /// </summary>
+        /// <remarks>
+        /// The merge rule itself is <see cref="StoryProseLedger"/>, which is compile-linked into the
+        /// test suite precisely because "first write wins" and "latest write wins" are one branch
+        /// apart and only one of them lets the model's prose survive the next canned poll. All this
+        /// method does is hand the payload over and sweep the ledger of stories that no longer
+        /// exist.
+        /// </remarks>
+        private static void AbsorbStoryProse(FlavorPayload payload)
+        {
+            if (payload == null) return;
+
+            _storyProse.Absorb(payload);
+
+            if (_state == null) return;
+
+            // Swept here rather than when a story leaves the archive, because eviction happens deep
+            // inside the engine's own trim and the ledger is a Mod-side concern. Doing it on the
+            // prose path costs one pass over a few dozen ids on a tick that has just done far more
+            // than that, and it cannot drift out of step with the state the way a second eviction
+            // hook could.
+            var live = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < _state.LiveStories.Count; i++)
+            {
+                Story story = _state.LiveStories[i];
+                if (story != null && !string.IsNullOrEmpty(story.Id)) live.Add(story.Id);
+            }
+            for (int i = 0; i < _state.StoryArchive.Count; i++)
+            {
+                Story story = _state.StoryArchive[i];
+                if (story != null && !string.IsNullOrEmpty(story.Id)) live.Add(story.Id);
+            }
+
+            _storyProse.RetainOnly(live);
+        }
+
+        /// <summary>
+        /// Writes each event's local angle onto the event it was written for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This closes a three-milestone dead end.</b> <c>eventProse</c> was prompted for,
+        /// returned, schema-checked, id-checked against the catalog and cached — and then nothing
+        /// copied it anywhere. <c>AgoraUiProjection</c> published <c>ev.LocalAngle</c>, which no code
+        /// path had ever assigned, so every local angle the model ever wrote was discarded one step
+        /// from the screen and the panel showed an empty string with no error anywhere to say so.
+        /// </para>
+        /// <para>
+        /// Written onto <c>ActiveEvents</c> only. A local angle is colour for an event the player is
+        /// currently being shown; back-filling the archive would rewrite history that has already
+        /// scrolled past, on every poll, for the life of the save.
+        /// </para>
+        /// <para>
+        /// <b>Non-negotiable #1 is untouched.</b> <c>LocalAngle</c> is a display string — nothing
+        /// reads it, parses it or derives from it — which is exactly why it is the one field on a
+        /// <see cref="TimelineEvent"/> that LLM text may be written into at all.
+        /// </para>
+        /// </remarks>
+        private static void ApplyEventProse(FlavorPayload payload)
+        {
+            if (payload == null || _state == null) return;
+            if (payload.EventProse.Count == 0) return;
+
+            var byId = new Dictionary<string, string>(StringComparer.Ordinal);
+            for (int i = 0; i < payload.EventProse.Count; i++)
+            {
+                Agora.Core.Contracts.EventProse prose = payload.EventProse[i];
+                if (prose == null || string.IsNullOrEmpty(prose.EventId)) continue;
+                if (string.IsNullOrEmpty(prose.LocalAngle)) continue;
+
+                byId[prose.EventId] = prose.LocalAngle;
+            }
+
+            if (byId.Count == 0) return;
+
+            int written = 0;
+            for (int i = 0; i < _state.ActiveEvents.Count; i++)
+            {
+                TimelineEvent ev = _state.ActiveEvents[i];
+                if (ev == null || string.IsNullOrEmpty(ev.Id)) continue;
+
+                string angle;
+                if (!byId.TryGetValue(ev.Id, out angle)) continue;
+
+                // Same first-write-wins discipline as the story ledger, and for the same reason: the
+                // canned pool answers every poll and the model answers rarely, so overwriting would
+                // erase the model's angle within a month of it arriving.
+                if (!string.IsNullOrEmpty(ev.LocalAngle)) continue;
+
+                ev.LocalAngle = angle;
+                written++;
+            }
+
+            if (written > 0)
+            {
+                AgoraMod.Log.Info("Agora flavor: wrote " + written + " local angle" +
+                                  (written == 1 ? "" : "s") + " onto active events.");
             }
         }
 
@@ -2613,6 +2747,119 @@ namespace Agora.Mod.Core
                 for (int t = 0; t < ev.Tags.Count; t++) brief.Tags.Add(ev.Tags[t]);
                 request.Events.Add(brief);
             }
+
+            FillStoryBriefs(request, state);
+        }
+
+        /// <summary>
+        /// Describes the live stories, and the ones that resolved in the cycle just gone, to the
+        /// prompt and to the canned pool.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The archive is filtered by recency, not taken whole.</b> It retains
+        /// <c>stories.archiveRetention</c> entries — forty at shipped tuning — and asking either
+        /// writer for closing prose on a story that resolved three years ago would spend the round's
+        /// whole budget re-telling history the player has already seen and moved past. Only stories
+        /// that resolved within the current cycle can still be news.
+        /// </para>
+        /// <para>
+        /// Titles come from the civic catalog rather than from the story, because a
+        /// <see cref="StorySlot"/> carries an event <i>id</i> and nothing else. A slot whose event
+        /// the catalog cannot resolve is still sent, with the id standing in for the title: the
+        /// story is real and the player is looking at it, so writing about it with a thin
+        /// description beats silently dropping a third of it.
+        /// </para>
+        /// </remarks>
+        private static void FillStoryBriefs(FlavorRequest request, PoliticalState state)
+        {
+            if (state == null) return;
+
+            for (int i = 0; i < state.LiveStories.Count; i++)
+            {
+                StoryBrief brief = BuildStoryBrief(state.LiveStories[i]);
+                if (brief != null) request.Stories.Add(brief);
+            }
+
+            int cycle = _tuning != null ? _tuning.Stories.CycleMonths : 2;
+            if (cycle < 2) cycle = 2;
+
+            int nowMonths = state.Date.TotalMonths;
+
+            for (int i = 0; i < state.StoryArchive.Count; i++)
+            {
+                Story story = state.StoryArchive[i];
+                if (story == null) continue;
+
+                // -1 is "never resolved", which an archived story should not be; treat it as too old
+                // rather than as freshly resolved, so a malformed entry cannot flood the round.
+                if (story.ResolvedMonth < 0) continue;
+                if (nowMonths - story.ResolvedMonth > cycle) continue;
+
+                StoryBrief brief = BuildStoryBrief(story);
+                if (brief != null) request.Stories.Add(brief);
+            }
+        }
+
+        private static StoryBrief BuildStoryBrief(Story story)
+        {
+            if (story == null || string.IsNullOrEmpty(story.Id)) return null;
+
+            var brief = new StoryBrief
+            {
+                StoryId = story.Id,
+                IsResolved = story.Outcome != StoryOutcome.Pending,
+                OutcomeWord = story.Outcome == StoryOutcome.Pending ? "" : StoryOutcomeWord(story.Outcome)
+            };
+
+            List<StorySlot> slots = story.Slots;
+            if (slots == null) return brief;
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                StorySlot slot = slots[i];
+                if (slot == null) continue;
+
+                CivicEvent authored = _civicCatalog == null ? null : _civicCatalog.Find(slot.EventId);
+
+                brief.Slots.Add(new StorySlotBrief
+                {
+                    EventId = slot.EventId,
+                    IsMajor = slot.Role == SlotRole.Major,
+                    Title = authored != null ? authored.Name : slot.EventId,
+                    HeadlineBrief = authored != null ? authored.Description : "",
+                    OutcomeWord = SlotOutcomeWord(slot.SlotOutcome)
+                });
+            }
+
+            return brief;
+        }
+
+        /// <summary>
+        /// The verdict as a word. Lowercase prose, not <c>ToString()</c>: these go straight into a
+        /// prompt, and <c>NotMet</c> reads as a symbol where <c>not met</c> reads as English.
+        /// </summary>
+        private static string StoryOutcomeWord(StoryOutcome outcome)
+        {
+            switch (outcome)
+            {
+                case StoryOutcome.Success: return "success";
+                case StoryOutcome.Failure: return "failure";
+                case StoryOutcome.Abandoned: return "abandoned";
+                default: return "";
+            }
+        }
+
+        /// <inheritdoc cref="StoryOutcomeWord"/>
+        private static string SlotOutcomeWord(SlotOutcome outcome)
+        {
+            switch (outcome)
+            {
+                case SlotOutcome.Met: return "met";
+                case SlotOutcome.NotMet: return "not met";
+                case SlotOutcome.Unmeasurable: return "unmeasurable";
+                default: return "";
+            }
         }
 
         /// <summary>
@@ -2643,6 +2890,25 @@ namespace Agora.Mod.Core
             // here — this request is built locally, at the ordinary article count, and never handed to
             // the CLI worker — but two assignment sites with opposite treatment is how the rule rots.
             _flavor.Pool.Roster = request.RosterCopy();
+
+            // The authored civic text, which a roster cannot carry. A resolution's canned prose reads
+            // the event's SuccessText or FailText, and the only route to those is
+            // CivicEventCatalog.Find — a StorySlotBrief carries the event's name and its factual
+            // description and deliberately not its outcome blurbs, because the prompt has no use for
+            // them and a brief carrying every authored string would be most of the catalog.
+            //
+            // Without this the pool holds CivicEventCatalog.Empty and every resolution degrades to
+            // the slot's description: whole, valid, schema-passing prose that says what the story WAS
+            // rather than how it went. Nothing errors and no count is wrong, so the only symptom is
+            // that closing cards read oddly like opening ones. Note this is no longer the difference
+            // between a resolution card and an open one — lane 5c's closing lead-in is keyed on the
+            // story's own outcome word and needs no catalog — but it is the difference between a
+            // closing card that names the outcome and one that also says what happened.
+            //
+            // Assigned beside the roster because the two are the pool's whole view of the world and
+            // drift apart the moment they are set in different places. Safe: the pool never crosses
+            // to the CLI worker thread, and CivicEventCatalog is immutable after construction.
+            _flavor.Pool.CivicCatalog = _civicCatalog;
         }
 
         /// <summary>
@@ -2790,6 +3056,11 @@ namespace Agora.Mod.Core
                 _flavorPayload = payload;
                 _lastFlavorDate = today;
                 _pendingWake = false;
+
+                // Before the party names, and outside the _state guard, because neither depends on
+                // the other and story prose is the reason this method now runs at all on most ticks.
+                AbsorbStoryProse(payload);
+                ApplyEventProse(payload);
 
                 if (_state != null)
                 {
@@ -3159,6 +3430,16 @@ namespace Agora.Mod.Core
             var eventIds = new List<string>();
             for (int i = 0; i < _state.ActiveEvents.Count; i++) eventIds.Add(_state.ActiveEvents[i].Id);
 
+            // Live stories AND the archive, unlike the request catalog, which only names the stories
+            // this round is asking about. This one decides what a CACHED document may keep on load,
+            // and a cache written a year ago legitimately holds resolution prose for stories that
+            // have since been archived. Narrowing it to the live set would drop exactly the prose
+            // the model was woken to write, silently, on every single load — the id check reports a
+            // discard, and a discard of everything reads identically to a round nobody asked for.
+            var storyIds = new List<string>();
+            AddStoryIds(_state.LiveStories, storyIds, eventIds);
+            AddStoryIds(_state.StoryArchive, storyIds, eventIds);
+
             // Districts come from the sensors rather than from state: the player can rename or add one
             // between ticks, and prose about a district that exists is not a hallucination.
             var districtIds = new List<string>();
@@ -3174,7 +3455,40 @@ namespace Agora.Mod.Core
                 for (int i = 0; i < snapshot.Districts.Count; i++) districtIds.Add(snapshot.Districts[i].Id);
             }
 
-            return new FlavorCatalog(partyIds, factionIds, districtIds, eventIds);
+            return new FlavorCatalog(partyIds, factionIds, districtIds, eventIds, storyIds);
+        }
+
+        /// <summary>
+        /// Adds each story's id to <paramref name="storyIds"/> and each of its slots' event ids to
+        /// <paramref name="eventIds"/>.
+        /// </summary>
+        /// <remarks>
+        /// The slot events matter as much as the story ids. A story's events are civic events, drawn
+        /// from a catalog the timeline knows nothing about, so they are absent from
+        /// <c>ActiveEvents</c> — and an article the model wrote about the event a story asked it to
+        /// write about would be dropped for referencing an unknown event id.
+        /// </remarks>
+        private static void AddStoryIds(List<Story> stories, List<string> storyIds, List<string> eventIds)
+        {
+            if (stories == null) return;
+
+            for (int i = 0; i < stories.Count; i++)
+            {
+                Story story = stories[i];
+                if (story == null || string.IsNullOrEmpty(story.Id)) continue;
+
+                storyIds.Add(story.Id);
+
+                List<StorySlot> slots = story.Slots;
+                if (slots == null) continue;
+                for (int s = 0; s < slots.Count; s++)
+                {
+                    if (slots[s] != null && !string.IsNullOrEmpty(slots[s].EventId))
+                    {
+                        eventIds.Add(slots[s].EventId);
+                    }
+                }
+            }
         }
 
         // ------------------------------------------------------------------ catalogs

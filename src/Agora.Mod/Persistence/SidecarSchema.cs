@@ -126,9 +126,9 @@ namespace Agora.Mod.Persistence
         /// the default sat at 3 while this was 4 — and a freshly constructed state consequently
         /// claimed a version it had never been. <c>SidecarMigrationTests</c> pins them together.
         /// </summary>
-        public const int CurrentStateVersion = 6;
+        public const int CurrentStateVersion = 7;
 
-        public const int CurrentSettingsVersion = 4;
+        public const int CurrentSettingsVersion = 5;
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
         public const int CurrentTimelineProgressVersion = 1;
@@ -170,7 +170,7 @@ namespace Agora.Mod.Persistence
         /// than as an obviously missing step.
         /// </para>
         /// </summary>
-        public const int CurrentFlavorCacheVersion = 2;
+        public const int CurrentFlavorCacheVersion = 3;
 
         /// <summary>One in-place rewrite, from <see cref="FromVersion"/> to <c>FromVersion + 1</c>.</summary>
         public sealed class MigrationStep
@@ -269,8 +269,69 @@ namespace Agora.Mod.Persistence
             if (settings["powerIntensity"] == null) settings["powerIntensity"] = "Default";
             if (settings["storyDifficulty"] == null) settings["storyDifficulty"] = "Default";
 
-            settings[VersionProperty] = CurrentSettingsVersion;
+            // The LITERAL 4, not CurrentSettingsVersion. This step stamps the version it produces,
+            // which is fixed forever at the version it was written for; reading the live constant
+            // made the two identical only for as long as 4 was current. The moment the constant moved
+            // to 5, a v3 save ran this step, was stamped 5, and the v4 -> v5 step was skipped
+            // entirely - a settings file claiming a version whose fields it does not have, with no
+            // error anywhere. Every step in these tables stamps a literal, and
+            // SidecarMigrationTests pins that each one stamps exactly FromVersion + 1.
+            settings[VersionProperty] = 4;
         }
+
+        /// <summary>
+        /// Brings one settings object from v4 to v5: the story LLM wake.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>wakeCadence</c> is a flags enum persisted as a comma-separated list of member
+        /// <i>names</i>, so a save written before <see cref="LlmWakeCadence.Story"/> existed holds
+        /// the literal text <c>"Yearly, Election, Manual"</c> and would never wake on a story draft
+        /// however the enum's <c>Default</c> is redefined. Widening the default only reaches new
+        /// saves; this step is what reaches the existing ones.
+        /// </para>
+        /// <para>
+        /// <b>It appends rather than overwrites, and only when the save still holds the old default
+        /// in full.</b> A player who has already narrowed their cadence - turned the yearly wake off,
+        /// say - has expressed a preference about how often this mod starts a subprocess, and
+        /// granting them a new and more frequent wake on the strength of a version bump would
+        /// override a decision they made deliberately. Such a save keeps exactly what it chose and
+        /// picks the story wake up from the settings panel if it wants it.
+        /// </para>
+        /// <para>
+        /// Idempotent: a cadence that already names <c>Story</c> is left untouched.
+        /// </para>
+        /// </remarks>
+        internal static void UpgradeSettingsObjectToV5(JObject settings)
+        {
+            if (settings == null) return;
+
+            JToken cadence = settings["wakeCadence"];
+            if (cadence == null)
+            {
+                // Absent means "never written", which reads as the default - and the default now
+                // includes the story wake. Writing it out keeps the file self-describing.
+                settings["wakeCadence"] = WakeCadenceDefaultAtV5;
+            }
+            else if (cadence.Type == JTokenType.String)
+            {
+                string text = cadence.Value<string>() ?? string.Empty;
+                if (text == WakeCadenceDefaultAtV4) settings["wakeCadence"] = WakeCadenceDefaultAtV5;
+            }
+
+            settings[VersionProperty] = 5;
+        }
+
+        /// <summary>
+        /// The exact <c>wakeCadence</c> text a save at settings v4 holds when the player has changed
+        /// nothing. Frozen local constants, never a live
+        /// <c>LlmWakeCadence.Default.ToString()</c> - see <see cref="UpgradeSettingsObjectToV4"/> for
+        /// why a step may not read anything that a later change can move.
+        /// </summary>
+        private const string WakeCadenceDefaultAtV4 = "Yearly, Election, Manual";
+
+        /// <inheritdoc cref="WakeCadenceDefaultAtV4"/>
+        private const string WakeCadenceDefaultAtV5 = "Yearly, Election, Manual, Story";
 
         /// <summary>
         /// State v5 to v6: the story collections, the power state, and the two story watermarks.
@@ -322,6 +383,28 @@ namespace Agora.Mod.Persistence
 
             var settings = root["settings"] as JObject;
             if (settings != null) UpgradeSettingsObjectToV4(settings);
+        }
+
+        /// <summary>
+        /// State v6 to v7: the story LLM wake, in the nested settings block.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Nothing on the state root moves. This step exists only because a save with a state file
+        /// never reads <c>settings.json</c> at all - <c>SidecarStore.ResolveSettings</c> prefers the
+        /// state's own block - so <see cref="SettingsSteps"/> never sees those settings, and without
+        /// a state step to carry it the nested block would sit at v4 forever. That is the same
+        /// arrangement, and the same reason, as <c>MigrateStateV3ToV4</c>.
+        /// </para>
+        /// <para>
+        /// A state file at v6 was written by a build whose settings block was already at v4, so this
+        /// runs exactly one settings step and no chain is needed here.
+        /// </para>
+        /// </remarks>
+        private static void MigrateStateV6ToV7(JObject root)
+        {
+            var settings = root["settings"] as JObject;
+            if (settings != null) UpgradeSettingsObjectToV5(settings);
         }
 
         /// <summary>
@@ -674,7 +757,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(4, "added lastCompletedTickMonth, seeded from the state's own date",
                 MigrateStateV4ToV5),
             new MigrationStep(5, "added the empty story collections, the power state and the story watermarks",
-                MigrateStateV5ToV6)
+                MigrateStateV5ToV6),
+            new MigrationStep(6, "added the story LLM wake to the nested settings block",
+                MigrateStateV6ToV7)
         };
 
         private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>
@@ -684,7 +769,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(2, "added voteSharpness, newsInfluence, brandDiscipline",
                 root => UpgradeSettingsObjectToV3(root)),
             new MigrationStep(3, "added the story and political-power tunables",
-                root => UpgradeSettingsObjectToV4(root))
+                root => UpgradeSettingsObjectToV4(root)),
+            new MigrationStep(4, "added the story LLM wake to the cadence",
+                root => UpgradeSettingsObjectToV5(root))
         };
 
         private static readonly List<MigrationStep> TimelineProgressSteps = new List<MigrationStep>();

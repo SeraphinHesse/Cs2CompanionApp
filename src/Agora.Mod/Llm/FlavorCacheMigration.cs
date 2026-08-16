@@ -29,7 +29,7 @@ namespace Agora.Mod.Llm
     /// </para>
     ///
     /// <para>
-    /// <b>It prunes; it never truncates.</b> A body cut at character 420 ends mid-sentence and would
+    /// <b>It prunes; it never truncates.</b> A body cut at the limit ends mid-sentence and would
     /// be published to the player as though it had been written that way. Article count is a prompt
     /// instruction, not engine state, and no engine number ever depended on prose (non-negotiable
     /// #1), so one fewer article costs nothing and one bad article costs the reader.
@@ -41,10 +41,21 @@ namespace Agora.Mod.Llm
         /// The article limits the current schema declares. Spelled here so the schema, the fallback
         /// pool and the prompt all read one pair of numbers rather than four copies of them.
         /// </summary>
-        public const int HeadlineMaxLength = 90;
+        public const int HeadlineMaxLength = 270;
 
         /// <inheritdoc cref="HeadlineMaxLength"/>
-        public const int BodyMaxLength = 420;
+        public const int BodyMaxLength = 1260;
+
+        /// <summary>
+        /// The story and resolution limits the current schema declares. Same pair of numbers as the
+        /// article limits above, and deliberately spelled separately rather than aliased: they are
+        /// two independent schema decisions that happen to agree today, and a future retune of one
+        /// must not silently move the other.
+        /// </summary>
+        public const int StoryHeadlineMaxLength = 270;
+
+        /// <inheritdoc cref="StoryHeadlineMaxLength"/>
+        public const int StoryArticleMaxLength = 1260;
 
         /// <summary>
         /// Returns the migrated JSON, or <paramref name="json"/> unchanged when nothing applies.
@@ -54,7 +65,12 @@ namespace Agora.Mod.Llm
         /// <param name="fromVersion">
         /// The <c>schemaVersion</c> that was on disk, or <c>0</c> when it could not be read.
         /// </param>
-        /// <param name="prunedArticles">How many articles were dropped for exceeding a new limit.</param>
+        /// <param name="prunedArticles">
+        /// How many entries were dropped for exceeding a new limit, across <c>articles</c>,
+        /// <c>stories</c> and <c>resolutions</c> together. One counter rather than three because it
+        /// exists for a log line that says how much prose the upgrade cost, and the reader does not
+        /// act differently on which collection it came from.
+        /// </param>
         public static string UpgradeToCurrent(string json, IFlavorLog log,
                                               out int fromVersion, out int prunedArticles)
         {
@@ -73,10 +89,17 @@ namespace Agora.Mod.Llm
 
                 if (fromVersion == FlavorSchema.SupportedSchemaVersion) return json;
 
+                // Every version below the current one routes forward through the same rewrite, so a
+                // cache written by any shipped build upgrades in one hop rather than needing a chain.
+                // That works because every step so far has only ever moved a length limit, and the
+                // prune below is written against the CURRENT limits rather than against the ones the
+                // file was authored under - so it is by construction correct from any older version.
+                // Add a case here the moment a step has to do something a re-prune cannot express.
+                //
                 // Anything else is a version this build has no route from - including a version from
                 // the future. Hand it back untouched: the validator's version check rejects it, and a
                 // session with no cached prose is the honest outcome.
-                if (fromVersion != 1) return json;
+                if (fromVersion < 1 || fromVersion > FlavorSchema.SupportedSchemaVersion) return json;
 
                 prunedArticles = PruneOverLengthArticles(root);
                 root["schemaVersion"] = FlavorSchema.SupportedSchemaVersion;
@@ -93,38 +116,52 @@ namespace Agora.Mod.Llm
         }
 
         /// <summary>
-        /// Drops every article over the current limits and returns how many went. <c>partyFlavor</c>,
-        /// <c>factionFlavor</c>, <c>eventProse</c> and <c>generatedAtSimDate</c> are not touched -
-        /// none of their limits moved, and the party names among them are the load-bearing content of
-        /// the cache.
+        /// Drops every capped prose entry that is over the current limits and returns how many went.
+        /// <c>partyFlavor</c>, <c>factionFlavor</c>, <c>eventProse</c> and <c>generatedAtSimDate</c>
+        /// are not touched - none of their limits moved, and the party names among them are the
+        /// load-bearing content of the cache.
         /// </summary>
+        /// <remarks>
+        /// <c>stories</c> and <c>resolutions</c> are swept on the same rule as <c>articles</c> even
+        /// though the limits that arrived with them only ever went <i>up</i>, so this pass drops
+        /// nothing today. It is here because the rule is "a capped collection is pruned, never
+        /// truncated", and a collection that joins the file without its share of that rule is one
+        /// tightening away from taking the whole cache - the exact failure the class exists to stop.
+        /// </remarks>
         private static int PruneOverLengthArticles(JObject root)
         {
-            var articles = root["articles"] as JArray;
-            if (articles == null) return 0;
+            return Prune(root["articles"] as JArray, "headline", HeadlineMaxLength, "body", BodyMaxLength)
+                 + Prune(root["stories"] as JArray, "headline", StoryHeadlineMaxLength, "article", StoryArticleMaxLength)
+                 + Prune(root["resolutions"] as JArray, "headline", StoryHeadlineMaxLength, "article", StoryArticleMaxLength);
+        }
+
+        private static int Prune(JArray entries, string shortField, int shortMax, string longField, int longMax)
+        {
+            if (entries == null) return 0;
 
             int pruned = 0;
 
             // Backwards, so removing an element cannot skip the one after it.
-            for (int i = articles.Count - 1; i >= 0; i--)
+            for (int i = entries.Count - 1; i >= 0; i--)
             {
-                if (IsWithinLimits(articles[i] as JObject)) continue;
+                if (IsWithinLimits(entries[i] as JObject, shortField, shortMax, longField, longMax)) continue;
 
-                articles[i].Remove();
+                entries[i].Remove();
                 pruned++;
             }
 
             return pruned;
         }
 
-        private static bool IsWithinLimits(JObject article)
+        private static bool IsWithinLimits(JObject entry, string shortField, int shortMax,
+                                           string longField, int longMax)
         {
             // A non-object element, or one missing a required field, is not this migration's problem:
             // leave it for the validator, which reports it far better than a silent drop would.
-            if (article == null) return true;
+            if (entry == null) return true;
 
-            return Fits(article["headline"], HeadlineMaxLength)
-                && Fits(article["body"], BodyMaxLength);
+            return Fits(entry[shortField], shortMax)
+                && Fits(entry[longField], longMax);
         }
 
         private static bool Fits(JToken token, int maxLength)

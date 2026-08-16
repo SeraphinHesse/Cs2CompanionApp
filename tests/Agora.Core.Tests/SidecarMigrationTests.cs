@@ -307,6 +307,12 @@ namespace Agora.Core.Tests
             settings.Remove("powerIntensity");
             settings.Remove("storyDifficulty");
 
+            // v6 -> v7 (state) / v4 -> v5 (settings): the story LLM wake, appended to the cadence.
+            // The only field in this whole list whose value the chain REWRITES rather than adds, so
+            // it is the one whose removal here hides the most. Migrate_SettingsV4_AppendsTheStoryWake
+            // is what asserts the rewrite is the one intended, and it must be read alongside this.
+            settings.Remove("wakeCadence");
+
             foreach (JToken party in Arr(root, "parties"))
             {
                 ((JObject)party).Remove("playerOverrides");
@@ -994,6 +1000,124 @@ namespace Agora.Core.Tests
             "}";
         }
 
+        // --- 5d. v6 → v7: the story wake, in a state file's nested settings block -------------------
+
+        /// <summary>
+        /// A state file exactly as a wave-4 build wrote it: root v6, nested settings v4, story
+        /// collections already present and a cadence that predates the story wake.
+        /// </summary>
+        private static string StateV6()
+        {
+            return "{" +
+                "\"schemaVersion\": 6," +
+                "\"saveGuid\": \"11112222-3333-4444-5555-666677778888\"," +
+                "\"date\": \"1994-03-01\"," +
+                "\"lastCompletedTickMonth\": " +
+                    new SimDate(1994, 3, 1).TotalMonths.ToString(CultureInfo.InvariantCulture) + "," +
+                "\"liveStories\": []," +
+                "\"storyArchive\": []," +
+                "\"eventPool\": []," +
+                "\"playerCommands\": []," +
+                "\"power\": { \"balance\": 0, \"lifetimeEarned\": 0, \"lifetimeSpent\": 0," +
+                             "\"lastAccrualMonth\": -1, \"ledger\": [] }," +
+                "\"lastStoryDraftMonth\": -1," +
+                "\"lastStoryResolveMonth\": -1," +
+                "\"settings\": {" +
+                    "\"schemaVersion\": 4," +
+                    "\"startYear\": 1990," +
+                    "\"theme\": \"Eu\"," +
+                    "\"system\": \"Proportional\"," +
+                    "\"wakeCadence\": \"Yearly, Election, Manual\"," +
+                    "\"snapshotRetention\": 25," +
+                    "\"enabled\": true," +
+                    "\"effectsEnabled\": true," +
+                    "\"themeLocked\": true," +
+                    "\"pauseOnMajorNews\": false," +
+                    "\"showAllReports\": false," +
+                    "\"voteSharpness\": \"Default\"," +
+                    "\"newsInfluence\": \"Default\"," +
+                    "\"brandDiscipline\": \"Default\"," +
+                    "\"storiesEnabled\": true," +
+                    "\"storiesPerCycle\": 2," +
+                    "\"eventsPerStory\": 3," +
+                    "\"politicalPowerEnabled\": true," +
+                    "\"powerIntensity\": \"Default\"," +
+                    "\"storyDifficulty\": \"Default\"" +
+                "}," +
+                "\"parties\": []," +
+                "\"factions\": []," +
+                "\"electionHistory\": []," +
+                "\"firedEventIds\": []," +
+                "\"termNumber\": 2," +
+                "\"isCampaignSeason\": false" +
+            "}";
+        }
+
+        /// <summary>
+        /// A wave-4 save gains the story wake, in the block the settings step table cannot reach.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is the case the whole v6 → v7 step exists for, and it is invisible from the
+        /// standalone settings tests.</b> A save with a state file never reads <c>settings.json</c> at
+        /// all — <c>SidecarStore.ResolveSettings</c> prefers the state's own block — so
+        /// <see cref="SettingsSteps"/> never sees those settings. Without a state step to carry it,
+        /// every save written by a wave-4 build would sit at settings v4 forever and never wake on a
+        /// story: no error, no log line, just a feature that works on new cities and not on old ones.
+        /// </para>
+        /// <para>
+        /// Asserted against the constants rather than against 7 and 5, so it stays a test of the step
+        /// rather than of the version number.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV6_CarriesTheStoryWakeIntoTheNestedSettings()
+        {
+            MigrationResult result;
+            JObject root = Migrate(StateV6(), out result);
+
+            Assert.Equal(MigrationOutcome.Upgraded, result.Outcome);
+            Assert.True(result.IsLoadable);
+
+            Assert.Equal(SidecarSchema.CurrentStateVersion, Int(root, SidecarSchema.VersionProperty));
+
+            JObject settings = Obj(root, "settings");
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion,
+                         Int(settings, SidecarSchema.VersionProperty));
+            Assert.Equal("Yearly, Election, Manual, Story", (string)settings["wakeCadence"]!);
+
+            // The step's only job is the cadence. Everything wave 4 wrote must arrive untouched — a
+            // v6 file already has its story collections, and a step that re-seeded them would erase
+            // a real save's history rather than upgrade it.
+            Assert.Equal(-1, Int(root, "lastStoryDraftMonth"));
+            Assert.True(settings["storiesEnabled"]!.Value<bool>());
+            Assert.Equal(2, settings["storiesPerCycle"]!.Value<int>());
+        }
+
+        /// <summary>
+        /// A v6 save whose player had narrowed the cadence keeps exactly what they chose.
+        /// </summary>
+        /// <remarks>
+        /// The other half of the rule, on the path that actually reaches a real save. Turning a wake
+        /// back on for someone who turned it off would be the mod overriding a decision about how
+        /// often it is allowed to start a subprocess — and the story wake is the most frequent one in
+        /// the build.
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV6_LeavesANarrowedCadenceAlone()
+        {
+            MigrationResult result;
+            JObject root = Migrate(
+                StateV6().Replace("\"wakeCadence\": \"Yearly, Election, Manual\"",
+                                  "\"wakeCadence\": \"Election, Manual\""),
+                out result);
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal("Election, Manual", (string)Obj(root, "settings")["wakeCadence"]!);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion,
+                         Int(Obj(root, "settings"), SidecarSchema.VersionProperty));
+        }
+
         /// <summary>
         /// The step reaches both current versions from a genuine v5 file — the root's and the nested
         /// settings block's, which move together because <c>MigrateStateV5ToV6</c> calls the settings
@@ -1486,6 +1610,103 @@ namespace Agora.Core.Tests
         private static bool Bool(JToken parent, string name)
         {
             return Get(parent, name).Value<bool>();
+        }
+
+        // --- 5c. v4 → v5: the story LLM wake ---------------------------------------------------------
+
+        /// <summary>
+        /// A save that never touched its cadence is given the story wake; one that narrowed it keeps
+        /// exactly what it chose.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Widening <c>LlmWakeCadence.Default</c> reaches new saves only — the value is persisted as
+        /// a list of member <i>names</i>, so an existing file says "Yearly, Election, Manual"
+        /// whatever the enum later comes to mean. This step is the only thing that reaches the saves
+        /// that already exist, and without it every one of them would silently never wake on a
+        /// story: no error, no log line, just a feature that works for new cities and not for old
+        /// ones.
+        /// </para>
+        /// <para>
+        /// The second half matters more than the first. Turning a wake back on for a player who
+        /// turned it off would be the mod overriding a decision about how often it is allowed to
+        /// start a subprocess — and the story wake is the most frequent one in the build.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("Yearly, Election, Manual", "Yearly, Election, Manual, Story")]
+        [InlineData("Yearly, Election", "Yearly, Election")]
+        [InlineData("None", "None")]
+        [InlineData("Yearly, Election, Manual, Story", "Yearly, Election, Manual, Story")]
+        public void Migrate_SettingsV4_AppendsTheStoryWake_OnlyToAnUntouchedCadence(string before, string after)
+        {
+            var settings = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 4,
+                ["startYear"] = 1990,
+                ["theme"] = "Eu",
+                ["system"] = "Proportional",
+                ["wakeCadence"] = before
+            };
+
+            MigrationResult result = SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
+            Assert.Equal(after, (string)settings["wakeCadence"]!);
+
+            // Idempotent: the chain re-run over its own output changes nothing.
+            SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+            Assert.Equal(after, (string)settings["wakeCadence"]!);
+        }
+
+        /// <summary>
+        /// Every settings upgrade helper stamps the literal version it produces, never the current
+        /// one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>UpgradeSettingsObjectToV4</c> stamped <c>CurrentSettingsVersion</c> rather than a
+        /// literal <c>4</c>. That was indistinguishable from correct for as long as 4 was current,
+        /// and it did not bite when 5 arrived either — for the standalone settings document the
+        /// migration loop rewrites the version after every step and quietly corrects it, and for the
+        /// nested block the very next state step happened to re-stamp it. So this is a trap being
+        /// closed rather than a bug being fixed, and it is worth closing because both of those
+        /// rescues are coincidences of the current step list: the moment
+        /// <c>CurrentSettingsVersion</c> moves without a matching state step,
+        /// <c>MigrateStateV5ToV6</c> stamps a nested block with a version whose fields it has never
+        /// written, and nothing corrects or reports it.
+        /// </para>
+        /// <para>
+        /// Asserted against the helpers rather than against the step table because they are what a
+        /// future author copies, and because a helper is also called directly from the state chain,
+        /// where the loop's own stamp does not reach.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EverySettingsUpgradeHelper_StampsItsOwnLiteralVersion()
+        {
+            // Bare objects: every helper is written as "if the property is absent, write the
+            // default", so this exercises the stamp without reproducing a document per version.
+            var toV2 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV2(toV2);
+            Assert.Equal(2, (int)toV2[SidecarSchema.VersionProperty]!);
+
+            var toV3 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV3(toV3);
+            Assert.Equal(3, (int)toV3[SidecarSchema.VersionProperty]!);
+
+            var toV4 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV4(toV4);
+            Assert.Equal(4, (int)toV4[SidecarSchema.VersionProperty]!);
+
+            var toV5 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV5(toV5);
+            Assert.Equal(5, (int)toV5[SidecarSchema.VersionProperty]!);
+
+            // The last helper in the chain is the one that must agree with the constant. If this
+            // fails, a version was bumped without a helper to reach it.
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)toV5[SidecarSchema.VersionProperty]!);
         }
 
         // --- Temp directories --------------------------------------------------------------------------

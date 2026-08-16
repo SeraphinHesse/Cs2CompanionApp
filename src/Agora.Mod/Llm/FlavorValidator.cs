@@ -290,6 +290,53 @@ namespace Agora.Mod.Llm
                 }
                 return false;
             });
+
+            // Filtered independently, and deliberately so: the same story id belongs in both, one
+            // carrying the opening and the other the closing. De-duplicating across the pair would
+            // drop half the prose of every story that ran to a resolution.
+            FilterStoryProse(document.Stories, "stories", catalog, discarded);
+            FilterStoryProse(document.Resolutions, "resolutions", catalog, discarded);
+        }
+
+        /// <summary>
+        /// Drops the story entries whose <c>storyId</c> the engine does not recognise.
+        /// <paramref name="collectionKey"/> names the JSON key for the discard line, so a reader can tell
+        /// which end of the story was lost.
+        /// </summary>
+        /// <remarks>
+        /// No story equivalent of <see cref="FlavorValidationResult.ArticlesAllDiscarded"/>, and the
+        /// asymmetry is the point. An article that is dropped leaves a hole - nothing else writes
+        /// articles - whereas a story whose prose is dropped still shows the canned pool's text, which
+        /// was written first and which the CLI's prose only ever adds to. And story ids turn over
+        /// every few cycles, so a cached document that has simply aged out legitimately has every
+        /// story id unknown while its party names are still exactly right; calling that a failed round
+        /// would throw away a good cache for the one part of it that was always going to expire.
+        /// </remarks>
+        private static void FilterStoryProse(
+            List<StoryProseEntry> collection, string collectionKey, FlavorCatalog catalog, List<string> discarded)
+        {
+            var seenStories = new HashSet<string>(StringComparer.Ordinal);
+            collection.RemoveAll(entry =>
+            {
+                if (string.IsNullOrEmpty(entry.StoryId))
+                {
+                    discarded.Add(collectionKey + " entry with an empty storyId");
+                    return true;
+                }
+                if (!catalog.HasStory(entry.StoryId))
+                {
+                    discarded.Add(collectionKey + " entry for unknown story '" + entry.StoryId + "'");
+                    return true;
+                }
+                if (!seenStories.Add(entry.StoryId))
+                {
+                    // Two openings for one story is ambiguous the same way two party names are, and
+                    // picking one would depend on the model's output order. Keep the first.
+                    discarded.Add("duplicate " + collectionKey + " entry for '" + entry.StoryId + "'");
+                    return true;
+                }
+                return false;
+            });
         }
     }
 }
