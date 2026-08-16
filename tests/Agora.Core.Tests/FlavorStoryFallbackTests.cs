@@ -203,6 +203,46 @@ namespace Agora.Core.Tests
             Assert.Equal(Event(MajorId).Name, Assert.Single(document!.Stories).Headline);
         }
 
+        /// <summary>
+        /// It is <see cref="StorySlotBrief.IsMajor"/> that picks the lead, not the slot's position.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This fixture is deliberately not the shape the runtime produces.</b> <c>Story.Slots</c>
+        /// really is sorted major-first, so every other fixture in this file and in
+        /// <c>StaticPoolPressTests</c> puts the major at index 0 — which meant the test above was
+        /// actually asserting "the headline is the FIRST slot's name" and could not tell the two
+        /// apart. Deleting the <c>if (slot.IsMajor) return slot;</c> line from
+        /// <c>StaticPoolProvider.MajorSlot</c> left the entire 2175-test suite green.
+        /// </para>
+        /// <para>
+        /// The flag is worth pinning separately from the ordering because they are maintained in
+        /// different places: the order is the engine's, in <c>StoryAssembler</c>, while the flag is
+        /// filled by <c>AgoraRuntime.BuildStoryBrief</c> from <c>SlotRole.Major</c>. A brief-builder
+        /// that set the flag wrongly would ship a minor event as the story's headline, and until this
+        /// test existed nothing in the repo would have noticed.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void Headline_FollowsTheMajorFlagRatherThanTheSlotPosition()
+        {
+            FlavorRequest request = Request(resolved: false);
+            StoryBrief brief = Assert.Single(request.Stories);
+
+            // Major last rather than first. Nothing else about the story changes.
+            brief.Slots = new List<StorySlotBrief>
+            {
+                Slot(FirstMinorId, false, ""),
+                Slot(SecondMinorId, false, ""),
+                Slot(MajorId, true, "")
+            };
+
+            FlavorDocument? document = Pool().Generate(request);
+
+            Assert.NotNull(document);
+            Assert.Equal(Event(MajorId).Name, Assert.Single(document!.Stories).Headline);
+        }
+
         [Fact]
         public void Article_CarriesEverySlotsNameAndDescriptionInSlotOrder()
         {

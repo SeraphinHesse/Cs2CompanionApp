@@ -2,6 +2,7 @@
 // JsonSchemaSubsetValidator.cs / FlavorCacheMigration.cs / FlavorSchema.cs <Compile Link> lines in
 // Agora.Core.Tests.csproj (see the comment there for why).
 
+using System.Collections.Generic;
 using System.Globalization;
 using Agora.Core.Contracts;
 using Agora.Mod.Llm;
@@ -243,12 +244,28 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// Every version this build has a route from, one theory case each. Written from the current
-        /// version rather than as literals so the set grows with the schema instead of going stale.
+        /// Every version this build has a route from, one case each, enumerated from the current
+        /// version so the set grows with the schema.
         /// </summary>
+        /// <remarks>
+        /// <b>Generated, not listed, and the difference is the whole point.</b> These were two
+        /// <c>InlineData</c> literals under a docstring claiming they grew with the schema. They did
+        /// not: raising <c>SupportedSchemaVersion</c> to 4 left the theory passing two cases with
+        /// version 3 never exercised — and 3 is the route every currently-shipped save's cache would
+        /// actually be on at that bump, i.e. the one case that matters most would have been the one
+        /// silently skipped. The <c>Assert.True</c> floor inside the test catches a case that has gone
+        /// stale; nothing caught a case that was never added.
+        /// </remarks>
+        public static IEnumerable<object[]> EveryLegacyCacheVersion()
+        {
+            for (int version = 1; version < FlavorSchema.SupportedSchemaVersion; version++)
+            {
+                yield return new object[] { version };
+            }
+        }
+
         [Theory]
-        [InlineData(1)]
-        [InlineData(2)]
+        [MemberData(nameof(EveryLegacyCacheVersion))]
         public void CacheWrittenAtAnOlderVersion_ArrivesCurrentWithItsPartyNames(int writtenAt)
         {
             Assert.True(writtenAt < FlavorSchema.SupportedSchemaVersion,
