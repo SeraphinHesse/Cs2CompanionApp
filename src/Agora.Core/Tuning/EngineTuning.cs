@@ -28,7 +28,7 @@ namespace Agora.Core.Tuning
         /// because every other test in the suite runs against <see cref="Default"/> rather than the
         /// file — so a value that differs here is a value the shipped engine never verified.
         /// </summary>
-        public int SchemaVersion { get; internal set; } = 6;
+        public int SchemaVersion { get; internal set; } = 7;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();

@@ -80,7 +80,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 6 },
+    "schemaVersion": { "type": "integer", "const": 7 },
 
     "blocs": {
       "type": "object",
