@@ -1,5 +1,612 @@
 {
   "schemaVersion": 1,
   "featureIds": [],
-  "events": []
+  "events": [
+    {
+      "id": "na-bond-measure-on-the-ballot",
+      "severity": 2,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "serviceCoverage",
+        "comparison": "lt",
+        "threshold": 0.55,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "serviceCoverage",
+          "comparison": "gte",
+          "threshold": 0.03,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-loan-interest"],
+      "successEffects": ["city-service-building-upkeep"],
+      "failureEffects": ["city-loan-interest", "city-tax-happiness"],
+      "activePressure": { "services": 0.3, "costOfLiving": 0.15 },
+      "successPressure": { "services": 0.1, "costOfLiving": 0.05 },
+      "failurePressure": { "services": 0.45, "costOfLiving": 0.2 },
+      "districtAffinity": ["suburban"],
+      "tags": ["ballot-measure", "budget", "services"],
+      "notes": "Mean service coverage below 0.55 is the ordinary condition of a city that has grown faster than its stations and clinics, so expect this once or twice a decade and mostly in the growth phase. The check is relative to the month the story opened, so it asks for three points of coverage the player did not already have rather than an absolute number a mature city passes by standing still.",
+      "name": "Bond Measure on the Ballot",
+      "description": "Finance has run out of pay-as-you-go room and wants a general obligation bond on the next ballot. The service map is the argument: stations that answer late, clinics at capacity, a plant on borrowed time. Bond counsel needs an answer this month, and the ratings desk wants to know whether the city intends to borrow against a coverage gap it has never formally admitted to.",
+      "ignoreText": "Leave the bond off the ballot and fund what can be funded out of the operating budget.",
+      "goalText": "Back the measure and widen service coverage across the city before the next reading.",
+      "powerOverrideText": "Issue on the executive's authority and let the ballot question sort itself out afterward.",
+      "successText": "The measure carried. Coverage widened, and the upkeep on everything it built is the price everyone agreed to.",
+      "failText": "The measure went out with nothing behind it. Borrowing costs are up and coverage has not moved."
+    },
+    {
+      "id": "na-brownfield-cleanup",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "pollution",
+        "comparison": "gte",
+        "threshold": 0.4,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "pollution",
+          "comparison": "lt",
+          "threshold": 0.4,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["city-pollution-health-affect"],
+      "successEffects": ["city-industrial-ground-pollution", "district-wellbeing"],
+      "failureEffects": ["city-pollution-health-affect", "district-building-upkeep"],
+      "activePressure": { "environment": 0.35, "services": 0.1 },
+      "successPressure": { "environment": 0.12, "services": 0.05 },
+      "failurePressure": { "environment": 0.5, "services": 0.15 },
+      "districtAffinity": ["industrial", "riverfront", "working-class"],
+      "tags": ["environment", "industry", "public-health"],
+      "notes": "Mean pollution at or above 0.40 in at least one district is normal wherever heavy industry sits next to housing, and unusual in a city that zoned its industry away from its neighbourhoods. Expect it two or three times across a long save, concentrated in the decades when industry is the tax base. The trigger is any-district and the check is all-districts at the same line, so the two are exact complements: the story opens when some district is over 0.40 and is met only when none is. It cannot be answered by a clean district on the other side of the river, and no district id survives onto the slot to bind it any more tightly than this.",
+      "name": "Brownfield on the Riverbank",
+      "description": "A neighbourhood association has been sampling soil behind the old works for a year and has finally found a reporter who will print the numbers. The site was decommissioned before anyone kept records of what went into the ground; the current owner is a holding company with no assets, and the state programme that would pay for remediation requires the city to move first and be reimbursed later, if at all.",
+      "ignoreText": "Decline to open a file. The site is private property and the liability is not the city's to inherit.",
+      "goalText": "Take the site on and get every district in the city back under the line.",
+      "powerOverrideText": "Order remediation and the industrial restrictions that go with it without waiting for the state programme.",
+      "successText": "The ground came back clean enough to build on, and there is no district left reading over the line.",
+      "failText": "The samples are still bad, the reporter is still writing, and the city now owns the problem anyway."
+    },
+    {
+      "id": "na-downtown-vacancy",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "unemployment",
+        "comparison": "gte",
+        "threshold": 0.12,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "unemployment",
+          "comparison": "lte",
+          "threshold": -0.02,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-office-efficiency"],
+      "successEffects": ["city-office-efficiency", "district-low-commercial-tax"],
+      "failureEffects": ["city-attractiveness", "city-service-building-upkeep"],
+      "activePressure": { "growth": 0.3, "costOfLiving": 0.15 },
+      "successPressure": { "growth": 0.1, "costOfLiving": 0.05 },
+      "failurePressure": { "growth": 0.45, "costOfLiving": 0.25 },
+      "districtAffinity": ["downtown", "commercial"],
+      "tags": ["downtown", "economy", "unemployment"],
+      "notes": "City unemployment at or above 12 per cent is a real downturn rather than a bad month; a well-run city sits nearer 5 to 8 per cent, and a demand mismatch or a lost industrial anchor puts it past 12 for a season or two. Expect this a handful of times across a long save. Two points of recovery inside the story window is demanding but reachable through zoning and tax response, which is the point of a relative check.",
+      "name": "Downtown Goes Dark",
+      "description": "Three floors of the tower on the square went dark this quarter and the anchor tenant is not renewing. The business improvement district wants a tax abatement zone; the neighbourhood coalition points out that the last abatement bought a parking structure. Everyone agrees the storefronts are the symptom and the job numbers are the disease, and nobody agrees on which of the two the city is supposed to treat.",
+      "ignoreText": "Let the market clear. Vacancy is a price signal and the city is not a leasing agent.",
+      "goalText": "Get people back into work city-wide before the next quarter's numbers print.",
+      "powerOverrideText": "Impose the abatement zone over the coalition's objection and take the credit or the blame alone.",
+      "successText": "The job numbers turned before the storefronts did, and the abatement looks like judgement rather than a giveaway.",
+      "failText": "The tower is emptier, the abatement bought nothing, and the vacancy rate is now a campaign slogan."
+    },
+    {
+      "id": "na-encampment-sweep",
+      "severity": 4,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "homelessShare",
+        "comparison": "gte",
+        "threshold": 0.05,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "homelessShare",
+          "comparison": "lte",
+          "threshold": 0.03,
+          "scope": "city"
+        }
+      },
+      "activeEffects": ["city-crime-accumulation"],
+      "successEffects": ["city-attractiveness", "district-wellbeing"],
+      "failureEffects": ["city-crime-accumulation", "district-crime-accumulation"],
+      "activePressure": { "services": 0.35, "costOfLiving": 0.3, "heritageOrder": 0.2 },
+      "successPressure": { "services": 0.12, "costOfLiving": 0.1, "heritageOrder": 0.05 },
+      "failurePressure": { "services": 0.5, "costOfLiving": 0.4, "heritageOrder": 0.3 },
+      "districtAffinity": ["downtown", "riverfront"],
+      "tags": ["cost-of-living", "homelessness", "housing"],
+      "notes": "A homeless share at or above 5 per cent of residents follows a rent squeeze or a shortfall of low-rent housing and is common in the middle of a save; falling back under 3 per cent inside the story window needs the player to actually zone or subsidise rather than to wait. Severity 4 makes this a major rather than a mandatory story: it recurs, and a catalog where every housing story is unavoidable has no dynamic range.",
+      "name": "The Encampment Under the Overpass",
+      "description": "The camp under the interchange has been there long enough to have a mailing address, and the merchants' association has stopped asking politely. Public works wants a clearance date. The shelter coalition points out that clearance without beds is relocation, and that the last clearance moved the camp four blocks and cost the city a lawsuit. Council wants the photograph in the paper to stop; nobody has said where the people go.",
+      "ignoreText": "No clearance and no new beds. The camp stays and the merchants can take it up at the next election.",
+      "goalText": "Bring the city's homeless share down and make the clearance mean something.",
+      "powerOverrideText": "Order the sweep on the executive's authority, beds or no beds, and absorb the lawsuit.",
+      "successText": "Fewer people are sleeping outside than when this started, and the clearance was the end of it rather than the whole of it.",
+      "failText": "The camp moved and the numbers did not. The city bought a photograph and a court date."
+    },
+    {
+      "id": "na-gentrification-displacement",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "wealth.high",
+        "comparison": "gte",
+        "threshold": 0.3,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "wealth.low",
+          "comparison": "gte",
+          "threshold": -0.01,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-building-upkeep"],
+      "successEffects": ["district-low-commercial-tax", "district-wellbeing"],
+      "failureEffects": ["city-tax-happiness", "district-building-upkeep"],
+      "activePressure": { "costOfLiving": 0.35, "heritageOrder": 0.2, "growth": -0.15 },
+      "successPressure": { "costOfLiving": 0.12, "heritageOrder": 0.08, "growth": -0.05 },
+      "failurePressure": { "costOfLiving": 0.5, "heritageOrder": 0.3, "growth": -0.25 },
+      "districtAffinity": ["downtown", "historic", "working-class"],
+      "tags": ["cost-of-living", "displacement", "housing"],
+      "notes": "A district where high-wealth households pass 30 per cent of residents appears whenever land value concentrates, which in most saves is once the first desirable quarter matures — perhaps twice a decade, and never in a city that has stayed uniformly poor. The check is city-scope and relative: it asks that the city's low-wealth share not fall more than a point below where it stood when the story opened, so the story is scored on whether displacement was contained rather than on whether the money arrived. It reads a different metric from the trigger deliberately, and at city scope, because nothing binds a check back to the district that fired — an any-district reading of low wealth would be answered by the poorest block in the city, which is precisely the block the story is not about. The negative growth component is deliberate and holds its sign through all three outcomes: a displacement fight is what makes the anti-development pole loud, and it is louder still if displacement is not contained.",
+      "name": "The Neighbourhood Nobody Could Afford Twice",
+      "description": "The quarter that was cheap enough to open a shop in ten years ago now has a waiting list. The residents' association wants inclusionary requirements and a freeze on the assessment appeals that keep raising everyone else's bills; the developers point out that the district is the only part of the tax base that grew this year. Both sides are describing the same street and neither recognises the other's version of it.",
+      "ignoreText": "Let it run. The tax base is the tax base and the city does not price housing.",
+      "goalText": "Hold the city's low-wealth share where it was when this began.",
+      "powerOverrideText": "Impose the inclusionary requirement by order and let the developers sue.",
+      "successText": "The quarter changed and the city did not empty out beneath it. Mixed income held, which was the only thing being asked.",
+      "failText": "The people who made the neighbourhood worth wanting are no longer in it, and the association is now a campaign."
+    },
+    {
+      "id": "na-graduation-gap",
+      "severity": 2,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "education.poorlyEducated",
+        "comparison": "gte",
+        "threshold": 0.35,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "education.poorlyEducated",
+          "comparison": "lte",
+          "threshold": -0.01,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-college-graduation"],
+      "successEffects": ["city-college-graduation", "city-university-interest"],
+      "failureEffects": ["district-wellbeing"],
+      "activePressure": { "services": 0.25, "growth": 0.1 },
+      "successPressure": { "services": 0.1, "growth": 0.05 },
+      "failurePressure": { "services": 0.35, "growth": 0.15 },
+      "districtAffinity": ["suburban", "working-class"],
+      "tags": ["education", "schools", "services"],
+      "notes": "A district where poorly educated residents are more than a third of the population is the normal state of a young city and of any quarter built for industrial employment, so this should be available for much of the early and middle game and stop firing once schools mature. The check is city-scope and relative rather than all-districts because education shares move with the population that carries them and take years, not two months, to shift a district past a fixed line — an all-districts bar would be unreachable, and an any-district one would be answered by whichever quarter is already schooled. One point off the city's poorly educated share, measured from the month the story opened, is what a school built in the right place buys inside the window.",
+      "name": "The Graduation Gap",
+      "description": "The district numbers came out on a Tuesday and by Thursday there were two competing parent groups, a school board member with a press conference, and a consultant selling a turnaround plan. One side wants classrooms in the neighbourhood that lacks them; the other wants the money spent on the schools that already work, on the grounds that this is what produces graduates. The city runs neither school but is expected to answer for both.",
+      "ignoreText": "Decline to intervene. The board runs the schools and the city runs the streets.",
+      "goalText": "Get schooling into the district that lacks it and pull the city's poorly educated share down.",
+      "powerOverrideText": "Site the new schools by executive decision and present the board with the plan already drawn.",
+      "successText": "The city's share came down from where it stood when this began, and both parent groups are claiming they asked for it first.",
+      "failText": "Two years of meetings and the same numbers. The consultant has been paid; nobody else has been served."
+    },
+    {
+      "id": "na-highway-widening-fight",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "trafficCongestion",
+        "comparison": "gte",
+        "threshold": 0.6,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "trafficCongestion",
+          "comparison": "lte",
+          "threshold": -0.05,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-car-reserve-probability"],
+      "successEffects": ["city-highway-traffic-safety", "district-street-speed-limit"],
+      "failureEffects": ["district-street-traffic-safety"],
+      "activePressure": { "transit": -0.3, "environment": -0.15 },
+      "successPressure": { "transit": -0.1, "environment": -0.05 },
+      "failurePressure": { "transit": -0.4, "environment": -0.2 },
+      "districtAffinity": ["highway-corridor", "suburban"],
+      "tags": ["highways", "roads", "traffic"],
+      "notes": "City congestion at or above 0.60 is common in any city that has grown past its arterials and is nearly guaranteed at least once per save, usually in the mid game. Five points of relief inside the story window is achievable by rerouting freight, adding capacity, or moving trips off the road, and is not achievable by doing nothing, which is what makes it a decision rather than a wait. The transit and environment pressures are negative on all three outcomes on purpose: a corridor this congested is what makes the motorist pole loud, and a widening that fails to deliver makes it louder. Paired with na-transit-referendum, which presses the same axis positive, this is the file's highway-versus-transit fight expressed as two events pulling opposite ways rather than one event changing its mind.",
+      "name": "Six Lanes Through the Old Ward",
+      "description": "The state department of transportation has offered to widen the corridor, and the match is small enough that council can plausibly say yes this quarter. The alignment runs through the ward that lost half its blocks to the last widening, and the people who remember that are at every meeting. The traffic modelling says the new lanes fill in eleven years. Nobody at the podium is arguing about the modelling.",
+      "ignoreText": "Turn the match down. The corridor stays as it is and so do the blocks beside it.",
+      "goalText": "Take the project and actually get congestion down city-wide.",
+      "powerOverrideText": "Sign the agreement on the executive's authority before the alignment hearings can be scheduled.",
+      "successText": "The corridor moves and the network moved with it. For now the modelling is somebody else's problem.",
+      "failText": "The alignment hearings ran a year, the ward has forgiven nobody, and the corridor is as slow as it was."
+    },
+    {
+      "id": "na-lead-service-lines",
+      "severity": 5,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "serviceCoverage",
+        "comparison": "lt",
+        "threshold": 0.45,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "serviceCoverage",
+          "comparison": "gte",
+          "threshold": 0.45,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["city-disease-probability"],
+      "successEffects": ["city-hospital-efficiency", "district-wellbeing"],
+      "failureEffects": ["city-disease-probability", "city-service-building-upkeep"],
+      "activePressure": { "services": 0.5, "environment": 0.3 },
+      "successPressure": { "services": 0.18, "environment": 0.1 },
+      "failurePressure": { "services": 0.7, "environment": 0.45 },
+      "districtAffinity": ["industrial", "working-class"],
+      "tags": ["public-health", "services", "water"],
+      "notes": "The only severity 5 in this file, and the only one that should be. A district whose mean service coverage is under 0.45 is genuinely underserved rather than merely stretched, which happens where growth outran the build-out; it is common enough to be reachable in most saves and rare enough that a mandatory story does not repeat. Trigger and check are exact complements about the same line — any district under 0.45 opens it, and it is met only when no district is still under 0.45. All-districts is the whole point here: an any-district check would be answered by whichever block is already well served, which for the file's one mandatory story would mean it succeeded on the month it opened. The ask is a build order aimed at the worst district, and if two districts are under the line it is two build orders; that is honest rather than harsh.",
+      "name": "What Came Out of the Tap on Eighth Street",
+      "description": "A pediatrician on the north side has sent the same letter three times and this time she copied the state. The service lines under that district were laid when nobody thought about what they were laid from, and the district is also the one waiting on everything else the city has been slow to build. The letter has stopped being a letter; it is now a hearing date, and the only defensible answer is a construction schedule.",
+      "ignoreText": "Answer the letter and nothing else. The lines meet the standard they were laid to.",
+      "goalText": "Leave no district under the line before the hearing date.",
+      "powerOverrideText": "Declare an emergency, start digging, and settle the procurement questions afterward.",
+      "successText": "There is no district left below the line, and the hearing has become a progress report.",
+      "failText": "The hearing went ahead with nothing to show. The district is unchanged and the state is now involved."
+    },
+    {
+      "id": "na-nimby-downzoning-fight",
+      "severity": 2,
+      "region": "na",
+      "trigger": {
+        "kind": "delta",
+        "metricId": "population",
+        "comparison": "gte",
+        "threshold": 3000,
+        "windowMonths": 12,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 65,
+          "scope": "anyDistrict"
+        }
+      },
+      "activeEffects": ["district-building-upkeep"],
+      "successEffects": ["district-wellbeing"],
+      "failureEffects": ["city-tax-happiness", "district-building-upkeep"],
+      "activePressure": { "growth": -0.25, "heritageOrder": 0.2 },
+      "successPressure": { "growth": -0.08, "heritageOrder": 0.08 },
+      "failurePressure": { "growth": -0.35, "heritageOrder": 0.3 },
+      "districtAffinity": ["historic", "suburban"],
+      "tags": ["growth", "planning", "zoning"],
+      "notes": "Three thousand residents added over twelve months is a normal growth year for a mid-size city and a strong one for a small city, so this should be available through most of the expansion phase and go quiet once growth flattens. The check asks only that at least one district be genuinely content at 65 happiness, which is reachable but not automatic; a city that answers a growth fight by neglecting every neighbourhood will miss it. Growth is pressed negative throughout: a rezoning fight is what makes the anti-development pole loud, whichever way the parcel goes.",
+      "name": "Neighbours Against the Rezoning",
+      "description": "Four hundred people signed the petition and roughly forty of them came to the hearing, which in this city is a landslide. The parcel is a surface lot; the proposal is housing; the objection is everything from shadows to school capacity to the character of a street that has been rebuilt twice already. Planning staff recommend approval. Staff recommended approval last time too, and the surface lot is still a surface lot.",
+      "ignoreText": "Let the hearing run its course and let the commission decide without a steer from the executive.",
+      "goalText": "Manage the growth so that at least one neighbourhood comes out of it genuinely content.",
+      "powerOverrideText": "Approve the rezoning over the commission and take the petition personally.",
+      "successText": "The parcel got built on and the neighbourhood it landed in is doing better, not worse.",
+      "failText": "The petition won, the lot is still a lot, and nowhere in the city is anyone particularly happy about it."
+    },
+    {
+      "id": "na-opioid-response",
+      "severity": 4,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "happiness",
+        "comparison": "lt",
+        "threshold": 58,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 2,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-disease-probability"],
+      "successEffects": ["city-disease-probability", "city-hospital-efficiency"],
+      "failureEffects": ["city-crime-accumulation", "city-disease-probability"],
+      "activePressure": { "services": 0.4, "heritageOrder": 0.15 },
+      "successPressure": { "services": 0.15, "heritageOrder": 0.05 },
+      "failurePressure": { "services": 0.55, "heritageOrder": 0.3 },
+      "districtAffinity": ["downtown", "working-class"],
+      "tags": ["addiction", "public-health", "services"],
+      "notes": "City happiness under 58 is a city in real trouble rather than one having an ordinary month; most saves reach it during a service or cost shock and not otherwise, so expect this perhaps twice across a long game. Two points of recovery in the window is a modest ask on a metric that responds to almost every service the player controls. Prose is deliberately about calls, clinics and response capacity — nothing here kills anyone and nothing in the palette could.",
+      "name": "The Overdose Calls",
+      "description": "Fire is running more overdose calls than structure calls and has been for three months. The hospital wants a diversion programme, the county wants the city to fund half of it, and the prosecutors' association wants the money spent on interdiction instead. The litigation settlement everyone has been waiting on is four years from paying anything. In the meantime the same crews are answering the same addresses.",
+      "ignoreText": "Keep running the calls. The settlement will fund a programme eventually and the county can lead it.",
+      "goalText": "Put a response together and lift how the city is actually doing before the next reporting period.",
+      "powerOverrideText": "Stand the diversion programme up on city money alone and bill the county afterward.",
+      "successText": "The crews are running fewer of these calls and the city is measurably steadier than when this started.",
+      "failText": "Nothing was stood up, the calls kept coming, and the city is worse off in every way that gets reported."
+    },
+    {
+      "id": "na-parking-minimums-row",
+      "severity": 1,
+      "region": "na",
+      "trigger": {
+        "kind": "delta",
+        "metricId": "population",
+        "comparison": "gte",
+        "threshold": 1200,
+        "windowMonths": 12,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 1,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-parking-fee"],
+      "successEffects": ["district-bike-probability", "district-parking-fee"],
+      "failureEffects": ["district-car-reserve-probability"],
+      "activePressure": { "transit": 0.15, "costOfLiving": 0.05 },
+      "successPressure": { "transit": 0.06, "costOfLiving": 0.02 },
+      "failurePressure": { "transit": 0.22, "costOfLiving": 0.08 },
+      "districtAffinity": ["commercial", "downtown"],
+      "tags": ["minor", "parking", "transit"],
+      "notes": "Rewritten after review: the first version triggered on a district's absolute head count and checked an absolute district happiness, and both were permanently true from mid-game, so it re-entered the pool every reuse cooldown and auto-succeeded forever while consuming a minor slot. Both halves now move. The trigger is twelve hundred residents added to one district over a year, which marks a district actually densifying and goes quiet when growth flattens; the check asks for a point of city happiness above the month the story opened, which a city that prices its kerb badly will miss. Modest, because this is a severity 1 minor and is scored like one.",
+      "name": "The Parking Minimums Row",
+      "description": "The merchants want two spaces per unit and the planning department wants none, and the argument has been running for so long that both sides now cite the same study. The district filling up fastest has more residents each year than it has kerb, and the meters that were supposed to settle it were leased out to a consortium under a previous administration on terms nobody will read aloud.",
+      "ignoreText": "Leave the minimums where they are and let the merchants and the planners keep meeting.",
+      "goalText": "Settle the kerb question and leave the city in a better mood than it was in when this started.",
+      "powerOverrideText": "Strike the minimums by order and let the consortium's lawyers write in.",
+      "successText": "The row is over, the kerb is priced, and the city came out of it in a better mood than it went in.",
+      "failText": "The minimums stayed, the meters stayed leased, and everyone left the room angrier than they came in."
+    },
+    {
+      "id": "na-precinct-policing-row",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "crimeRate",
+        "comparison": "gte",
+        "threshold": 0.35,
+        "scope": "anyDistrict"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "crimeRate",
+          "comparison": "lt",
+          "threshold": 0.35,
+          "scope": "allDistricts"
+        }
+      },
+      "activeEffects": ["city-crime-response-time"],
+      "successEffects": ["city-crime-response-time", "city-criminal-monitor"],
+      "failureEffects": ["district-crime-accumulation"],
+      "activePressure": { "heritageOrder": 0.3, "services": 0.2 },
+      "successPressure": { "heritageOrder": 0.1, "services": 0.08 },
+      "failurePressure": { "heritageOrder": 0.45, "services": 0.3 },
+      "districtAffinity": ["downtown", "working-class"],
+      "tags": ["crime", "policing", "services"],
+      "notes": "A district crime reading at or above 0.35 is common wherever coverage is thin, and the district figure is derived from local crime producers rather than scaled from the city statistic, so it moves independently of the city number. Expect this several times across a save in different districts. Trigger and check are complements about the same 0.35 line, all-districts on the check: nothing binds a check to the district that fired the trigger, so an any-district check here would be answered by the quietest block in the city. Police coverage moves this reading inside a two-month window, which is what makes the ask a decision rather than a wait.",
+      "name": "Overtime at the Third Precinct",
+      "description": "The precinct covering the worst-reading district has been running on overtime since spring, and the audit that fell out of it found shifts booked twice and a response clock that starts when the car moves rather than when the call comes. The union says the numbers are the price of covering a district the city under-built. The district's own association says they have never seen a car unless it was on its way somewhere else.",
+      "ignoreText": "Close the audit without findings. The overtime is a staffing problem and staffing is not a council matter.",
+      "goalText": "Fix the coverage until no district in the city is still reading above the line.",
+      "powerOverrideText": "Reassign the precinct's command by executive order and publish the audit unredacted.",
+      "successText": "Response is honest and no district is reading above the line any more. The audit ended up being the easy part.",
+      "failText": "The overtime is still booked, the clock still starts late, and the worst districts are exactly where they were."
+    },
+    {
+      "id": "na-property-tax-revolt",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "delta",
+        "metricId": "happiness",
+        "comparison": "lte",
+        "threshold": -3,
+        "windowMonths": 12,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "happiness",
+          "comparison": "gte",
+          "threshold": 1.5,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-tax-happiness"],
+      "successEffects": ["city-attractiveness", "city-tax-happiness"],
+      "failureEffects": ["city-service-building-upkeep", "city-tax-happiness"],
+      "activePressure": { "costOfLiving": 0.4, "services": -0.15 },
+      "successPressure": { "costOfLiving": 0.15, "services": -0.05 },
+      "failurePressure": { "costOfLiving": 0.55, "services": -0.25 },
+      "districtAffinity": ["suburban"],
+      "tags": ["cost-of-living", "taxes", "tax-revolt"],
+      "notes": "Three points of happiness lost over a year is an ordinary bad stretch — a tax change, a service cut, a housing squeeze — and should be reachable perhaps three or four times across a long save without being the background state of the city. The recovery asked for is a point and a half above the month the story opened, which the player can reach by fixing whatever caused the slide rather than by waiting it out. The negative services component is the Proposition 13 dynamic and holds through all three outcomes: an assessment revolt is exactly what makes the anti-spending pole loud, and a revolt that carries makes it louder.",
+      "name": "Cap the Assessments",
+      "description": "The reassessment notices went out in March and the meetings started in April. A committee that began as a mailing list now has a lawyer, a ballot-initiative number, and a slogan short enough for a lawn sign. The finance director's point that assessments track value and rates track the budget is true, correct, and completely unpersuasive to a room full of people holding the same envelope.",
+      "ignoreText": "Let the initiative qualify. The rate is defensible and the city will make its case at the ballot.",
+      "goalText": "Turn the mood around city-wide before the signatures are certified.",
+      "powerOverrideText": "Roll the rate back by executive action and find the shortfall somewhere the committee will not look.",
+      "successText": "The mood turned, the lawn signs came down, and the rate survived without a ballot fight.",
+      "failText": "The initiative qualified with room to spare, and the city will be defending its budget in public for a year."
+    },
+    {
+      "id": "na-sentencing-crackdown",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "crimeRate",
+        "comparison": "gte",
+        "threshold": 0.3,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "crimeRate",
+          "comparison": "lte",
+          "threshold": -0.03,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-prison-time"],
+      "successEffects": ["city-criminal-monitor", "city-prison-time"],
+      "failureEffects": ["city-crime-probability"],
+      "activePressure": { "heritageOrder": 0.35, "services": 0.15 },
+      "successPressure": { "heritageOrder": 0.12, "services": 0.06 },
+      "failurePressure": { "heritageOrder": 0.5, "services": 0.2 },
+      "districtAffinity": ["downtown"],
+      "tags": ["crime", "policing", "sentencing"],
+      "notes": "A city crime reading at or above 0.30 comes out of the city statistic normalised against its reference maximum, and a city with thin police coverage or a bad industrial-and-housing mix will reach it in most saves at least once. Three points of recovery relative to the opening month is achievable through coverage and land use inside the window. The effect is sentence length only; nothing in this event claims to change what the courts or the jail cost.",
+      "name": "Longer Sentences, Louder Meetings",
+      "description": "The council's public safety committee has produced a package: charge everything, plead nothing, and ask the bench for the top of the range. The defenders' office says the caseload is already a year behind and that longer terms do not shorten a docket. The victims' groups have been to eleven meetings and have stopped being interested in the docket. The reading that started all of this is on a slide behind the chair.",
+      "ignoreText": "Leave charging policy to the prosecutors. The council does not sentence anyone.",
+      "goalText": "Get the city's crime reading down for real, whatever the sentencing package says.",
+      "powerOverrideText": "Endorse the package outright and put the executive's name on the top of the range.",
+      "successText": "The reading came down. Whether the sentences did it is an argument for a quieter year.",
+      "failText": "Sentences are longer, the docket is worse, and the reading behind the chair has not moved at all."
+    },
+    {
+      "id": "na-stadium-subsidy-vote",
+      "severity": 2,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "attractionCount",
+        "comparison": "lt",
+        "threshold": 6,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "attractionCount",
+          "comparison": "gte",
+          "threshold": 1,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["city-service-building-upkeep"],
+      "successEffects": ["city-attractiveness", "city-entertainment"],
+      "failureEffects": ["city-loan-interest", "city-service-building-upkeep"],
+      "activePressure": { "growth": 0.25, "costOfLiving": 0.2 },
+      "successPressure": { "growth": 0.1, "costOfLiving": 0.06 },
+      "failurePressure": { "growth": 0.35, "costOfLiving": 0.35 },
+      "districtAffinity": ["downtown"],
+      "tags": ["stadium", "subsidy", "growth"],
+      "notes": "Fewer than six attraction-contributing buildings describes most cities before they start building for anything other than need, so this is an early-to-middle-game story and stops firing once a city has invested in its own draw. The check asks for one more such building than the city had when the story opened — a single concrete decision inside the window, which is what a subsidy fight ought to be scored on.",
+      "name": "The Arena Deal",
+      "description": "The ownership group has a relocation letter from another city and is willing to let council read it. The ask is a subsidised arena, a share of the parking, and a non-relocation clause short enough to be worthless. The economists' letter says the multiplier is a rounding error; the building trades filled the chamber; and the mayor of the other city is available for comment, which is the entire point of the letter.",
+      "ignoreText": "Let them take the letter somewhere else. The city does not bid against itself for a tenant.",
+      "goalText": "Get something built that adds to what the city actually offers.",
+      "powerOverrideText": "Sign the term sheet on the executive's authority before the economists' letter is read into the record.",
+      "successText": "Something real got built and the city's draw is better for it, whatever the multiplier turns out to be.",
+      "failText": "The subsidy went out and nothing new stands. The other city's mayor gave the comment after all."
+    },
+    {
+      "id": "na-transit-referendum",
+      "severity": 3,
+      "region": "na",
+      "trigger": {
+        "kind": "metric",
+        "metricId": "commuteMinutes",
+        "comparison": "gte",
+        "threshold": 25,
+        "scope": "city"
+      },
+      "check": {
+        "spec": {
+          "kind": "metric",
+          "metricId": "commuteMinutes",
+          "comparison": "lte",
+          "threshold": -1.5,
+          "scope": "city"
+        },
+        "relativeToBaseline": true
+      },
+      "activeEffects": ["district-bike-probability"],
+      "successEffects": ["district-bike-probability", "district-parking-fee"],
+      "failureEffects": ["district-car-reserve-probability", "city-taxi-starting-fee"],
+      "activePressure": { "transit": 0.3, "environment": 0.12 },
+      "successPressure": { "transit": 0.1, "environment": 0.05 },
+      "failurePressure": { "transit": 0.45, "environment": 0.18 },
+      "districtAffinity": ["downtown", "suburban"],
+      "tags": ["referendum", "transit", "transport"],
+      "notes": "Mean one-way commute is a city-only reading and this is the threshold I am least sure of: 25 minutes is chosen from real North American practice rather than from a measured save, and wave 7's balance pass should confirm it against a real city before this is treated as tuned. If it proves too high the event simply never pools, which is visible in the story log rather than silent. Ninety seconds off the opening month's commute is the recovery asked for.",
+      "name": "The Half-Cent for Transit",
+      "description": "The regional authority wants a dedicated sales tax on the ballot and has drawn a map with a line to every council district, which is how these maps are drawn. The commute number is on the first slide of the presentation and on the first page of the opposition's mailer, used to prove opposite things. The suburbs will decide it, and the suburbs are on the map exactly once.",
+      "ignoreText": "Stay out of the campaign. The authority put it on the ballot and the authority can carry it.",
+      "goalText": "Back the measure and get the city's average commute genuinely shorter.",
+      "powerOverrideText": "Commit the city's share before the vote and dare the authority to redraw the map without it.",
+      "successText": "The commute is shorter than the month this started, and the map turned out to be worth arguing over.",
+      "failText": "The measure lost, the map went back in the drawer, and the commute is where it was or worse."
+    }
+  ]
 }
