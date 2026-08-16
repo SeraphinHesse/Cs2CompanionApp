@@ -40,7 +40,7 @@ not that anything happens.
 
 ## PR
 
-**PR:** (see `docs/status.md` for the link once opened)
+**PR:** https://github.com/SeraphinHesse/Cs2CompanionApp/pull/6
 **Merge status: NOT merged.** The owner reviews. Wave 4 must not open its umbrella until it is in.
 
 ---
