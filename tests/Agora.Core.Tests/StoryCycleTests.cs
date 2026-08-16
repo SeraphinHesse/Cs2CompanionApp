@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Core.Events.Scheduler;
 using Agora.Core.Stories;
 using Agora.Core.Tuning;
 using Agora.Mod.Sensors;
@@ -562,39 +563,172 @@ namespace Agora.Core.Tests
             Assert.Equal(archived, state.StoryArchive.Count);
         }
 
+        // ---------------------------------------------------------------- double reachability
+
+        /// <summary>
+        /// <b>A story two passes can both reach resolves exactly once.</b>
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The reachable case is a story that is stranded — its due month went past under a catch-up
+        /// truncation — and <i>also</i> carries <see cref="Story.ResolveEarlyRequested"/>, so the
+        /// sweep and the early-resolve path both have a claim on it on one tick. "Non-empty" is not
+        /// the assertion here and would pass while the story resolved twice; the count is.
+        /// </para>
+        /// <para>
+        /// The control is the same story reached by one pass alone. Comparing against it rather than
+        /// against a written-down number is what makes this survive a balance pass: whatever one
+        /// resolution costs in power and in effect requests, two passes must cost exactly that and
+        /// not twice it.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AStoryBothPassesReachResolvesExactlyOnce()
+        {
+            SimDate due = Start.AddMonths(StoryLifeMonths);
+            SimDate afterTheGap = due.AddMonths(Tuning.Scheduler.CatchUpMaxMonths + 1);
+
+            // Control: one pass only — due today, no early request.
+            PoliticalState control = StoryTestFixtures.State(Start);
+            control.LiveStories.Add(WonStory("story-contested", Start));
+            StoryCycleResult once = Run(control, due, catalog: Catalog());
+            AssertResolved(once);
+
+            // Subject: stranded AND asked to resolve early, on one tick.
+            PoliticalState state = StoryTestFixtures.State(Start);
+            Story contested = WonStory("story-contested", Start);
+            contested.ResolveEarlyRequested = true;
+            state.LiveStories.Add(contested);
+
+            StoryCycleResult twice = Run(state, afterTheGap, catalog: Catalog());
+
+            // Single, not NotEmpty: two entries is the failure this test exists for, and it fails
+            // reporting the count rather than reporting that something was there.
+            Assert.Single(twice.ResolvedStories);
+            Assert.Equal(1, Count(state.StoryArchive, "story-contested"));
+            Assert.Empty(state.LiveStories);
+
+            // One resolution's worth of consequence, not two.
+            Assert.Equal(once.PowerDelta, twice.PowerDelta);
+            Assert.Equal(control.Power.Balance, state.Power.Balance);
+            Assert.Equal(once.EffectRequests.Count, twice.EffectRequests.Count);
+            Assert.Equal(control.Power.Ledger.Count, state.Power.Ledger.Count);
+
+            // And one pressure, since the affinity stage reads this list per story.
+            Assert.Equal(once.Pressures.Count, twice.Pressures.Count);
+        }
+
+        /// <summary>
+        /// The same story, reached by both passes, is archived once and appears in the ledger under
+        /// its own id exactly as often as a singly-resolved one does.
+        /// </summary>
+        /// <remarks>
+        /// Stated separately from the counts above because it is a different failure: a cycle can
+        /// return one <see cref="StoryCycleResult.ResolvedStories"/> entry and still have paid the
+        /// award twice into <c>State.Power</c>, which is the half that survives into the save.
+        /// </remarks>
+        [Fact]
+        public void AStoryBothPassesReachIsPaidForOnce()
+        {
+            SimDate due = Start.AddMonths(StoryLifeMonths);
+            SimDate afterTheGap = due.AddMonths(Tuning.Scheduler.CatchUpMaxMonths + 1);
+
+            PoliticalState control = StoryTestFixtures.State(Start);
+            control.LiveStories.Add(WonStory("story-contested", Start));
+            AssertResolved(Run(control, due, catalog: Catalog()));
+
+            int paidOnce = LedgerEntriesFor(control.Power, "story-contested");
+            Assert.True(paidOnce > 0, "A story resolved Success must move the balance, or this asserts nothing.");
+
+            PoliticalState state = StoryTestFixtures.State(Start);
+            Story contested = WonStory("story-contested", Start);
+            contested.ResolveEarlyRequested = true;
+            state.LiveStories.Add(contested);
+
+            Run(state, afterTheGap, catalog: Catalog());
+
+            Assert.Equal(paidOnce, LedgerEntriesFor(state.Power, "story-contested"));
+        }
+
         // ---------------------------------------------------------------- housekeeping
 
         /// <summary>
-        /// The archive is bounded by <c>stories.archiveRetention</c>, trimmed where stories retire.
+        /// <b>Exactly at <c>stories.archiveRetention</c>, nothing is evicted.</b>
         /// </summary>
         /// <remarks>
-        /// <c>PoliticalState.StoryArchive</c> says in its own remarks that it is intended to be
-        /// bounded and that nothing enforces it, because archiving happens where a story is retired —
-        /// which is the cycle. The bound is read from tuning; the pre-loaded archive is one over it so
-        /// that the trim has exactly one thing to do.
+        /// The boundary case, and the reason the three tests below exist separately rather than as one
+        /// "the archive stays bounded" assertion: a trim that stays under the bound proves nothing,
+        /// and an off-by-one that evicts at the bound rather than past it silently loses the player's
+        /// oldest story on a save that never exceeded the limit. Retention is read from tuning and the
+        /// archive is filled to one short of it, so the story retiring on this tick lands exactly on
+        /// the boundary.
         /// </remarks>
         [Fact]
-        public void TheArchiveIsTrimmedToItsRetentionBound()
+        public void AtExactlyTheRetentionBoundNothingIsEvicted()
         {
             int retention = Tuning.Stories.ArchiveRetention;
 
-            PoliticalState state = StoryTestFixtures.State(Start);
-            for (int i = 0; i < retention; i++)
-            {
-                Story old = WonStory("story-old-" + i.ToString("D3"), Start.AddMonths(-24));
-                old.Outcome = StoryOutcome.Success;
-                old.ResolvedMonth = Start.AddMonths(-24 + StoryLifeMonths).TotalMonths;
-                state.StoryArchive.Add(old);
-            }
-
+            PoliticalState state = ArchiveOf(retention - 1);
             state.LiveStories.Add(WonStory("story-due-now", Start));
 
             SimDate due = Start.AddMonths(StoryLifeMonths);
-            Assert.Single(Run(state, due, catalog: Catalog()).ResolvedStories);
+            AssertResolved(Run(state, due, catalog: Catalog()));
 
-            Assert.True(state.StoryArchive.Count <= retention,
-                "The archive is " + state.StoryArchive.Count + " with a retention of " + retention + ".");
+            Assert.Equal(retention, state.StoryArchive.Count);
             Assert.Contains(state.StoryArchive, s => s.Id == "story-due-now");
+            Assert.Contains(state.StoryArchive, s => s.Id == OldestArchivedId);
+        }
+
+        /// <summary>
+        /// One over the bound evicts exactly one, and it is the oldest by the documented sort key.
+        /// </summary>
+        /// <remarks>
+        /// The key is <c>(ResolvedMonth descending, Id ordinal)</c>, so what goes is the entry that
+        /// sorts last — the oldest resolution, and among equals the highest id. The fixture resolves
+        /// each pre-loaded story a month apart precisely so that "oldest" is a fact about the data
+        /// rather than about the order it was appended in.
+        /// </remarks>
+        [Fact]
+        public void OneOverTheRetentionBoundEvictsExactlyTheOldest()
+        {
+            int retention = Tuning.Stories.ArchiveRetention;
+
+            PoliticalState state = ArchiveOf(retention);
+            state.LiveStories.Add(WonStory("story-due-now", Start));
+
+            SimDate due = Start.AddMonths(StoryLifeMonths);
+            AssertResolved(Run(state, due, catalog: Catalog()));
+
+            Assert.Equal(retention, state.StoryArchive.Count);
+            Assert.Contains(state.StoryArchive, s => s.Id == "story-due-now");
+            Assert.DoesNotContain(state.StoryArchive, s => s.Id == OldestArchivedId);
+        }
+
+        /// <summary>
+        /// A retention of zero or less is <b>unbounded</b>, not "keep nothing".
+        /// </summary>
+        /// <remarks>
+        /// Only reachable from a hand-edited tuning file — the schema pins the key as a positive
+        /// integer — which is exactly why it is worth pinning: the two readings of a non-positive
+        /// bound differ by the whole archive, and the destructive one is the one a naive
+        /// <c>while (count &gt; retention) RemoveLast()</c> implements. Nothing may depend on the
+        /// bound for correctness anyway, so keeping everything is the safe reading.
+        /// </remarks>
+        [Fact]
+        public void ARetentionOfZeroKeepsEverything()
+        {
+            EngineTuning unbounded = StoryTestFixtures.Tuned("{\"stories\":{\"archiveRetention\":0}}");
+            Assert.True(unbounded.Stories.ArchiveRetention <= 0,
+                "The overlay did not take, so this test would assert about the shipped bound instead.");
+
+            PoliticalState state = ArchiveOf(4);
+            state.LiveStories.Add(WonStory("story-due-now", Start));
+
+            SimDate due = Start.AddMonths(StoryLifeMonths);
+            AssertResolved(Run(state, due, catalog: Catalog(), tuning: unbounded));
+
+            Assert.Equal(5, state.StoryArchive.Count);
+            Assert.Contains(state.StoryArchive, s => s.Id == OldestArchivedId);
         }
 
         /// <summary>Every list the cycle returns leaves sorted by the key its contract declares.</summary>
@@ -687,6 +821,58 @@ namespace Agora.Core.Tests
                 StoryTestFixtures.MetSlot("minor-01"));
         }
 
+        /// <summary>
+        /// The id of the entry <see cref="ArchiveOf"/> resolves first, and so the one the documented
+        /// sort key <c>(ResolvedMonth descending, Id ordinal)</c> puts last.
+        /// </summary>
+        private const string OldestArchivedId = "story-old-000";
+
+        /// <summary>
+        /// A state whose archive already holds <paramref name="count"/> resolved stories, each a month
+        /// older than the next.
+        /// </summary>
+        /// <remarks>
+        /// The months are spread rather than shared so that "the oldest" is a property of the data and
+        /// not of the order the fixture appended them in — a trim that happened to drop the first
+        /// element would otherwise look correct.
+        /// </remarks>
+        private static PoliticalState ArchiveOf(int count)
+        {
+            PoliticalState state = StoryTestFixtures.State(Start);
+
+            for (int i = 0; i < count; i++)
+            {
+                Story old = WonStory("story-old-" + i.ToString("D3"), Start.AddMonths(-count - 1 + i));
+                old.Outcome = StoryOutcome.Success;
+                old.ResolvedMonth = Start.AddMonths(-count + i).TotalMonths;
+                state.StoryArchive.Add(old);
+            }
+
+            return state;
+        }
+
+        private static int Count(IReadOnlyList<Story> stories, string id)
+        {
+            int found = 0;
+            for (int i = 0; i < stories.Count; i++)
+            {
+                if (string.Equals(stories[i].Id, id, StringComparison.Ordinal)) found++;
+            }
+
+            return found;
+        }
+
+        private static int LedgerEntriesFor(PoliticalPowerState power, string storyId)
+        {
+            int found = 0;
+            for (int i = 0; i < power.Ledger.Count; i++)
+            {
+                if (string.Equals(power.Ledger[i].StoryId, storyId, StringComparison.Ordinal)) found++;
+            }
+
+            return found;
+        }
+
         /// <summary>A single-slot story that scores by running its event's check.</summary>
         private static Story GoalStory(string id, SimDate opened, string eventId)
         {
@@ -695,10 +881,16 @@ namespace Agora.Core.Tests
         }
 
         /// <summary>
-        /// Runs one cycle. The phase is derived from the save start rather than passed, exactly as
-        /// <c>TickPlanner</c> derives it, so no test can quietly claim a month is a draft month when
-        /// the planner would say otherwise.
+        /// Runs one cycle, with the two phase flags taken from <see cref="TickPlanner.Plan"/> rather
+        /// than recomputed here.
         /// </summary>
+        /// <remarks>
+        /// <b>Asked, not restated.</b> An earlier version of this helper wrote the phase arithmetic
+        /// out a second time, as <c>phase == 0</c> and <c>phase == 1</c> — which was correct at the
+        /// shipped cadence of two and wrong at every wider one, and would have gone on agreeing with
+        /// itself while the planner moved underneath it. The planner is the authority on when a cycle
+        /// is due; this file is the authority on what it does when it is.
+        /// </remarks>
         private static StoryCycleResult Run(PoliticalState state, SimDate today,
                                             StoryReadContext? context = null,
                                             IReadOnlyList<CivicEvent>? catalog = null,
@@ -707,7 +899,7 @@ namespace Agora.Core.Tests
                                             EngineTuning? tuning = null)
         {
             EngineTuning t = tuning ?? Tuning;
-            int phase = Start.MonthsUntil(today) % t.Stories.CycleMonths;
+            TickPlan plan = TickPlanner.Plan(Start, today, new AgoraSettings(), null, false, false, t);
 
             state.Date = today;
 
@@ -718,8 +910,8 @@ namespace Agora.Core.Tests
                 Context = context ?? StoryTestFixtures.Context(StoryTestFixtures.City(today)),
                 SaveGuid = StoryTestFixtures.Save,
                 Today = today,
-                IsStoryDraft = draft ?? (phase == 0),
-                IsStoryResolve = resolve ?? (phase == 1),
+                IsStoryDraft = draft ?? plan.IsStoryDraft,
+                IsStoryResolve = resolve ?? plan.IsStoryResolve,
                 IsReplay = replay,
                 GoverningVoteShare = governingVoteShare,
                 Tuning = t

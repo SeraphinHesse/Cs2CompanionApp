@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Core.Events.Scheduler;
 using Agora.Core.Stories;
 using Agora.Core.Tuning;
 using Agora.Mod.Persistence;
@@ -392,14 +393,17 @@ namespace Agora.Core.Tests
                 EventId = "major-01"
             });
 
-            state.PlayerCommands.Add(new PlayerCommand
+            // Through the log's own helper rather than appended by hand: Append is what assigns
+            // Sequence and inserts in sort position, and a fixture that stamped its own would be
+            // round-tripping a log the engine could not have produced.
+            PlayerCommandLog.Append(state.PlayerCommands, new PlayerCommand
             {
                 StoryId = "story-live",
                 EventId = "minor-00",
                 Kind = PlayerCommandKind.DeclareManualOutcome,
+                DeclaredMet = true,
                 FreeText = "We opened the depot early.",
-                DecidedMonth = Start.TotalMonths,
-                Sequence = 0
+                DecidedMonth = Start.TotalMonths
             });
 
             state.LastStoryDraftMonth = Start.TotalMonths;
@@ -439,15 +443,15 @@ namespace Agora.Core.Tests
             StoryTestFixtures.Context(StoryTestFixtures.City(date, happiness: happiness));
 
         /// <summary>
-        /// Runs one cycle, with the phase derived from the save start exactly as <c>TickPlanner</c>
-        /// derives it.
+        /// Runs one cycle, with the two phase flags taken from <see cref="TickPlanner.Plan"/> rather
+        /// than recomputed here — the planner is the authority on when a cycle is due.
         /// </summary>
         private static StoryCycleResult Run(PoliticalState state, SimDate today,
                                             StoryReadContext? context = null,
                                             IReadOnlyList<CivicEvent>? catalog = null,
                                             bool replay = false, double governingVoteShare = 0.0)
         {
-            int phase = Start.MonthsUntil(today) % Tuning.Stories.CycleMonths;
+            TickPlan plan = TickPlanner.Plan(Start, today, new AgoraSettings(), null, false, false, Tuning);
 
             state.Date = today;
 
@@ -458,8 +462,8 @@ namespace Agora.Core.Tests
                 Context = context ?? StoryTestFixtures.Context(StoryTestFixtures.City(today)),
                 SaveGuid = StoryTestFixtures.Save,
                 Today = today,
-                IsStoryDraft = phase == 0,
-                IsStoryResolve = phase == 1,
+                IsStoryDraft = plan.IsStoryDraft,
+                IsStoryResolve = plan.IsStoryResolve,
                 IsReplay = replay,
                 GoverningVoteShare = governingVoteShare,
                 Tuning = Tuning
