@@ -79,6 +79,41 @@ namespace Agora.Core.Stories.Catalog
             MetricRegistry.MovedAwayUnhappy
         });
 
+        /// <summary>
+        /// Metrics whose sensor cannot reach 1.0, and the value they actually top out at.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Both are means over channels the game does not all expose, so the unmeasured ones are
+        /// written as literal zeros and drag the mean down permanently:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><c>serviceCoverage</c> — the mean of <b>nine</b> channels
+        /// (<c>CitySnapshot.Mean()</c>), of which garbage, transit, water and electricity have no
+        /// coverage concept in the game at all and are hard-zeroed
+        /// (<c>AgoraServiceCoverageSensorSystem</c>). Five of nine measured, so the ceiling is
+        /// 5/9 ≈ <b>0.5556</b>. A threshold of 0.45 is therefore 81% of the attainable maximum, not
+        /// "a bit over half".</item>
+        /// <item><c>pollution</c> — the mean of four, with water not measurable from the CPU
+        /// (<c>AgoraEnvironmentSensorSystem</c>). Ceiling <b>0.75</b>. Here the bias is benign for a
+        /// "too high" trigger and hostile for a "get it below" check, which is the asymmetry to
+        /// watch.</item>
+        /// </list>
+        /// <para>
+        /// <b>Only the provable half is machine-checked</b> — a threshold strictly above the ceiling
+        /// can never be met, and that is a warning. A threshold merely <i>close</i> to the ceiling is
+        /// demanding rather than impossible, and this loader has no basis to say how demanding is too
+        /// demanding. The numbers are published here so an author and a reviewer can make that
+        /// judgement against something real instead of assuming a 0–1 range.
+        /// </para>
+        /// </remarks>
+        public static double? AttainableMaximum(string metricId)
+        {
+            if (string.CompareOrdinal(metricId, MetricRegistry.ServiceCoverageMean) == 0) return 5.0 / 9.0;
+            if (string.CompareOrdinal(metricId, MetricRegistry.PollutionMean) == 0) return 0.75;
+            return null;
+        }
+
         private static readonly string[] RootKeys = { "schemaVersion", "featureIds", "events" };
 
         private static readonly string[] EventKeys =
@@ -393,6 +428,8 @@ namespace Agora.Core.Stories.Catalog
             // about the RELATIONSHIP between the two, and it is the shape that produces a story which
             // opens on the city's worst district and is scored against its best.
             WarnIfCheckIsNotBoundToTrigger(trigger, check, path, id, source, warnings);
+            WarnIfCheckLeavesATrapBand(trigger, check, path, id, source, warnings);
+            WarnIfCheckOutrunsStoryLife(check, tuning, path, id, source, warnings);
 
             // --- effect lists ----------------------------------------------------------------
             List<string> activeEffects = ReadEffectList(node, "activeEffects", path, id, source, tuning,
@@ -685,6 +722,27 @@ namespace Agora.Core.Stories.Catalog
                 else
                 {
                     spec.Threshold = thresholdNode.Number;
+
+                    // Checked HERE rather than in ValidateMetricSpec, which runs before this block
+                    // and would compare against a threshold still sitting at its default of zero.
+                    // (It did, briefly, and the test caught it.)
+                    //
+                    // A threshold above what the sensor can ever report says nothing about the city:
+                    // a gte can never be met, a lt is met always. Only a plain reading is checked —
+                    // a delta is a change, and a change may legitimately exceed the level's ceiling.
+                    if (kind == TriggerKind.Metric)
+                    {
+                        double? ceiling = AttainableMaximum(metricId);
+                        if (ceiling.HasValue && spec.Threshold > ceiling.Value)
+                        {
+                            warnings.Add(Warn(CatalogIssueCode.ThresholdAboveAttainableMaximum,
+                                source.Name, id, path + ".threshold",
+                                Describe(spec.Threshold) + " is above the highest value '" + metricId +
+                                "' can report (" + Describe(ceiling.Value) + "): its sensor " +
+                                "hard-zeroes the channels the game does not expose, so the mean " +
+                                "cannot reach 1.0"));
+                        }
+                    }
                 }
             }
 
@@ -754,6 +812,89 @@ namespace Agora.Core.Stories.Catalog
                 "this check reads '" + spec.MetricId + "' at anyDistrict scope, the same metric the " +
                 "trigger reads, so it is satisfied by whichever district already clears it rather " +
                 "than by the one the story is about; use allDistricts, or a city-scope relative check"));
+        }
+
+        /// <summary>
+        /// Warns when a district check's threshold is tighter than its trigger's, leaving a band of
+        /// districts that never contributed to the trigger but can still fail the check.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Only a genuine numeric gap is reported, so an exact complement passes whatever the
+        /// strictness of the two comparisons — <c>&gt;= T</c> against <c>&lt; T</c> and <c>&gt; T</c>
+        /// against <c>&lt;= T</c> are both silent. The rule cares about the band, not the boundary.
+        /// </para>
+        /// <para>
+        /// Restricted to a district trigger, a district check, the same metric, and both specs being
+        /// plain readings. A <c>delta</c> pair would need the two windows normalised before the
+        /// thresholds could be compared at all, and comparing them unnormalised would produce
+        /// confident nonsense — that case is left to review.
+        /// </para>
+        /// </remarks>
+        private static void WarnIfCheckLeavesATrapBand(TriggerSpec trigger, CheckSpec check,
+                                                       string path, string id,
+                                                       CivicEventCatalogSource source,
+                                                       List<CatalogIssue> warnings)
+        {
+            if (trigger == null || check == null || check.Spec == null) return;
+
+            TriggerSpec spec = check.Spec;
+            if (trigger.Kind != TriggerKind.Metric || spec.Kind != TriggerKind.Metric) return;
+            if (check.RelativeToBaseline) return; // the bar moves with the city; no fixed band exists
+            if (trigger.Scope == TriggerScope.City || spec.Scope == TriggerScope.City) return;
+            if (string.CompareOrdinal(trigger.MetricId, spec.MetricId) != 0) return;
+            if (string.IsNullOrEmpty(spec.MetricId)) return;
+
+            bool triggerOnHigh = trigger.Comparison == Comparison.GreaterThan ||
+                                 trigger.Comparison == Comparison.GreaterThanOrEqual;
+            bool checkWantsLow = spec.Comparison == Comparison.LessThan ||
+                                 spec.Comparison == Comparison.LessThanOrEqual;
+
+            // The two must oppose for this to be a "fix it" check at all; anything else is a shape
+            // this rule has no opinion about.
+            if (triggerOnHigh != checkWantsLow) return;
+
+            bool hasBand = triggerOnHigh
+                ? spec.Threshold < trigger.Threshold   // districts in [check, trigger) never triggered
+                : spec.Threshold > trigger.Threshold;  // mirrored, for a low-is-bad trigger
+
+            if (!hasBand) return;
+
+            warnings.Add(Warn(CatalogIssueCode.CheckThresholdLeavesTrapBand, source.Name, id,
+                path + ".check.spec.threshold",
+                "the check demands " + Describe(spec.Threshold) + " while the trigger fires at " +
+                Describe(trigger.Threshold) + ", so a district between the two never contributed to " +
+                "the trigger, is invisible in the description, and fails the story anyway; use the " +
+                "trigger's own threshold unless the wider ask is deliberate"));
+        }
+
+        /// <summary>
+        /// Warns when a <c>delta</c> check reads back further than the story has existed.
+        /// </summary>
+        /// <remarks>
+        /// <b><c>cycleMonths</c> is the cadence, not the story's life</b>, and the two differ by one:
+        /// <c>StoryAssembler.NewStory</c> opens at M and resolves at M + <c>(cycleMonths - 1)</c>. A
+        /// window wider than that scores the player on months that predate their decision.
+        /// </remarks>
+        private static void WarnIfCheckOutrunsStoryLife(CheckSpec check, EngineTuning tuning,
+                                                        string path, string id,
+                                                        CivicEventCatalogSource source,
+                                                        List<CatalogIssue> warnings)
+        {
+            if (check == null || check.Spec == null) return;
+            if (check.Spec.Kind != TriggerKind.Delta) return;
+            if (tuning == null || tuning.Stories == null) return;
+
+            int life = tuning.Stories.CycleMonths - 1;
+            if (life < 1) life = 1;
+            if (check.Spec.WindowMonths <= life) return;
+
+            warnings.Add(Warn(CatalogIssueCode.CheckWindowOutrunsStoryLife, source.Name, id,
+                path + ".check.spec.windowMonths",
+                "reads back " + check.Spec.WindowMonths.ToString(CultureInfo.InvariantCulture) +
+                " months, but a story lives " + life.ToString(CultureInfo.InvariantCulture) +
+                " (stories.cycleMonths - 1), so part of the verdict was decided before the player " +
+                "saw the card"));
         }
 
         /// <summary>
