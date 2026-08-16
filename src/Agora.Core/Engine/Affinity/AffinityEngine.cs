@@ -4,6 +4,7 @@ using System.Linq;
 using Agora.Core.Contracts;
 using Agora.Core.Determinism;
 using Agora.Core.Engine.Parties;
+using Agora.Core.Stories;
 using Agora.Core.Tuning;
 
 namespace Agora.Core.Engine.Affinity
@@ -279,6 +280,7 @@ namespace Agora.Core.Engine.Affinity
             double incumbency = IncumbencyTerm(bloc, party, ctx);
             double mandate = MandateTerm(bloc, party, ctx);
             double eventTerm = EventTerm(bloc, party, ctx);
+            double storyTerm = StoryTerm(bloc, party, ctx);
             double loyalty = LoyaltyTerm(bloc, party, ctx);
             double noise = NoiseTerm(bloc, party, ctx);
 
@@ -291,10 +293,14 @@ namespace Agora.Core.Engine.Affinity
                 IncumbencyComponent = incumbency,
                 MandateComponent = mandate,
                 EventComponent = eventTerm,
+                StoryComponent = storyTerm,
                 LoyaltyComponent = loyalty,
                 NoiseComponent = noise,
-                // Fixed summation order — see the class remarks.
-                Affinity = t.BaseAffinity + issue + incumbency + mandate + eventTerm + loyalty + noise
+                // Fixed summation order — see the class remarks. The story term sits beside the event
+                // term because that is where it belongs conceptually, and moving either would change
+                // every float in every existing save's next tick for no reason.
+                Affinity = t.BaseAffinity + issue + incumbency + mandate + eventTerm + storyTerm +
+                           loyalty + noise
             };
         }
 
@@ -399,6 +405,85 @@ namespace Agora.Core.Engine.Affinity
             }
 
             return t.EventModifierWeight * Clamp(raw, -1.0, 1.0);
+        }
+
+        /// <summary>
+        /// How the city's live and just-resolved stories push blocs toward or away from a platform.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two quantities, summed into one term.</b> <i>Salience</i> is the issue-weighted
+        /// correlation between the story's pressure and the party's platform — the same
+        /// <see cref="Alignment"/> the event term uses, and like it, blind to who governs.
+        /// <i>Credit</i> is the other half of the wave-3 ruling: it lands on the governing parties
+        /// only, positively when the city's stories were delivered on and negatively when they were
+        /// not. An <c>IssuePosition</c> cannot express the second, which is why
+        /// <c>StoryPressureContribution</c> carries it as its own number rather than as a fourth
+        /// pressure axis.
+        /// </para>
+        /// <para>
+        /// <b>Credit is not spread over the opposition, and that is deliberate.</b> Affinity is scored
+        /// per (bloc, party) and then normalised into shares, so raising the government's affinity
+        /// already lowers everyone else's. Paying an explicit negative to each non-governing party
+        /// would count the same movement twice and would make the swing depend on how many parties
+        /// happen to exist — a field of eight would punish a failed government four times harder than
+        /// a field of two, for no reason a player could see.
+        /// </para>
+        /// <para>
+        /// <b>Its own budget and its own clamp.</b> Summed alignment is bounded to <c>[-1, +1]</c>
+        /// before <c>affinity.storyPressureWeight</c> scales it, exactly as
+        /// <see cref="EventTerm"/> does — so the weight is a hard bound on the total story swing
+        /// however many stories are open. It is a separate clamp from the event term's because
+        /// sharing one would let six story events a cycle saturate it permanently and stop it
+        /// discriminating between a flood and a bus-fare rise; <c>PoliticalState.LiveStories</c>
+        /// records that arithmetic.
+        /// </para>
+        /// <para>
+        /// Decay and severity scaling are the event term's, unchanged: a story's
+        /// <c>OpenedDate</c> is its <c>FiredDate</c>, and both read
+        /// <c>affinity.eventModifierDecayHalfLifeMonths</c>. One half-life for "how long the city
+        /// stays angry" rather than two dials that would need to be kept agreeing by hand.
+        /// </para>
+        /// </remarks>
+        private static double StoryTerm(Bloc bloc, Party party, Context ctx)
+        {
+            if (ctx.Stories.Length == 0) return 0.0;
+
+            AffinityTuning t = ctx.Tuning;
+            bool governing = ctx.IsGoverning(party);
+            double raw = 0.0;
+
+            for (int i = 0; i < ctx.Stories.Length; i++)
+            {
+                StoryPressureContribution s = ctx.Stories[i];
+
+                double scale = SeverityScale(s.Severity) * StoryDecay(s, ctx);
+                if (scale == 0.0) continue;
+
+                double salience = Alignment(s.Pressure, party.Platform, bloc.Weights);
+
+                // Credit reaches the governing parties and nobody else — see the remarks.
+                double credit = governing ? Clamp(s.GovernmentCredit, -1.0, 1.0) : 0.0;
+
+                raw += (salience + credit) * scale;
+            }
+
+            return t.StoryPressureWeight * Clamp(raw, -1.0, 1.0);
+        }
+
+        /// <summary>
+        /// A story's decay, anchored on the month it opened. The same half-life as
+        /// <see cref="EventDecay"/>, and the same reading of a non-positive one as "never linger".
+        /// </summary>
+        private static double StoryDecay(StoryPressureContribution s, Context ctx)
+        {
+            int months = s.OpenedDate.MonthsUntil(ctx.Date);
+            if (months <= 0) return 1.0;
+
+            int halfLife = ctx.Tuning.EventModifierDecayHalfLifeMonths;
+            if (halfLife <= 0) return 0.0;
+
+            return Math.Pow(0.5, months / (double)halfLife);
         }
 
         private static double EventDecay(TimelineEvent e, Context ctx)
@@ -651,6 +736,7 @@ namespace Agora.Core.Engine.Affinity
             public readonly AffinityTuning Tuning;
             public readonly Mandate[] Mandates;
             public readonly TimelineEvent[] Events;
+            public readonly StoryPressureContribution[] Stories;
             public readonly SimDate? LastElectionDate;
             public readonly double NationalDiscontent;
             public readonly bool HasNationalDiscontent;
@@ -659,7 +745,8 @@ namespace Agora.Core.Engine.Affinity
             private readonly string[] _governingPartyIds;
 
             private Context(Guid saveGuid, SimDate date, AffinityTuning tuning, Mandate[] mandates,
-                            TimelineEvent[] events, string[] governingPartyIds, SimDate? lastElectionDate,
+                            TimelineEvent[] events, StoryPressureContribution[] stories,
+                            string[] governingPartyIds, SimDate? lastElectionDate,
                             double nationalDiscontent, bool hasNationalDiscontent, FringeCeilings ceilings)
             {
                 Ceilings = ceilings;
@@ -668,6 +755,7 @@ namespace Agora.Core.Engine.Affinity
                 Tuning = tuning;
                 Mandates = mandates;
                 Events = events;
+                Stories = stories;
                 _governingPartyIds = governingPartyIds;
                 LastElectionDate = lastElectionDate;
                 NationalDiscontent = nationalDiscontent;
@@ -688,6 +776,14 @@ namespace Agora.Core.Engine.Affinity
                     .OrderBy(e => e.Id, StringComparer.Ordinal)
                     .ToArray();
 
+                // Sorted here rather than trusted from the producer, exactly as the two lists above
+                // are: the sum below runs over this array, so its order reaches the output.
+                StoryPressureContribution[] stories =
+                    (r.StoryPressures ?? new List<StoryPressureContribution>())
+                    .Where(s => s != null)
+                    .OrderBy(s => s.StoryId, StringComparer.Ordinal)
+                    .ToArray();
+
                 string[] governing = (r.Government?.MemberPartyIds ?? new List<string>())
                     .Where(id => !string.IsNullOrEmpty(id))
                     .Distinct(StringComparer.Ordinal)
@@ -697,8 +793,8 @@ namespace Agora.Core.Engine.Affinity
                 bool hasNational = r.Indices != null;
                 double national = hasNational ? Clamp(r.Indices!.DiscontentIndex, 0.0, 1.0) : 0.0;
 
-                return new Context(r.SaveGuid, date, tuning.Affinity, mandates, events, governing,
-                                   r.LastElectionDate, national, hasNational,
+                return new Context(r.SaveGuid, date, tuning.Affinity, mandates, events, stories,
+                                   governing, r.LastElectionDate, national, hasNational,
                                    r.FringeCeilings ?? FringeCeilings.None);
             }
 

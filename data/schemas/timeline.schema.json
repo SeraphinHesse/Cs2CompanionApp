@@ -54,12 +54,35 @@
             "$comment": "A prompt input, not published prose. Factual and terse — the LLM writes the article."
           },
 
+          "issuePressure": {
+            "type": "object",
+            "additionalProperties": false,
+            "$comment": "Which issues this event pushes the city toward, per axis, in [-1, +1]. An unstated issue is simply not pressed. Optional and additive: TimelineCatalogLoader.ReadIssuePressure has read this key since it was written, and an event without it carries IssuePosition.Centre — which is why adding it here does NOT bump schemaVersion. SupportedSchemaVersion is a hard equality, so a bump would be a rejection rather than a migration, and it would break the one direction that already works (an old build reading a new file). The wave-3 precedent is engine_tuning, which bumped because a section gained a REQUIRED property. Direction is a claim about the argument, never about a party: AffinityEngine dot-products this against each party's platform and has no idea who governs.",
+            "properties": {
+              "services": { "$ref": "#/$defs/pressureAxis" },
+              "costOfLiving": { "$ref": "#/$defs/pressureAxis" },
+              "environment": { "$ref": "#/$defs/pressureAxis" },
+              "transit": { "$ref": "#/$defs/pressureAxis" },
+              "growth": { "$ref": "#/$defs/pressureAxis" },
+              "heritageOrder": { "$ref": "#/$defs/pressureAxis" }
+            }
+          },
+
           "tags": {
             "type": "array",
             "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }
           }
         }
       }
+    }
+  },
+
+  "$defs": {
+    "pressureAxis": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1,
+      "$comment": "One issue axis of an issuePressure. TimelineCatalogLoader rejects anything outside [-1, +1] as IssuePressureOutOfRange, so the bound is enforced twice deliberately: the schema catches it at authoring time with a path, the loader catches a file the schema suite never saw."
     }
   }
 }

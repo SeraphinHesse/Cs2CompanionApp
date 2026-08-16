@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
 using Agora.Core.Events.Scheduler;
+using Agora.Core.Stories;
 using Agora.Core.Tuning;
 
 namespace Agora.Core.Engine
@@ -21,6 +22,7 @@ namespace Agora.Core.Engine
     {
         private static readonly CitySnapshot[] NoSnapshots = new CitySnapshot[0];
         private static readonly TimelineEvent[] NoEvents = new TimelineEvent[0];
+        private static readonly CivicEvent[] NoCivicEvents = new CivicEvent[0];
 
         /// <summary>Agora's save identity (§5). The first argument to every seed derivation.</summary>
         public Guid SaveGuid { get; set; }
@@ -58,6 +60,32 @@ namespace Agora.Core.Engine
 
         /// <summary>Archetype pool for procedural events, or null for the built-in twelve.</summary>
         public IReadOnlyList<ProceduralArchetype>? Archetypes { get; set; }
+
+        /// <summary>
+        /// The loaded, validated civic-event catalog. Empty means no story can ever draft, which is a
+        /// degraded save rather than an error — exactly as an empty <see cref="Catalog"/> is.
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="Catalog"/> and not merged into it: a <see cref="TimelineEvent"/>
+        /// fires on a date and a <see cref="Agora.Core.Stories.CivicEvent"/> triggers on a reading,
+        /// and <c>TimelineEventAdapter</c> is the one sanctioned bridge between them. Handing the
+        /// scheduler civic events, or the story assembler timeline ones, would let each subsystem
+        /// silently answer the other's question.
+        /// </remarks>
+        public IReadOnlyList<CivicEvent> CivicCatalog { get; set; } = NoCivicEvents;
+
+        /// <summary>
+        /// True when this month is being replayed by load reconciliation or fast-forward rather than
+        /// lived through.
+        /// </summary>
+        /// <remarks>
+        /// <b>The story cycle is suspended entirely while this is set</b>, and the decision is taken
+        /// here rather than discovered later — see
+        /// <see cref="Agora.Core.Stories.StoryCycleInput.IsReplay"/> for the two hazards behind it.
+        /// Nothing else in the tick reads it: every other subsystem was designed to be replayed and
+        /// documents itself as scoring the replayed month against the present city.
+        /// </remarks>
+        public bool IsReplay { get; set; }
 
         /// <summary>True on the tick the player pressed the manual flavor button.</summary>
         public bool ManualFlavorWakeRequested { get; set; }
@@ -122,6 +150,33 @@ namespace Agora.Core.Engine
 
         /// <summary>Non-fatal problems, in emission order. Log them; never throw on them.</summary>
         public List<string> Warnings { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Stories opened on this tick, sorted by <c>Id</c> ordinal. Empty on every month that is not
+        /// a draft phase — which is most of them, since the cadence is two months.
+        /// </summary>
+        /// <remarks>
+        /// A report of what <see cref="State"/> already holds, not a second copy of it. The caller
+        /// persists the state; these exist so prose, alerts and the log can name what is new without
+        /// diffing two story lists.
+        /// </remarks>
+        public List<Story> DraftedStories { get; set; } = new List<Story>();
+
+        /// <summary>
+        /// Stories that reached a verdict on this tick, sorted by <c>Id</c> ordinal — including any
+        /// the stranded sweep reaped as <see cref="StoryOutcome.Abandoned"/>.
+        /// </summary>
+        public List<Story> ResolvedStories { get; set; } = new List<Story>();
+
+        /// <summary>
+        /// Net signed political-power movement this tick: accrual plus awards minus penalties.
+        /// </summary>
+        /// <remarks>
+        /// A summary for the log and the dashboard. <c>State.Power</c> is authoritative and its
+        /// ledger is the itemisation; this is deliberately one number, so nothing downstream is
+        /// tempted to reconstruct a balance by summing deltas across ticks it may not have seen.
+        /// </remarks>
+        public int PowerDelta { get; set; }
     }
 
     /// <summary>

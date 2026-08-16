@@ -78,6 +78,23 @@ namespace Agora.Core.Tuning
             }
         }
 
+        /// <summary>
+        /// The story term's weight at one news-influence level. The twin of
+        /// <see cref="EventModifierWeightFor"/>, and it exists for the same reason: stories are the
+        /// news surface the setting names, so a Muted save must not still swing on story verdicts.
+        /// </summary>
+        public static double StoryPressureWeightFor(EngineTuning tuning, NewsInfluence level)
+        {
+            if (tuning == null) throw new ArgumentNullException(nameof(tuning));
+
+            switch (level)
+            {
+                case NewsInfluence.Muted: return tuning.Affinity.StoryPressureWeightMuted;
+                case NewsInfluence.Loud: return tuning.Affinity.StoryPressureWeightLoud;
+                default: return tuning.Affinity.StoryPressureWeight;
+            }
+        }
+
         public static double AnchoredSpreadSigmaFor(EngineTuning tuning, BrandDiscipline level)
         {
             if (tuning == null) throw new ArgumentNullException(nameof(tuning));
@@ -100,6 +117,11 @@ namespace Agora.Core.Tuning
         {
             if (level == NewsInfluence.Default) return;
             tuning.Affinity.EventModifierWeight = EventModifierWeightFor(tuning, level);
+
+            // Both, always. One without the other is the setting half-applied: the player turns the
+            // news down, the timeline stops moving votes, and the story verdicts keep swinging them
+            // at full strength — which reads as the setting not working rather than as a design.
+            tuning.Affinity.StoryPressureWeight = StoryPressureWeightFor(tuning, level);
         }
 
         private static void ApplyBrandDiscipline(EngineTuning tuning, BrandDiscipline level)

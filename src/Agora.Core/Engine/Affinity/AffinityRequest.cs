@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Agora.Core.Contracts;
+using Agora.Core.Stories;
 
 namespace Agora.Core.Engine.Affinity
 {
@@ -53,6 +54,26 @@ namespace Agora.Core.Engine.Affinity
         /// The sitting government, or null between elections. Its members carry the incumbency term.
         /// </summary>
         public Coalition? Government { get; set; }
+
+        /// <summary>
+        /// What the open and just-resolved stories are doing to the city, sorted by <c>StoryId</c>
+        /// ordinal. Empty is the ordinary case on most months and simply zeroes the story term.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Derived every tick by <c>Agora.Core.Stories.StoryPressure</c> rather than read off
+        /// <see cref="PoliticalState.LiveStories"/> here, and the indirection is the point: the
+        /// contribution carries a <i>credit</i> figure that only exists once a slot's outcome and the
+        /// tuning weights have been applied, and this file has no business knowing either.
+        /// </para>
+        /// <para>
+        /// <b>Story events are deliberately not in <see cref="ActiveEvents"/>.</b> Two stories of
+        /// three events would sit at <c>catalog.maxConcurrentEvents</c> and start refusing to fire
+        /// timeline events; see <see cref="PoliticalState.LiveStories"/> for the full reasoning.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<StoryPressureContribution> StoryPressures { get; set; } =
+            new List<StoryPressureContribution>();
 
         /// <summary>
         /// City-wide derived indices. Only <see cref="DerivedIndices.DiscontentIndex"/> is read, as

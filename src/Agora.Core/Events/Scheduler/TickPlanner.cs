@@ -47,6 +47,39 @@ namespace Agora.Core.Events.Scheduler
         /// </remarks>
         public bool IsPollTick { get; }
 
+        /// <summary>
+        /// Draw this cycle's stories (<c>stories.cycleMonths</c> phase 0).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A phase of the same elapsed-months arithmetic as every other cadence in this file, anchored
+        /// on the save's start date — <b>no new tick, no new clock, and nothing added to
+        /// <c>SeedStreams</c>' inputs</b>. The design document's "halfway through the month" rule is
+        /// not buildable: CS2 ships <c>TimeSettingsData.m_DaysPerYear = 12</c>, so one in-game day is
+        /// one calendar month and <c>SimDate.Day</c> is a literal <c>1</c>. See "Why not half a month"
+        /// in <c>docs/plans/0004-event-system-rework.md</c>.
+        /// </para>
+        /// <para>
+        /// Gated on <see cref="IsEngineTick"/> like every other cadence: a story drawn on a month the
+        /// engine did not advance would be scored against readings nothing had recomputed.
+        /// </para>
+        /// </remarks>
+        public bool IsStoryDraft { get; }
+
+        /// <summary>
+        /// Score the stories drawn last cycle (<c>stories.cycleMonths</c> phase 1).
+        /// </summary>
+        /// <remarks>
+        /// <b>Phase 1, not phase <c>cycleMonths - 1</c>, and the two are the same number only because
+        /// the cadence ships at 2.</b> A story's life is fixed at one month by
+        /// <c>StoryAssembler.NewStory</c> — it drafts on M and is due on M+1 whatever the cadence is —
+        /// so the verdict falls on the month after the draw and the pool then rests until the next
+        /// draw. Reading this as "the month before the next draft" would stretch the window a player
+        /// is scored over to match the cadence, which is the wave-3 defect that cost roughly forty
+        /// re-derived thresholds.
+        /// </remarks>
+        public bool IsStoryResolve { get; }
+
         /// <summary>Enough metric history has accumulated to schedule an election (<c>warmupMonths</c>).</summary>
         public bool IsWarmupComplete { get; }
 
@@ -62,6 +95,7 @@ namespace Agora.Core.Events.Scheduler
 
         internal TickPlan(SimDate date, bool isEngineTick, bool isEventScan, bool isSnapshot,
                           bool isLifecycle, bool isIndices, bool isMandateMonitor, bool isPollTick,
+                          bool isStoryDraft, bool isStoryResolve,
                           bool isWarmupComplete, bool isCampaignSeason, LlmWakeCadence llmWake)
         {
             Date = date;
@@ -72,12 +106,22 @@ namespace Agora.Core.Events.Scheduler
             IsIndices = isIndices;
             IsMandateMonitor = isMandateMonitor;
             IsPollTick = isPollTick;
+            IsStoryDraft = isStoryDraft;
+            IsStoryResolve = isStoryResolve;
             IsWarmupComplete = isWarmupComplete;
             IsCampaignSeason = isCampaignSeason;
             LlmWake = llmWake;
         }
 
-        /// <summary>True when any subsystem is due. Cheap early-out for the caller.</summary>
+        /// <summary>
+        /// True when any subsystem is due. Cheap early-out for the caller.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="IsStoryDraft"/> and <see cref="IsStoryResolve"/> are not listed because both
+        /// are already gated on <see cref="IsEngineTick"/>, which is. Naming them as well would imply
+        /// they can be true independently, and the day one of them can, this expression is where that
+        /// has to change.
+        /// </remarks>
         public bool HasWork =>
             IsEngineTick || IsEventScan || IsSnapshot || IsLifecycle || IsIndices ||
             IsMandateMonitor || IsPollTick || LlmWake != LlmWakeCadence.None;
@@ -128,6 +172,22 @@ namespace Agora.Core.Events.Scheduler
             // engine did not advance would report shares nothing had recomputed.
             bool pollTick = engineTick && OnInterval(elapsed, s.PollTickIntervalMonths);
 
+            // The story cycle. Its cadence lives in the `stories` section rather than `scheduler`,
+            // because it is the story system's own dial and the two content lanes that read it look
+            // there — but the phase arithmetic is identical to every cadence above.
+            //
+            // Floored at 2, and the floor is not defensive tidiness: at a cadence of 1 every month is
+            // phase 0, so nothing would ever land on the resolve phase and every story drafted would
+            // sit pending until the stranded sweep reaped it as Abandoned. A hand-edited tuning file
+            // that reaches 1 gets the shipped cadence rather than a story system that silently never
+            // scores anything.
+            int cycle = tuning.Stories.CycleMonths;
+            if (cycle < 2) cycle = 2;
+
+            int cyclePhase = elapsed >= 0 ? elapsed % cycle : -1;
+            bool storyDraft = engineTick && cyclePhase == 0;
+            bool storyResolve = engineTick && cyclePhase == 1;
+
             bool warmupComplete = elapsed >= (s.WarmupMonths < 0 ? 0 : s.WarmupMonths);
 
             bool campaign = false;
@@ -157,7 +217,7 @@ namespace Agora.Core.Events.Scheduler
             }
 
             return new TickPlan(date, engineTick, eventScan, snapshot, lifecycle, indices, mandates,
-                                pollTick, warmupComplete, campaign, wake);
+                                pollTick, storyDraft, storyResolve, warmupComplete, campaign, wake);
         }
 
         /// <summary>

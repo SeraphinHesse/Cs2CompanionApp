@@ -56,6 +56,18 @@ namespace Agora.Core.Stories.Catalog
             _featureIds = new ReadOnlyCollection<string>(features);
         }
 
+        /// <summary>
+        /// A catalog with nothing in it. What a save gets when the data files are missing or every
+        /// document was rejected.
+        /// </summary>
+        /// <remarks>
+        /// <b>A degraded save, not a broken one</b> — the same contract <c>TimelineCatalog.Empty</c>
+        /// carries. No story can draft against it, which the story cycle reports once rather than
+        /// once per cycle forever; refusing to load a city over a data file would be far worse.
+        /// </remarks>
+        public static readonly CivicEventCatalog Empty =
+            new CivicEventCatalog(new List<CivicEvent>(), new List<string>());
+
         /// <summary>Every accepted event, sorted by id ordinal ascending.</summary>
         public IReadOnlyList<CivicEvent> Events
         {
