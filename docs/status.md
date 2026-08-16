@@ -78,7 +78,8 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | **2** | Story engine core — the declarative trigger grammar, seeded drafting, the 2-of-3 resolution and the political-power currency. Pure `Agora.Core`. State v6, settings v4, `engine_tuning` v6. | ✅ **code complete**, five lanes reviewed and merged, PR open into `EventSystemRefresh` · **no new manual gates** — all of it is covered by the suite · 1469 → **1703 tests** |
 | **3** | Catalog and content — 58 authored civic events, a validating catalog loader, and the timeline adapter. Pure content plus `Agora.Core`. `engine_tuning` v7. | ✅ **code complete**, five lanes reviewed and merged, [PR #6](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/6) open into `EventSystemRefresh` · **no new manual gates of its own** · 1703 → **1978 tests** |
 | **4** | Tick wiring, effects and persistence — the cycle runs, effects dispatch, power moves, and stories move votes. `engine_tuning` v8. | ✅ **code complete**, eight lanes reviewed and merged, [PR #7](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/7) open into `EventSystemRefresh` · **fifteen manual gates outstanding, none walked** · 1978 → **2109 tests** |
-| **5–7** | Prose · UI · retirement | not started |
+| **5** | Prose — both writers now produce a headline and an article for every story. The canned pool transcribes from the civic catalog and is the everyday voice; Claude is woken on the story-draft month and its prose is **added beside** the pool's, never over it. `politics_flavor` v3, `engine_tuning` v9, **settings v5 and state v7** — the first real sidecar migration since wave 1. | ✅ **code complete**, four lanes reviewed and merged, PR open into `EventSystemRefresh` · **seven manual gates outstanding, none walked** · 2109 → **2176 tests** |
+| **6–7** | UI · retirement | not started |
 
 ### Wave 3 — the engine now has something to read, and still nothing runs it
 
@@ -240,13 +241,14 @@ Every one was found by a reviewer probing arithmetic. **None was found by a test
 
 ### Wave 5's manual gates — the wake, the migration and the write-back
 
-Wave 5 opens six. Unlike wave 4's, most of wave 5 **is** covered by tests — `FlavorPromptBuilder`,
+Wave 5 opens seven. Unlike wave 4's, most of wave 5 **is** covered by tests — `FlavorPromptBuilder`,
 `FlavorValidator`, `StaticPoolProvider`, `FlavorCacheMigration` and `StoryProseLedger` are all
 `<Compile Link>`-ed into `Agora.Core.Tests`, and the suite went 2109 → 2175. These six are what is
 left over: the runtime wiring in `AgoraRuntime.cs`, which compiles into no test, and the two things
 only a real save can show. **No coverage was manufactured for any of them.**
 
-Gates 1 and 2 guard an owner decision; gate 3 guards the migration that reaches every existing save.
+Gates 1 and 2 guard an owner decision; gate 3 guards the migration that reaches every existing save;
+gate 7 covers the one seam no test in this suite can reach.
 
 1. **The story wake fires, and only when it should.** With `llmWakeOnStoryDraft` true and a CLI
    installed, confirm `Agora flavor: StoryDraft wake requested at <date>` appears on a **draft**
@@ -278,10 +280,21 @@ Gates 1 and 2 guard an owner decision; gate 3 guards the migration that reaches 
    counts **and** a Warn line names the dropped entries. Before this wave the load returned a
    document, logged "restored N entries" at Debug, and was indistinguishable from a clean one.
 
-**Not gated, and recorded instead:** the `IsMajor` and slot-order contract is asserted only against
-lane 5d's own fixture, never against what `AgoraRuntime.BuildStoryBrief` actually produces. If the
-runtime ever sorted slots differently the golden test would keep passing. Closing it properly needs
-`BuildStoryBrief` to be reachable from the suite, which is a Core/Mod split question, not a test one.
+7. **Story brief fidelity (`AgoraRuntime.BuildStoryBrief`).** Load a save and open a story card for a
+   three-slot story whose **major** event's id sorts **last** of the three slot event ids. Confirm
+   (a) the headline is the major event's `Name` exactly as authored in the civic catalog — not a
+   minor's, not an event id; (b) the article names all three events in the order **major first, then
+   the two minors ascending by event id ordinal**, each name followed by that event's `Description`;
+   (c) after the story resolves, the card appears under resolutions with a closing lead-in, and each
+   `met` / `not met` slot shows its authored `SuccessText` / `FailText` rather than its description.
+   **Fails if** the headline names a minor event, any slot is missing from the article, the order
+   differs from major-then-ascending-id, or any slot shows a raw event id where a name belongs.
+   **Why manual:** `BuildStoryBrief` lives in `AgoraRuntime.cs`, which no `<Compile Link>` line pulls
+   into `Agora.Core.Tests`. The automated coverage stops at the `StorySlotBrief` boundary and assumes
+   the runtime fills it correctly — every fixture in the suite hand-builds that brief. Wave 5's
+   review found the flag half of this was exercised by **nothing** in the repo and added
+   `Headline_FollowsTheMajorFlagRatherThanTheSlotPosition` to close the pool's half; this row is the
+   runtime half, which no test can reach.
 
 ### Wave 4's manual gates — the command surface and the watermark repair
 
