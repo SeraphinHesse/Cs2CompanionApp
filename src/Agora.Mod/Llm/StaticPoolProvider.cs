@@ -6,8 +6,11 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using Agora.Core.Contracts;
 using Agora.Core.Determinism;
+using Agora.Core.Stories;
+using Agora.Core.Stories.Catalog;
 using Newtonsoft.Json.Linq;
 
 namespace Agora.Mod.Llm
@@ -24,7 +27,10 @@ namespace Agora.Mod.Llm
     /// on the same save GUID at the same date get identical names, identical outlets and identical
     /// articles (non-negotiable #2). Names go further and drop the date entirely, keying on the
     /// entity's founding date instead, so they survive regeneration; articles and event prose keep
-    /// the request date, because those are meant to move. That is not decoration either: §3 promises
+    /// the request date, because those are meant to move. A story's prose goes further still and is
+    /// hardly drawn at all - it is a transcription of what the civic catalog authored, and the one
+    /// draw left in it is keyed on the story's id and on no date, because a card is regenerated every
+    /// month the story stays open and must read the same each time. That is not decoration either: §3 promises
     /// save-scumming converges, and prose that reshuffled on reload would be the one visible thing
     /// that did not.
     /// </para>
@@ -54,10 +60,28 @@ namespace Agora.Mod.Llm
         /// </summary>
         private const int OutletMaxLength = 60;
 
+        /// <summary>
+        /// The two <see cref="StorySlotBrief.OutcomeWord"/> values that select authored outcome text.
+        /// The other two - <c>unmeasurable</c> and the empty word an open slot carries - select
+        /// nothing, and the slot falls back to its description.
+        /// </summary>
+        private const string SlotMet = "met";
+
+        /// <inheritdoc cref="SlotMet"/>
+        private const string SlotNotMet = "not met";
+
+        /// <summary>
+        /// The date the story stream is keyed on: a constant, because a story brief carries no date of
+        /// its own and the one thing this draw must not depend on is when the prose was regenerated.
+        /// The variation all comes from the save GUID and from the story's id as the sub-stream key.
+        /// </summary>
+        private static readonly SimDate StoryEpoch = new SimDate(1, 1, 1);
+
         private readonly Guid _saveGuid;
         private readonly RegionTheme _theme;
         private readonly FlavorValidator _validator;
         private readonly IFlavorLog _log;
+        private CivicEventCatalog _civicCatalog = CivicEventCatalog.Empty;
 
         /// <summary>
         /// The roster to write about. Set by the caller before polling; <see cref="TryGetFlavor"/>
@@ -65,6 +89,24 @@ namespace Agora.Mod.Llm
         /// a snapshot and a date.
         /// </summary>
         public FlavorRequest Roster { get; set; }
+
+        /// <summary>
+        /// The civic events a resolved story's slots were authored from. Never null: an unset catalog
+        /// reads as <see cref="CivicEventCatalog.Empty"/>, whose <c>Find</c> answers null for every id,
+        /// which is the same ordinary case as a story that has outlived its content.
+        /// </summary>
+        /// <remarks>
+        /// Set by the caller alongside <see cref="Roster"/>, for the same reason: a story slot persists
+        /// an event id and nothing else, so the success and failure text a resolution is written from
+        /// only exists in the catalog. Without it a resolution still comes out whole - every slot falls
+        /// back to its description, which the brief carries - it just says what the story was rather
+        /// than how it went.
+        /// </remarks>
+        public CivicEventCatalog CivicCatalog
+        {
+            get { return _civicCatalog ?? CivicEventCatalog.Empty; }
+            set { _civicCatalog = value ?? CivicEventCatalog.Empty; }
+        }
 
         private SimDate? _lastGeneratedFor;
         private FlavorPayload _lastPayload;
@@ -184,6 +226,14 @@ namespace Agora.Mod.Llm
 
             JArray eventProse = BuildEventProse(request);
             if (eventProse.Count > 0) root["eventProse"] = eventProse;
+
+            // One pass fills both: a story is in exactly one of the two collections, told apart by
+            // StoryBrief.IsResolved, and either way its entry is built from the same slots.
+            var stories = new JArray();
+            var resolutions = new JArray();
+            BuildStories(request, stories, resolutions);
+            if (stories.Count > 0) root["stories"] = stories;
+            if (resolutions.Count > 0) root["resolutions"] = resolutions;
 
             return root;
         }
@@ -551,6 +601,221 @@ namespace Agora.Mod.Llm
             }
 
             return array;
+        }
+
+        // ---- stories -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Writes one entry per story into <paramref name="stories"/> or <paramref name="resolutions"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A transcription, not a draw.</b> The headline is the major slot's authored name and the
+        /// article is each slot's authored name and text in the story's own order, so the canned card
+        /// is about this city's story rather than about stories in general - which is what "good
+        /// enough to play on" (§3) has to mean for the path most saves read all game. Nothing here
+        /// consults <see cref="StaticPoolContent"/> until the authored text will not fit its cap.
+        /// </para>
+        /// <para>
+        /// <b>Nothing here is keyed on the request date.</b> A story's prose is regenerated on every
+        /// poll for as long as the story is open - months of them - and a card whose headline changed
+        /// under the player between two glances at the dashboard would be the same defect the party
+        /// name draw had before it moved onto the founding date. There is no date on a story brief, so
+        /// the fallback draw takes <see cref="StoryEpoch"/> and carries the story's own id as its
+        /// sub-stream key: the same story in the same save gets the same line forever, and two stories
+        /// get different ones.
+        /// </para>
+        /// </remarks>
+        private void BuildStories(FlavorRequest request, JArray stories, JArray resolutions)
+        {
+            List<StoryBrief> briefs = SortedStories(request);
+
+            // Membership only, never enumerated. Two entries for one story id is ambiguous and the
+            // second would be dropped downstream anyway; dropping it here keeps the document honest.
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            for (int i = 0; i < briefs.Count; i++)
+            {
+                StoryBrief story = briefs[i];
+                if (!seen.Add(story.StoryId)) continue;
+
+                var rng = SeedStreams.RngFor(_saveGuid, StoryEpoch, StreamNames.NameSelection,
+                                             "story:" + story.StoryId);
+
+                bool resolved = story.IsResolved;
+
+                var entry = new JObject
+                {
+                    ["storyId"] = story.StoryId,
+                    ["headline"] = StoryHeadline(story, resolved, rng),
+                    ["article"] = StoryArticle(story, resolved, rng)
+                };
+
+                (resolved ? resolutions : stories).Add(entry);
+            }
+        }
+
+        /// <summary>
+        /// The story's headline: the major slot's authored name, or a whole generic line when there is
+        /// no name to use or it would not fit <see cref="FlavorCacheMigration.StoryHeadlineMaxLength"/>.
+        /// </summary>
+        /// <remarks>
+        /// The cap is reached by an authored name only if the catalog grew one past it, which its own
+        /// tests are supposed to catch first - but the fallback is not conditional on that holding.
+        /// The rule is <see cref="FlavorCacheMigration"/>'s: a whole generic headline, never a cut
+        /// specific one.
+        /// </remarks>
+        private static string StoryHeadline(StoryBrief story, bool resolved, DeterministicRng rng)
+        {
+            StorySlotBrief major = MajorSlot(story);
+            string name = major == null ? string.Empty : major.Title;
+
+            if (!string.IsNullOrEmpty(name) && name.Length <= FlavorCacheMigration.StoryHeadlineMaxLength)
+            {
+                return name;
+            }
+
+            string[] pool = resolved ? StaticPoolContent.ResolutionHeadlines : StaticPoolContent.StoryHeadlines;
+            return TrimToWord(StaticPoolContent.Pick(pool, rng), FlavorCacheMigration.StoryHeadlineMaxLength);
+        }
+
+        /// <summary>
+        /// The story's article: each slot's authored name, then its authored text, in the story's own
+        /// slot order.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The text is the slot event's description while the story is open, and the outcome the slot
+        /// actually reached once it has resolved - the authored success line for <c>met</c>, the
+        /// failure line for <c>not met</c>. A slot that resolved <c>unmeasurable</c>, or one whose
+        /// event the catalog no longer has, falls back to the description: a story outliving the
+        /// content that authored it is an ordinary case (see <c>CivicEventCatalog.Find</c>), and the
+        /// slot is still owed a paragraph.
+        /// </para>
+        /// <para>
+        /// <b>How an over-long composition degrades.</b> Three slots of authored description can pass
+        /// <see cref="FlavorCacheMigration.StoryArticleMaxLength"/> between them, so the article is
+        /// composed a whole slot at a time and stops at the last one that fits rather than cutting the
+        /// one that does not - the same prune-never-truncate call the cache migration and
+        /// <see cref="Fitting"/> both make. A story whose very first slot overflows the cap on its own
+        /// gets a whole generic article instead, which is the only way to keep the entry inside a
+        /// schema that would otherwise take the entire document down with it.
+        /// </para>
+        /// </remarks>
+        private string StoryArticle(StoryBrief story, bool resolved, DeterministicRng rng)
+        {
+            var article = new StringBuilder();
+            List<StorySlotBrief> slots = story.Slots;
+
+            for (int i = 0; slots != null && i < slots.Count; i++)
+            {
+                StorySlotBrief slot = slots[i];
+                if (slot == null) continue;
+
+                string paragraph = Paragraph(Sentence(slot.Title), Sentence(SlotText(slot, resolved)));
+                if (paragraph.Length == 0) continue;
+
+                int length = article.Length + (article.Length > 0 ? 1 : 0) + paragraph.Length;
+                if (length > FlavorCacheMigration.StoryArticleMaxLength) break;
+
+                if (article.Length > 0) article.Append(' ');
+                article.Append(paragraph);
+            }
+
+            if (article.Length > 0) return article.ToString();
+
+            string[] pool = resolved ? StaticPoolContent.ResolutionArticles : StaticPoolContent.StoryArticles;
+            return TrimToWord(StaticPoolContent.Pick(pool, rng), FlavorCacheMigration.StoryArticleMaxLength);
+        }
+
+        /// <summary>
+        /// The authored text this slot contributes: its outcome once it has one, its description while
+        /// it has not, and its description again when the catalog no longer has the event.
+        /// </summary>
+        private string SlotText(StorySlotBrief slot, bool resolved)
+        {
+            if (resolved)
+            {
+                CivicEvent authored = CivicCatalog.Find(slot.EventId);
+                if (authored != null)
+                {
+                    if (string.Equals(slot.OutcomeWord, SlotMet, StringComparison.Ordinal) &&
+                        !string.IsNullOrEmpty(authored.SuccessText))
+                    {
+                        return authored.SuccessText;
+                    }
+                    if (string.Equals(slot.OutcomeWord, SlotNotMet, StringComparison.Ordinal) &&
+                        !string.IsNullOrEmpty(authored.FailText))
+                    {
+                        return authored.FailText;
+                    }
+                }
+            }
+
+            return slot.HeadlineBrief;
+        }
+
+        /// <summary>The slot flagged <see cref="StorySlotBrief.IsMajor"/>, or the first slot there is.</summary>
+        /// <remarks>
+        /// Exactly one slot per story carries the flag, and the brief is sorted major-first, so the
+        /// fallback is only reached by a story whose slots arrived without one - in which case the
+        /// first slot is the closest thing to a lead the story has.
+        /// </remarks>
+        private static StorySlotBrief MajorSlot(StoryBrief story)
+        {
+            List<StorySlotBrief> slots = story.Slots;
+            StorySlotBrief first = null;
+
+            for (int i = 0; slots != null && i < slots.Count; i++)
+            {
+                StorySlotBrief slot = slots[i];
+                if (slot == null) continue;
+                if (slot.IsMajor) return slot;
+                if (first == null) first = slot;
+            }
+
+            return first;
+        }
+
+        /// <summary>The stories this document writes about: those with an id, ordered by it.</summary>
+        private static List<StoryBrief> SortedStories(FlavorRequest request)
+        {
+            var stories = new List<StoryBrief>();
+            if (request.Stories == null) return stories;
+
+            for (int i = 0; i < request.Stories.Count; i++)
+            {
+                StoryBrief story = request.Stories[i];
+                if (story != null && !string.IsNullOrEmpty(story.StoryId)) stories.Add(story);
+            }
+
+            stories.Sort((a, b) => string.CompareOrdinal(a.StoryId, b.StoryId));
+            return stories;
+        }
+
+        /// <summary>One slot's contribution: its name, then its text, whichever of the two exist.</summary>
+        private static string Paragraph(string name, string text)
+        {
+            if (string.IsNullOrEmpty(name)) return text ?? string.Empty;
+            if (string.IsNullOrEmpty(text)) return name;
+            return name + " " + text;
+        }
+
+        /// <summary>
+        /// Authored prose with a full stop after it, unless it already ends in punctuation of its own.
+        /// </summary>
+        /// <remarks>
+        /// Event names are written as headlines - "Dispersal quota lands on the council" - and reading
+        /// straight into the description without a stop between them runs the two together. This adds
+        /// the stop and nothing else; it is not a rewrite of authored content.
+        /// </remarks>
+        private static string Sentence(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+
+            char last = text[text.Length - 1];
+            if (last == '.' || last == '!' || last == '?' || last == ':' || last == ';') return text;
+            return text + ".";
         }
 
         // ---- helpers -----------------------------------------------------------------------------
