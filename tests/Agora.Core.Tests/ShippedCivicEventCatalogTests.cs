@@ -415,6 +415,64 @@ namespace Agora.Core.Tests
             Assert.Empty(result.Warnings);
         }
 
+        /// <summary>
+        /// A mirror-negated outcome pressure is warned about. Pressures are salience, not credit —
+        /// flipping the sign moves voters to the opposite pole rather than releasing the issue.
+        /// </summary>
+        [Theory]
+        [InlineData("successPressure")]
+        [InlineData("failurePressure")]
+        public void MirroredOutcomePressure_IsWarnedAbout(string outcomeKey)
+        {
+            CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
+                "synthetic.json", PressureDocument(outcomeKey, -0.25), ShippedTuning());
+
+            Assert.Equal(0, result.RejectedEventCount);
+            Assert.Contains(result.Warnings, issue => issue.Code == CatalogIssueCode.PressureSignFlip);
+        }
+
+        /// <summary>
+        /// The paired positive cases: same sign at any magnitude is the authored shape, and dropping
+        /// the issue to zero is a legitimate way to say it stopped mattering. Without these, a loader
+        /// that warned on every outcome pressure would pass the test above.
+        /// </summary>
+        [Theory]
+        [InlineData(0.10)]  // quieter — the ordinary success shape
+        [InlineData(0.45)]  // louder — the ordinary failure shape
+        [InlineData(0.0)]   // dropped entirely — not a flip
+        public void OutcomePressure_InTheSameDirection_IsClean(double outcomeValue)
+        {
+            CivicEventCatalogLoadResult result = CivicEventCatalogLoader.Load(
+                "synthetic.json", PressureDocument("successPressure", outcomeValue), ShippedTuning());
+
+            Assert.True(result.IsClean, Describe(result.Errors));
+            Assert.Empty(result.Warnings);
+        }
+
+        private static string PressureDocument(string outcomeKey, double outcomeValue)
+        {
+            string value = outcomeValue.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+            return @"{
+              ""schemaVersion"": 1,
+              ""events"": [
+                {
+                  ""id"": ""synthetic-event"",
+                  ""severity"": 2,
+                  ""region"": ""global"",
+                  ""trigger"": { ""kind"": ""metric"", ""metricId"": ""happiness"", ""comparison"": ""lt"",
+                                 ""threshold"": 50 },
+                  ""check"": { ""spec"": { ""kind"": ""metric"", ""metricId"": ""happiness"",
+                                           ""comparison"": ""gte"", ""threshold"": 55 } },
+                  ""activePressure"": { ""services"": 0.30 },
+                  """ + outcomeKey + @""": { ""services"": " + value + @" },
+                  ""name"": ""n"", ""description"": ""d"", ""ignoreText"": ""i"", ""goalText"": ""g"",
+                  ""powerOverrideText"": ""p"", ""successText"": ""s"", ""failText"": ""f""
+                }
+              ]
+            }";
+        }
+
         /// <summary>A corrupt document contributes nothing and does not throw (non-negotiable #7).</summary>
         [Fact]
         public void MalformedJson_ReportsRatherThanThrows()

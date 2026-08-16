@@ -410,6 +410,13 @@ namespace Agora.Core.Stories.Catalog
             IssuePosition failurePressure = ReadIssuePressure(node, "failurePressure", path, id, source,
                                                               errors, warnings, ref ok);
 
+            // Salience, not credit: an outcome pressure may be louder or quieter than the active one
+            // but must not point the other way. See CivicEvent.ActivePressure's remarks.
+            WarnOnPressureSignFlip(activePressure, successPressure, "successPressure",
+                                   path, id, source, warnings);
+            WarnOnPressureSignFlip(activePressure, failurePressure, "failurePressure",
+                                   path, id, source, warnings);
+
             // --- string lists ----------------------------------------------------------------
             List<string> districtAffinity = ReadStringList(node, "districtAffinity", path, id, source,
                                                            CatalogIssueCode.MalformedDistrictAffinity,
@@ -916,6 +923,45 @@ namespace Agora.Core.Stories.Catalog
             }
 
             return pressure;
+        }
+
+        /// <summary>
+        /// Warns when an outcome pressure points the opposite way on any issue from the event's own
+        /// active pressure.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Walks <c>Issues.All</c> rather than reflecting over the struct, for the same reason the
+        /// pressure reader does: the fold order is what makes the result bit-stable.
+        /// </para>
+        /// <para>
+        /// Only a genuine sign flip is reported — a zero on either side is not a flip, because
+        /// dropping an issue entirely at resolution is a legitimate way to say "this stopped
+        /// mattering". Magnitude is not policed at all: louder on failure and quieter on success is
+        /// the expected shape, but the reverse can be authored deliberately and this loader has no
+        /// basis to judge it.
+        /// </para>
+        /// </remarks>
+        private static void WarnOnPressureSignFlip(IssuePosition active, IssuePosition outcome,
+                                                   string key, string parentPath, string id,
+                                                   CivicEventCatalogSource source,
+                                                   List<CatalogIssue> warnings)
+        {
+            for (int i = 0; i < Issues.All.Count; i++)
+            {
+                Issue issue = Issues.All[i];
+                double a = active[issue];
+                double o = outcome[issue];
+
+                if (a == 0.0 || o == 0.0) continue;
+                if ((a > 0.0) == (o > 0.0)) continue;
+
+                warnings.Add(Warn(CatalogIssueCode.PressureSignFlip, source.Name, id,
+                    parentPath + "." + key + "." + Issues.ToKey(issue),
+                    "points the opposite way from activePressure (" + Describe(a) + " -> " +
+                    Describe(o) + "); pressures are salience, not credit, so a flipped sign moves " +
+                    "voters to the opposite pole rather than releasing the issue"));
+            }
         }
 
         private static List<string> ReadStringList(JsonNode node, string key, string parentPath, string id,

@@ -269,7 +269,22 @@ namespace Agora.Core.Events.Catalog
         /// city-scope <c>relativeToBaseline</c> check.
         /// </para>
         /// </remarks>
-        DistrictCheckNotBoundToTrigger = 117
+        DistrictCheckNotBoundToTrigger = 117,
+
+        /// <summary>
+        /// An outcome pressure points the opposite way on an issue from the event's own
+        /// <c>activePressure</c>. Pressures are salience, not credit — see the remarks on
+        /// <c>CivicEvent.ActivePressure</c>.
+        /// </summary>
+        /// <remarks>
+        /// The only consumer of an event's <c>IssuePosition</c> is <c>AffinityEngine.EventTerm</c>,
+        /// which dot-products it against each party's platform. So a mirror-negated success pressure
+        /// does not release the issue — it moves voters to the <b>opposite pole</b>, rewarding the
+        /// party that opposed doing anything. All three wave-3 content lanes independently invented
+        /// a mirroring convention, which is why the rule is machine-checked rather than only written
+        /// down.
+        /// </remarks>
+        PressureSignFlip = 118
     }
 
     /// <summary>

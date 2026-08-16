@@ -504,7 +504,9 @@
     "alienationWeight": 1.00,
     "enfranchisementWeight": 1.00,
 
-    "freeTextMaxLength": 500
+    "freeTextMaxLength": 500,
+    "_wrappedGoalComment": "In HAPPINESS POINTS on the 0-100 scale, for a severity-1 generically wrapped timeline event; the demand falls linearly to zero at catalog.severityMax. The unit is why this key exists. The wrapper's threshold was first derived from catalog.severityEffectScale, which is a dimensionless effect multiplier everywhere else it is used, producing demands of 0.8 down to 0.0 points out of 100 - narrower than the month-to-month drift of a population mean, so every severity collapsed to 'has happiness not fallen'. Calibrated against the happiness deltas the engine already spends: mandates.fulfilledHappinessBonus is 2.0 and defiedHappinessPenalty is 3.0.",
+    "wrappedEventHappinessGoalPoints": 2.0
   },
 
   "power": {

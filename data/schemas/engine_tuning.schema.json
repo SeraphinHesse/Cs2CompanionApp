@@ -673,7 +673,8 @@
         "maxMissStreak", "poolMaxSize", "archiveRetention", "minorPromotionEnabled",
         "reuseCooldownMonths", "maxMandatoryPerCycle",
         "maxStoryEffectsPerModifier", "activeEffectScale", "successEffectScale",
-        "failureEffectScale", "alienationWeight", "enfranchisementWeight", "freeTextMaxLength"
+        "failureEffectScale", "alienationWeight", "enfranchisementWeight", "freeTextMaxLength",
+        "wrappedEventHappinessGoalPoints"
       ],
       "properties": {
         "enabled": { "type": "boolean" },
@@ -697,7 +698,12 @@
         "failureEffectScale": { "type": "number", "minimum": 0 },
         "alienationWeight": { "type": "number", "minimum": 0 },
         "enfranchisementWeight": { "type": "number", "minimum": 0 },
-        "freeTextMaxLength": { "$ref": "#/$defs/positiveInt" }
+        "freeTextMaxLength": { "$ref": "#/$defs/positiveInt" },
+        "wrappedEventHappinessGoalPoints": {
+          "type": "number",
+          "minimum": 0,
+          "$comment": "HAPPINESS POINTS on the 0-100 scale, not a multiplier. Calibrated against mandates.fulfilledHappinessBonus (2.0) and defiedHappinessPenalty (3.0), which are the other two happiness deltas the engine spends."
+        }
       }
     },
 

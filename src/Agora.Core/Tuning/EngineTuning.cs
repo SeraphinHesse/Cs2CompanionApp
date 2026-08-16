@@ -1671,6 +1671,32 @@ namespace Agora.Core.Tuning
         /// </summary>
         public int FreeTextMaxLength { get; internal set; } = 500;
 
+        /// <summary>
+        /// The gain, <b>in happiness points on the 0–100 scale</b>, that a generically wrapped
+        /// timeline event of severity 1 asks for. The demand falls linearly to zero at
+        /// <c>catalog.severityMax</c>, so the most severe wrapped events ask only that the city hold
+        /// its mood.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The unit is the whole point of this key existing.</b> The wrapper's threshold was first
+        /// built from <c>catalog.severityEffectScale</c>, which is a dimensionless effect-magnitude
+        /// multiplier everywhere else it is used (<c>EffectResolution</c>,
+        /// <c>TimelineCatalogLoader</c>). Borrowing it produced demands of 0.8 down to 0.0 <i>points
+        /// out of 100</i> — a spread narrower than the month-to-month drift of a population mean, so
+        /// all five severities collapsed to "has happiness not fallen". Avoiding a literal by
+        /// borrowing a number that means something else is not the same as reading a value from
+        /// tuning.
+        /// </para>
+        /// <para>
+        /// Calibrated against the two happiness deltas the engine already spends:
+        /// <c>mandates.fulfilledHappinessBonus</c> is 2.0 and <c>defiedHappinessPenalty</c> is 3.0.
+        /// A severity-1 wrapped event therefore asks for about what fulfilling a whole mandate pays,
+        /// which is demanding but visible — and, unlike 0.8, distinguishable from noise.
+        /// </para>
+        /// </remarks>
+        public double WrappedEventHappinessGoalPoints { get; internal set; } = 2.0;
+
         internal static StoriesTuning Read(TuningReader r, StoriesTuning d) => new StoriesTuning
         {
             Enabled = r.Flag("enabled", d.Enabled),
@@ -1694,7 +1720,9 @@ namespace Agora.Core.Tuning
             FailureEffectScale = r.Num("failureEffectScale", d.FailureEffectScale),
             AlienationWeight = r.Num("alienationWeight", d.AlienationWeight),
             EnfranchisementWeight = r.Num("enfranchisementWeight", d.EnfranchisementWeight),
-            FreeTextMaxLength = r.Int("freeTextMaxLength", d.FreeTextMaxLength)
+            FreeTextMaxLength = r.Int("freeTextMaxLength", d.FreeTextMaxLength),
+            WrappedEventHappinessGoalPoints =
+                r.Num("wrappedEventHappinessGoalPoints", d.WrappedEventHappinessGoalPoints)
         };
     }
 

@@ -141,7 +141,7 @@ would otherwise both reach for `housing-crisis`.
 | Theme filter | `IReadOnlyList<CivicEvent> CivicEventCatalog.ForTheme(EventRegion)` | spine | 3d |
 | Declared features | `IReadOnlyList<string> CivicEventCatalog.DeclaredFeatureIds` | spine | 3e |
 | Metric validity | `bool MetricRegistry.IsKnown(string metricId, TriggerScope)` | wave 2 | 3a–3d |
-| Adaptation | `CivicEvent? TimelineEventAdapter.Adapt(TimelineEvent, EngineTuning)` — returns `null` for policy `none` | 3d | wave 4 |
+| Adaptation | **Amended mid-wave.** Not static: an instance method on an adapter built from the parsed `TimelineAdaptationPolicy`, because a static call cannot consult a policy. Lane 3d owns the exact shape and must return a **discriminated** result rather than a bare `null` — `null` currently means `none`, `authored` *and* null-input, and a wave-4 caller treating it as "drop it" would silently lose every authored event. | 3d | wave 4 |
 
 ### The metric vocabulary content is authored against
 
