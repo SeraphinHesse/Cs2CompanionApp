@@ -130,8 +130,9 @@ namespace Agora.Mod.Llm
         /// </remarks>
         private static int PruneOverLengthArticles(JObject root)
         {
-            // MUTANT: stories and resolutions no longer swept
-            return Prune(root["articles"] as JArray, "headline", HeadlineMaxLength, "body", BodyMaxLength);
+            return Prune(root["articles"] as JArray, "headline", HeadlineMaxLength, "body", BodyMaxLength)
+                 + Prune(root["stories"] as JArray, "headline", StoryHeadlineMaxLength, "article", StoryArticleMaxLength)
+                 + Prune(root["resolutions"] as JArray, "headline", StoryHeadlineMaxLength, "article", StoryArticleMaxLength);
         }
 
         private static int Prune(JArray entries, string shortField, int shortMax, string longField, int longMax)
