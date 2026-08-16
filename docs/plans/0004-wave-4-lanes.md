@@ -193,14 +193,28 @@ public static PoliticalPowerState AwardForStory(PoliticalPowerState prior, Story
                                                 IReadOnlyList<CivicEvent> catalog,
                                                 SimDate today, EngineTuning tuning);
 
-public static PoliticalPowerState Spend(PoliticalPowerState prior, string storyId, string eventId,
-                                        StoryTier tier, SimDate today, EngineTuning tuning);
+// AMENDED MID-WAVE — see below. Was: PoliticalPowerState Spend(…)
+public static bool TrySpend(PoliticalPowerState prior, string storyId, string eventId,
+                            StoryTier tier, SimDate today, EngineTuning tuning,
+                            out PoliticalPowerState next);
 
 public static bool TryDebtPenalty(PoliticalPowerState power, EngineTuning tuning,
                                   out EffectRequest request);
 ```
 
 Every one returns a **new** state; none mutates its argument.
+
+**`Spend` → `TrySpend`, amended after both ends had shipped.** The original returned the state
+unchanged when `CanAfford` refused *and* when the cost was legitimately zero, writing no ledger entry
+either way — so the two were indistinguishable, and lane 4b was left inferring failure from an
+unmoved balance. Under a hand-edited `power.overrideCost.minor = 0` that inference reports
+`InsufficientPower` for an override that succeeded and was correctly free.
+
+**Two independent reviewers found this in two different lanes before either had merged**, which is
+the argument for publishing both ends of a seam rather than only the read end: the gap was invisible
+from inside either lane and obvious from either review. `TrySpend` returns true when the override is
+granted — including a free one — and false only when `CanAfford` refuses; `next` is always a valid
+non-null state, the debited clone on success and the untouched prior clone on a refusal.
 
 ### Written by the spine, read by everyone
 
@@ -210,6 +224,32 @@ Every one returns a **new** state; none mutates its argument.
 - `AgoraRuntime.CivicCatalog` (property, `IReadOnlyList<CivicEvent>`, never null)
 - `CommandOutcome.InsufficientPower = 11` / `.AlreadyResolved = 12` / `.PowerDisabled = 13`
 - `affinity.storyPressureWeight` / `…Muted` / `…Loud`
+- `PlayerCommand.DeclaredMet` and `PlayerCommandLog.Append` — both added mid-wave, see below
+
+### Two spine additions made mid-wave, after review
+
+- **`PlayerCommand.DeclaredMet`.** Without it the log could not tell a declared success from a
+  declared failure: the two commands appended rows differing in **no field**, while the flag they set
+  is what `PoliticalPower.AwardFor`'s `manualDeclared` parameter reads. `PlayerCommand`'s contract
+  says the log is replayed rather than re-solicited, so a replay would have scored a different award
+  from the one the player earned. Additive and optional, so **no schema version moves** — wave 4 is
+  the first wave that writes any story command, so no older save carries a row for the default to be
+  wrong about.
+- **`PlayerCommandLog.Append`.** The command log's ordering rule, in `Agora.Core` because deciding
+  where a record sorts in engine state is computing rather than glue. Lane 4b had implemented it in
+  `Agora.Mod`, which `src/Agora.Mod/CLAUDE.md` forbids and which would have left one documented rule
+  with two implementations on opposite sides of the assembly boundary.
+
+### And one root-cause fix to `AgoraRuntime.ClampWatermarkToClock`
+
+**Three reviewers independently reported what looked like a rewind defect in three different lanes;
+all three were one spine omission.** Wave 0 wrote that repair when there was exactly one watermark.
+Wave 4 added three more — `LastStoryDraftMonth`, `LastStoryResolveMonth` and
+`PoliticalPowerState.LastAccrualMonth` — and each gates its own subsystem behind the same "have we
+already run this month" question. The repair covered one and left three, so a save rolled back
+further than the snapshot retention ticked its polls and elections and charged its failure penalties
+while drafting no story, resolving none, and accruing nothing — silently, because the guards return
+above their own warnings. It now reconciles all four.
 
 ---
 
@@ -222,6 +262,59 @@ has **no test**, by design and not by omission. Do not fake the runtime to manuf
 that is itself a review-blocking defect. Write a manual gate row instead, specific enough to fail.
 
 Lanes 4a, 4c, 4d are pure `Agora.Core` and carry the full testing obligation.
+
+---
+
+## RESUME STATE — wave 4 is NOT closed
+
+Written when a session limit cut three lanes off mid-work. **Read this before doing anything else.**
+The umbrella (`event-system/wave-4`) is clean and green at **2041 passed, 0 failed**; nothing below
+is broken, it is unfinished.
+
+### Merged and done
+
+| Lane | State |
+|---|---|
+| **4d** power ledger | ✅ merged (`5b2e3b8`). Blocked once, fixed: `>=` → `==` accrual guard, `Spend` → `TrySpend` |
+| **4f** global content | ✅ merged (`d1fa4c7`). Blocked once, fixed: six recessions had `growth` inverted |
+| **4g** EU content | ✅ merged (`c0c860c`). Approved first pass |
+| **4h** NA content | ✅ merged (`3afcf8b`). Approved first pass |
+
+All 90 wrapped timeline events now author an `issuePressure`. That gap is closed.
+
+### Outstanding, in the order to resume
+
+1. **4a — committed, reviewed, ONE ITEM STILL OWED.** Branch `event-system/w4-4a` at `2fbd5b5`,
+   clean. It fixed the forward-dated-story reap and reworded the `PoliticalPowerEnabled` comment.
+   **It has NOT done the district-id seam change** — that instruction was sent but the session ended
+   before it was acted on, and its report does not mention districts. Re-send: `ForActive` /
+   `ForResolution` gain a `string districtId`, and 4a chooses it deterministically from
+   `StoryCycleInput.Context.Today`. Do not merge 4a until 4c's seam matches.
+2. **4c — BLOCKED, fix in progress, uncommitted (3 files).** Branch still at the spine. The three
+   required changes are in the message history: the severity-ordering test (its tuning half is done,
+   commit `6ffec56`), reading `stories.resolutionEffectMonths` for the resolution duration (key added,
+   same commit), and the district-id seam widening. **This is the wave's most valuable outstanding
+   repair** — 102 of 277 authored effect references (36.8%) currently dispatch nothing, and 47 of 174
+   non-empty effect phases resolve to literally no effect.
+3. **4b — BLOCKED, fix NEVER DISPATCHED.** Branch still at the spine, one uncommitted file. My
+   omission, not the lane's: I did the two spine halves of its block (`PlayerCommand.DeclaredMet` and
+   `PlayerCommandLog.Append`, both merged) and then never sent the lane the remaining four. Still
+   owed by the lane: B2 (a paid `PowerOverride` can be overwritten free by `SetStoryResponse`, then
+   charged again — the review has the exact three-step sequence), B3 (binding names — its remarks say
+   `declareOutcome` where the plan says `declareManual`, and it invented a fourth binding
+   unilaterally), B5 (both catch blocks claim state is unchanged after it has already changed), plus
+   clearing `PlayerText` on a bought override and `CapFreeText`'s unbounded fall-through. It must also
+   switch to `PlayerCommandLog.Append` and `TrySpend`, and re-send its twelve manual gate rows — the
+   reviewer never received them and could not judge them.
+4. **4e — merged the umbrella, revision in progress, uncommitted (2 files).** Owes two added cases:
+   a story reached by both the sweep and the ordinary pass producing exactly **one** resolution, and
+   archive trim at exactly `retention`, at `retention + 1`, and at `retention <= 0`. **Merges last**,
+   and its failures are expected until 4a and 4c land — that is the design, not a defect.
+
+### Then
+
+Re-review 4a and 4c after their fixes, review 4b, merge in the order above, and only then
+`/commitpushpr`.
 
 ---
 

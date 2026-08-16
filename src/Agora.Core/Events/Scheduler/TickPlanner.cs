@@ -67,16 +67,33 @@ namespace Agora.Core.Events.Scheduler
         public bool IsStoryDraft { get; }
 
         /// <summary>
-        /// Score the stories drawn last cycle (<c>stories.cycleMonths</c> phase 1).
+        /// Score the stories drawn this cycle — the <b>last</b> month of it,
+        /// <c>stories.cycleMonths - 1</c>.
         /// </summary>
         /// <remarks>
-        /// <b>Phase 1, not phase <c>cycleMonths - 1</c>, and the two are the same number only because
-        /// the cadence ships at 2.</b> A story's life is fixed at one month by
-        /// <c>StoryAssembler.NewStory</c> — it drafts on M and is due on M+1 whatever the cadence is —
-        /// so the verdict falls on the month after the draw and the pool then rests until the next
-        /// draw. Reading this as "the month before the next draft" would stretch the window a player
-        /// is scored over to match the cadence, which is the wave-3 defect that cost roughly forty
-        /// re-derived thresholds.
+        /// <para>
+        /// <b>It has to be the month the stories are actually due, and
+        /// <c>StoryAssembler.NewStory</c> is what decides that</b>: it sets
+        /// <c>ResolvesDate = OpenedDate + (cycleMonths - 1)</c>. A story drafted on phase 0 is
+        /// therefore due on phase <c>cycleMonths - 1</c>, and the cycle reads draft → live → verdict →
+        /// next draft.
+        /// </para>
+        /// <para>
+        /// <b>This shipped as a literal phase 1 in the wave-4 spine and was wrong</b>, though only
+        /// latently: at the shipped cadence of 2 the two expressions are the same number, which is
+        /// exactly why it survived being written down twice and tested once. At any wider cadence the
+        /// verdict phase arrived before the due month, so no story was ever resolved on time — every
+        /// one of them fell through to the stranded sweep a month later and was abandoned, paying
+        /// nothing in either direction and silently discarding the player's work. Found by lane 4a
+        /// reading this against the assembler rather than trusting it.
+        /// </para>
+        /// <para>
+        /// <b>A story still lives one month at the shipped cadence, and that is a separate fact.</b>
+        /// The window a player can influence is <c>cycleMonths - 1</c> months long, which is ONE, not
+        /// two — reading the cadence as the window is the wave-3 defect that cost roughly forty
+        /// re-derived thresholds. The two statements agree: the window is the span, and the verdict
+        /// lands at the end of it.
+        /// </para>
         /// </remarks>
         public bool IsStoryResolve { get; }
 
@@ -176,17 +193,21 @@ namespace Agora.Core.Events.Scheduler
             // because it is the story system's own dial and the two content lanes that read it look
             // there — but the phase arithmetic is identical to every cadence above.
             //
-            // Floored at 2, and the floor is not defensive tidiness: at a cadence of 1 every month is
-            // phase 0, so nothing would ever land on the resolve phase and every story drafted would
-            // sit pending until the stranded sweep reaped it as Abandoned. A hand-edited tuning file
-            // that reaches 1 gets the shipped cadence rather than a story system that silently never
-            // scores anything.
+            // Floored at 2, and the floor is not defensive tidiness: at a cadence of 1 the draft and
+            // resolve phases would be the same month, so a story would be scored on the tick that
+            // drew it — against a city that had not moved since, making every delta and every window
+            // provably unmeasurable. A hand-edited tuning file that reaches 1 gets the shipped
+            // cadence rather than a story system that silently scores nothing.
             int cycle = tuning.Stories.CycleMonths;
             if (cycle < 2) cycle = 2;
 
+            // The resolve phase is the LAST month of the cycle because that is the month the stories
+            // are due: StoryAssembler.NewStory sets ResolvesDate = OpenedDate + (cycleMonths - 1).
+            // Writing a literal 1 here is correct at the shipped cadence of 2 and wrong at every
+            // wider one — see the remarks on TickPlan.IsStoryResolve for what that cost.
             int cyclePhase = elapsed >= 0 ? elapsed % cycle : -1;
             bool storyDraft = engineTick && cyclePhase == 0;
-            bool storyResolve = engineTick && cyclePhase == 1;
+            bool storyResolve = engineTick && cyclePhase == cycle - 1;
 
             bool warmupComplete = elapsed >= (s.WarmupMonths < 0 ? 0 : s.WarmupMonths);
 
