@@ -7,6 +7,12 @@ it may hardcode a tuning constant.
 
 - `schemas/` — JSON Schema for every contract: `snapshot`, `politics_flavor`, `timeline`, sidecar state.
 - `timeline_eu.json`, `timeline_na.json`, `timeline_global.json` — curated real-history catalogs, 1990→.
+- `events_global.json`, `events_eu.json`, `events_na.json` — authored **civic events**: the unit a
+  political story is assembled from, triggered by the state of the city rather than by a date. Use
+  `/add-event`, and read `CivicEventCatalogLoader`'s remarks first — it rejects several shapes that
+  look like working goals and are not.
+- `timeline_adaptation.json` — which timeline events become civic events, and how. Marking one `none`
+  stops it becoming a story; it keeps firing as a timeline event either way.
 - `engine_tuning.json` — every coefficient the engine uses. If a number affects behaviour, it lives here.
 - `seeds/` — name pools, faction archetypes, outlet names. Fallback flavor when the LLM is unavailable.
 
