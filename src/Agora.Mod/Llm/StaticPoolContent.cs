@@ -449,10 +449,12 @@ namespace Agora.Mod.Llm
         // A story's canned prose is a transcription, not a draw: the headline is the major event's
         // authored name and the article is the authored text of its slots, in the story's own order.
         // That is content the catalog already wrote, checked by the same tests that check the catalog,
-        // and it is about this city's story rather than about stories in general. The four pools below
+        // and it is about this city's story rather than about stories in general. The three pools below
         // are only the floor under it - what a card opens with when the authored text will not fit its
         // cap whole, which the house rule (prune, never truncate) says is the one case where a generic
-        // whole line beats a specific cut one.
+        // whole line beats a specific cut one. The four closing lines after them are not a floor: a
+        // resolution carries one every time, because saying that the story closed is the one thing a
+        // closing card owes the player and the only part of it the catalog cannot supply.
 
         /// <summary>
         /// Headlines for a live story whose own major event name will not fit
@@ -494,19 +496,39 @@ namespace Agora.Mod.Llm
             "The council draws a line under it and moves down the agenda"
         };
 
-        /// <inheritdoc cref="ResolutionHeadlines"/>
-        public static readonly string[] ResolutionArticles =
-        {
-            "It is finished, and the city has the result rather than the argument. The chamber will " +
-            "spend a while explaining what happened, and the explanation will be shorter than the " +
-            "process was. What is on the ground is what the council is judged on now.",
+        /// <summary>
+        /// How a resolution card opens: one line saying that the story closed and how it went.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Constants selected by <c>StoryBrief.OutcomeWord</c>, never drawn.</b> A closing card
+        /// whose only difference from the opening card was the tense of three catalog paragraphs is
+        /// not a closing card, and there are three shipped cases where even that difference vanishes:
+        /// an abandoned story leaves every slot <c>Pending</c> and so every slot word empty, a slot
+        /// that came out <c>unmeasurable</c> has no authored outcome text to switch to, and a save
+        /// whose civic catalog has not reached the pool resolves nothing at all. The lead-in is the
+        /// one part of a resolution that needs neither the catalog nor a slot word, so it is what
+        /// carries the news that the story is over.
+        /// </para>
+        /// <para>
+        /// Four words, four lines, and the fourth is not decoration: <c>OutcomeWord</c> is empty while
+        /// a story is open, and a brief that arrives resolved with no word is a caller bug that should
+        /// still produce a whole card rather than a card that says nothing.
+        /// </para>
+        /// </remarks>
+        public const string ResolutionSuccessLead =
+            "The file is closed, and it closed the way the council was working for.";
 
-            "The file closed this month. Whatever was promised at the start of it has either arrived or " +
-            "has not, and the street can tell which without waiting for the report.",
+        /// <inheritdoc cref="ResolutionSuccessLead"/>
+        public const string ResolutionFailureLead =
+            "The file is closed, and it did not close the way the council was working for.";
 
-            "That is the end of it. There is a line in the minutes, a figure in a budget the council " +
-            "would rather discuss another time, and a neighbourhood that already knows how it went."
-        };
+        /// <inheritdoc cref="ResolutionSuccessLead"/>
+        public const string ResolutionAbandonedLead =
+            "The council let this one go, and the file closed with it unfinished.";
+
+        /// <inheritdoc cref="ResolutionSuccessLead"/>
+        public const string ResolutionClosedLead = "The file is closed.";
 
         /// <summary>Deterministic pick: index derived from the caller's seeded stream, never from a hash.</summary>
         public static string Pick(string[] pool, Agora.Core.Determinism.DeterministicRng rng)

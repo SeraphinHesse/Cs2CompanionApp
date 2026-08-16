@@ -71,6 +71,19 @@ namespace Agora.Mod.Llm
         private const string SlotNotMet = "not met";
 
         /// <summary>
+        /// The three <see cref="StoryBrief.OutcomeWord"/> values a resolved story can carry. Unlike
+        /// the slot words these need no catalog and no slot to have resolved measurably, which is what
+        /// makes them the one thing a closing card can always say.
+        /// </summary>
+        private const string StorySuccess = "success";
+
+        /// <inheritdoc cref="StorySuccess"/>
+        private const string StoryFailure = "failure";
+
+        /// <inheritdoc cref="StorySuccess"/>
+        private const string StoryAbandoned = "abandoned";
+
+        /// <summary>
         /// The date the story stream is keyed on: a constant, because a story brief carries no date of
         /// its own and the one thing this draw must not depend on is when the prose was regenerated.
         /// The variation all comes from the save GUID and from the story's id as the sub-stream key.
@@ -680,8 +693,8 @@ namespace Agora.Mod.Llm
         }
 
         /// <summary>
-        /// The story's article: each slot's authored name, then its authored text, in the story's own
-        /// slot order.
+        /// The story's article: a closing lead-in when it has resolved, then each slot's authored name
+        /// followed by its authored text, in the story's own slot order.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -693,39 +706,123 @@ namespace Agora.Mod.Llm
         /// slot is still owed a paragraph.
         /// </para>
         /// <para>
-        /// <b>How an over-long composition degrades.</b> Three slots of authored description can pass
-        /// <see cref="FlavorCacheMigration.StoryArticleMaxLength"/> between them, so the article is
-        /// composed a whole slot at a time and stops at the last one that fits rather than cutting the
-        /// one that does not - the same prune-never-truncate call the cache migration and
-        /// <see cref="Fitting"/> both make. A story whose very first slot overflows the cap on its own
-        /// gets a whole generic article instead, which is the only way to keep the entry inside a
-        /// schema that would otherwise take the entire document down with it.
+        /// <b>Which is why the lead-in is not optional.</b> Those fallbacks are the common case, not
+        /// the rare one - an abandoned story leaves every slot <c>Pending</c> and so every slot word
+        /// empty, and a save whose civic catalog has not reached this provider resolves nothing at
+        /// all - so an article assembled from slot text alone comes out character-for-character
+        /// identical to the same story's opening card. <see cref="StoryBrief.OutcomeWord"/> is on the
+        /// brief, needs no catalog and needs no slot to have resolved measurably, so it leads.
+        /// </para>
+        /// <para>
+        /// <b>How an over-long composition degrades: descriptions go before slots do.</b> Names are
+        /// short - the longest shipped event name is a fifth of the headline cap - so every slot can
+        /// always be named, and the cap is then spent on as many descriptions as it will hold, in slot
+        /// order. Dropping a whole slot instead used to cost an NA story its third event outright,
+        /// silently, on the few percent of triples that overflow; naming it and omitting its
+        /// description says strictly more. Nothing is ever cut mid-sentence: a description is carried
+        /// whole or not at all, which is the same prune-never-truncate call the cache migration and
+        /// <see cref="Fitting"/> both make. A story whose names alone overflow the cap - which no
+        /// shipped content comes near - keeps the ones that fit, and one with nothing that fits at all
+        /// takes a whole generic article, because an entry over the cap would take the whole document
+        /// down with it.
         /// </para>
         /// </remarks>
         private string StoryArticle(StoryBrief story, bool resolved, DeterministicRng rng)
         {
-            var article = new StringBuilder();
-            List<StorySlotBrief> slots = story.Slots;
+            // Two parallel lists rather than one composed paragraph per slot: the cap is spent on the
+            // names first and on the descriptions afterwards, so the two have to stay separable.
+            var names = new List<string>();
+            var descriptions = new List<string>();
 
+            List<StorySlotBrief> slots = story.Slots;
             for (int i = 0; slots != null && i < slots.Count; i++)
             {
                 StorySlotBrief slot = slots[i];
                 if (slot == null) continue;
 
-                string paragraph = Paragraph(Sentence(slot.Title), Sentence(SlotText(slot, resolved)));
-                if (paragraph.Length == 0) continue;
+                string name = Sentence(slot.Title);
+                string description = Sentence(SlotText(slot, resolved));
+                if (name.Length == 0 && description.Length == 0) continue;
 
-                int length = article.Length + (article.Length > 0 ? 1 : 0) + paragraph.Length;
-                if (length > FlavorCacheMigration.StoryArticleMaxLength) break;
+                names.Add(name);
+                descriptions.Add(description);
+            }
 
-                if (article.Length > 0) article.Append(' ');
-                article.Append(paragraph);
+            int cap = FlavorCacheMigration.StoryArticleMaxLength;
+            string lead = resolved ? Sentence(ClosingLine(story.OutcomeWord)) : string.Empty;
+            int length = lead.Length;
+
+            // How many names fit, then how many of those names' descriptions fit after them. Counted
+            // before anything is composed because the answer to the second question depends on all of
+            // the first - a description is only carried once every name is paid for.
+            int named = 0;
+            for (int i = 0; i < names.Count; i++)
+            {
+                int cost = Cost(names[i], length);
+                if (length + cost > cap) break;
+                length += cost;
+                named++;
+            }
+
+            int described = 0;
+            for (int i = 0; i < named; i++)
+            {
+                int cost = Cost(descriptions[i], length);
+                if (length + cost > cap) break;
+                length += cost;
+                described++;
+            }
+
+            var article = new StringBuilder(lead);
+            for (int i = 0; i < named; i++)
+            {
+                Append(article, names[i]);
+                if (i < described) Append(article, descriptions[i]);
             }
 
             if (article.Length > 0) return article.ToString();
 
-            string[] pool = resolved ? StaticPoolContent.ResolutionArticles : StaticPoolContent.StoryArticles;
-            return TrimToWord(StaticPoolContent.Pick(pool, rng), FlavorCacheMigration.StoryArticleMaxLength);
+            return TrimToWord(StaticPoolContent.Pick(StaticPoolContent.StoryArticles, rng), cap);
+        }
+
+        /// <summary>
+        /// The line a resolution opens on, chosen by <see cref="StoryBrief.OutcomeWord"/>.
+        /// </summary>
+        /// <remarks>
+        /// A lookup, not a draw. Which of the four a story gets is a fact about how it ended, and a
+        /// card that said "closed" one month and "abandoned" the next because the seed moved would be
+        /// reporting the seed rather than the story.
+        /// </remarks>
+        private static string ClosingLine(string outcomeWord)
+        {
+            switch (outcomeWord)
+            {
+                case StorySuccess: return StaticPoolContent.ResolutionSuccessLead;
+                case StoryFailure: return StaticPoolContent.ResolutionFailureLead;
+                case StoryAbandoned: return StaticPoolContent.ResolutionAbandonedLead;
+
+                // Empty, or a word this build does not know. Both are the caller's bug rather than the
+                // player's, and both are owed a card that at least says the story is over.
+                default: return StaticPoolContent.ResolutionClosedLead;
+            }
+        }
+
+        /// <summary>
+        /// What appending <paramref name="unit"/> to an article of <paramref name="length"/> costs,
+        /// separator included. Nothing for an empty unit, which is not appended.
+        /// </summary>
+        private static int Cost(string unit, int length)
+        {
+            if (string.IsNullOrEmpty(unit)) return 0;
+            return unit.Length + (length > 0 ? 1 : 0);
+        }
+
+        /// <summary>Appends one whole unit, spaced off whatever is already there.</summary>
+        private static void Append(StringBuilder article, string unit)
+        {
+            if (string.IsNullOrEmpty(unit)) return;
+            if (article.Length > 0) article.Append(' ');
+            article.Append(unit);
         }
 
         /// <summary>
@@ -791,14 +888,6 @@ namespace Agora.Mod.Llm
 
             stories.Sort((a, b) => string.CompareOrdinal(a.StoryId, b.StoryId));
             return stories;
-        }
-
-        /// <summary>One slot's contribution: its name, then its text, whichever of the two exist.</summary>
-        private static string Paragraph(string name, string text)
-        {
-            if (string.IsNullOrEmpty(name)) return text ?? string.Empty;
-            if (string.IsNullOrEmpty(text)) return name;
-            return name + " " + text;
         }
 
         /// <summary>
