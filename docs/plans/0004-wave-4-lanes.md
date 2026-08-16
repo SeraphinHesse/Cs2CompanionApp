@@ -193,14 +193,28 @@ public static PoliticalPowerState AwardForStory(PoliticalPowerState prior, Story
                                                 IReadOnlyList<CivicEvent> catalog,
                                                 SimDate today, EngineTuning tuning);
 
-public static PoliticalPowerState Spend(PoliticalPowerState prior, string storyId, string eventId,
-                                        StoryTier tier, SimDate today, EngineTuning tuning);
+// AMENDED MID-WAVE — see below. Was: PoliticalPowerState Spend(…)
+public static bool TrySpend(PoliticalPowerState prior, string storyId, string eventId,
+                            StoryTier tier, SimDate today, EngineTuning tuning,
+                            out PoliticalPowerState next);
 
 public static bool TryDebtPenalty(PoliticalPowerState power, EngineTuning tuning,
                                   out EffectRequest request);
 ```
 
 Every one returns a **new** state; none mutates its argument.
+
+**`Spend` → `TrySpend`, amended after both ends had shipped.** The original returned the state
+unchanged when `CanAfford` refused *and* when the cost was legitimately zero, writing no ledger entry
+either way — so the two were indistinguishable, and lane 4b was left inferring failure from an
+unmoved balance. Under a hand-edited `power.overrideCost.minor = 0` that inference reports
+`InsufficientPower` for an override that succeeded and was correctly free.
+
+**Two independent reviewers found this in two different lanes before either had merged**, which is
+the argument for publishing both ends of a seam rather than only the read end: the gap was invisible
+from inside either lane and obvious from either review. `TrySpend` returns true when the override is
+granted — including a free one — and false only when `CanAfford` refuses; `next` is always a valid
+non-null state, the debited clone on success and the untouched prior clone on a refusal.
 
 ### Written by the spine, read by everyone
 
@@ -210,6 +224,32 @@ Every one returns a **new** state; none mutates its argument.
 - `AgoraRuntime.CivicCatalog` (property, `IReadOnlyList<CivicEvent>`, never null)
 - `CommandOutcome.InsufficientPower = 11` / `.AlreadyResolved = 12` / `.PowerDisabled = 13`
 - `affinity.storyPressureWeight` / `…Muted` / `…Loud`
+- `PlayerCommand.DeclaredMet` and `PlayerCommandLog.Append` — both added mid-wave, see below
+
+### Two spine additions made mid-wave, after review
+
+- **`PlayerCommand.DeclaredMet`.** Without it the log could not tell a declared success from a
+  declared failure: the two commands appended rows differing in **no field**, while the flag they set
+  is what `PoliticalPower.AwardFor`'s `manualDeclared` parameter reads. `PlayerCommand`'s contract
+  says the log is replayed rather than re-solicited, so a replay would have scored a different award
+  from the one the player earned. Additive and optional, so **no schema version moves** — wave 4 is
+  the first wave that writes any story command, so no older save carries a row for the default to be
+  wrong about.
+- **`PlayerCommandLog.Append`.** The command log's ordering rule, in `Agora.Core` because deciding
+  where a record sorts in engine state is computing rather than glue. Lane 4b had implemented it in
+  `Agora.Mod`, which `src/Agora.Mod/CLAUDE.md` forbids and which would have left one documented rule
+  with two implementations on opposite sides of the assembly boundary.
+
+### And one root-cause fix to `AgoraRuntime.ClampWatermarkToClock`
+
+**Three reviewers independently reported what looked like a rewind defect in three different lanes;
+all three were one spine omission.** Wave 0 wrote that repair when there was exactly one watermark.
+Wave 4 added three more — `LastStoryDraftMonth`, `LastStoryResolveMonth` and
+`PoliticalPowerState.LastAccrualMonth` — and each gates its own subsystem behind the same "have we
+already run this month" question. The repair covered one and left three, so a save rolled back
+further than the snapshot retention ticked its polls and elections and charged its failure penalties
+while drafting no story, resolving none, and accruing nothing — silently, because the guards return
+above their own warnings. It now reconciles all four.
 
 ---
 
