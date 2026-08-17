@@ -48,7 +48,7 @@ has run the game.** Every claim in this file is a review's reasoning or a gate r
 
 ## PR
 
-**PR:** _(filled in at push — see `docs/status.md` for the link)_
+**PR:** https://github.com/SeraphinHesse/Cs2CompanionApp/pull/9
 **Merge status: NOT merged.** The owner reviews. Wave 7 must not open its umbrella until it is in.
 
 ---
