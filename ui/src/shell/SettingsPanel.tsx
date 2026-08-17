@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useValue } from "cs2/api";
-import { Button } from "cs2/ui";
+import { Button, Scrollable } from "cs2/ui";
 
 import { requestSetting, roster$, settings$, writeMessage } from "./bindings";
 import { REGION_CHOICES, regionLabel } from "./regions";
@@ -33,7 +33,11 @@ type SettingKey =
   | "showAllReports"
   | "voteSharpness"
   | "newsInfluence"
-  | "brandDiscipline";
+  | "brandDiscipline"
+  | "storiesEnabled"
+  | "storiesPerCycle"
+  | "eventsPerStory"
+  | "politicalPowerEnabled";
 
 /** One level of a voter-model setting: the wire name, a label, and what it does. */
 interface Level {
@@ -107,6 +111,27 @@ const VOTER_SETTINGS: {
       { value: "Locked", label: "Locked" },
     ],
   },
+];
+
+/**
+ * The two story counts, offered as levels rather than as a number field.
+ *
+ * **`"0"` is not "no stories".** Contract §4.1 makes zero the unset value on both keys: the engine
+ * falls back to `stories.storiesPerCycle` / `stories.eventsPerStory`, which is how a player hands the
+ * decision back to tuning — the same convention, and the same reason, as `SnapshotRetention`. A row
+ * that printed a bare `0` here would tell the player the exact opposite of what the setting does, so
+ * the unset level is labelled and the hint says what it falls back to.
+ *
+ * The ceiling of 5 is the contract's, not a balance number. Values outside [0, 5] answer `BadValue`,
+ * and this row cannot produce one — but the range check is still the engine's, not this panel's.
+ */
+const COUNT_LEVELS: Level[] = [
+  { value: "0", label: "Default" },
+  { value: "1", label: "1" },
+  { value: "2", label: "2" },
+  { value: "3", label: "3" },
+  { value: "4", label: "4" },
+  { value: "5", label: "5" },
 ];
 
 /** A write that has been sent and not yet answered. */
@@ -258,6 +283,18 @@ export const SettingsPanel = (): JSX.Element => {
     return published;
   }
 
+  /**
+   * The same optimistic render as `shownFlag`, for the two counts. A string because that is what
+   * crosses the wire and what the level buttons compare against — the panel never does arithmetic on
+   * a setting it only mirrors.
+   */
+  function shownCount(key: SettingKey, published: number): string {
+    if (pending !== null && pending.key === key) {
+      return pending.value;
+    }
+    return String(published);
+  }
+
   function requestTheme(theme: Agora.RegionThemeName): void {
     if (theme === settings.theme) {
       return;
@@ -289,113 +326,204 @@ export const SettingsPanel = (): JSX.Element => {
         </Button>
       </div>
 
-      <div className={styles.row}>
-        <div className={styles.rowLabel}>Region theme</div>
-        {/*
-          The unlocked hint names the region the save is ON, not just what the setting does.
+      {/*
+        Everything between the header and the verdict scrolls, and those two do not.
 
-          Both halves are load-bearing. A player who never saw the first-run prompt - it renders
-          through `Portal`, its boundary's fallback silently defaults to Europe, and `isFirstRun` is
-          one-shot and unpersisted - arrives here with no idea a choice was made on their behalf, and
-          a hint that only explains the setting leaves them to infer their region from which button
-          looks pressed. Saying it, and saying the deadline, is the difference between a setting that
-          is reachable and one that is found.
-        */}
-        <div className={styles.rowHint}>
-          {settings.themeLocked
-            ? "This city has held an election, so the choice became history at that election."
-            : "This city is set to " +
-              regionLabel(settings.theme) +
-              ". It decides how the city elects its council, names its parties, and counts a term, " +
-              "and it can be changed until the first election."}
+        The header carries the close control and is the only thing telling the player what surface
+        they are on, so it stays put — a player who has scrolled has no other anchor. The verdict is
+        pinned below for the sharper reason: it answers a button they just pressed, and one that
+        scrolled out of view would be a refusal they never saw.
+
+        Interactive children inside a `Scrollable` are the established pattern here rather than
+        something inferred: `PartyList` puts its click rows straight inside one, and `PartyEditor`'s
+        `cs2/ui` `Button`s render inside `PartiesPanel`'s `.detailScroll`. The option buttons below
+        need no wrapper and no click-target handling of their own.
+      */}
+      <Scrollable vertical className={styles.scroll}>
+        <div className={styles.row}>
+          <div className={styles.rowLabel}>Region theme</div>
+          {/*
+            The unlocked hint names the region the save is ON, not just what the setting does.
+
+            Both halves are load-bearing. A player who never saw the first-run prompt - it renders
+            through `Portal`, its boundary's fallback silently defaults to Europe, and `isFirstRun` is
+            one-shot and unpersisted - arrives here with no idea a choice was made on their behalf, and
+            a hint that only explains the setting leaves them to infer their region from which button
+            looks pressed. Saying it, and saying the deadline, is the difference between a setting that
+            is reachable and one that is found.
+          */}
+          <div className={styles.rowHint}>
+            {settings.themeLocked
+              ? "This city has held an election, so the choice became history at that election."
+              : "This city is set to " +
+                regionLabel(settings.theme) +
+                ". It decides how the city elects its council, names its parties, and counts a term, " +
+                "and it can be changed until the first election."}
+          </div>
+          <div className={styles.options}>
+            {REGION_CHOICES.map(function (choice) {
+              const selected = choice.theme === shownTheme();
+              return (
+                <Button
+                  key={choice.theme}
+                  variant="flat"
+                  className={selected ? styles.optionSelected : styles.option}
+                  selected={selected}
+                  // Disabled from a PUBLISHED value only. The panel never decides the theme is locked;
+                  // it renders the flag the engine published, and reports the code the engine returned.
+                  disabled={settings.themeLocked || busy}
+                  onSelect={function () {
+                    requestTheme(choice.theme);
+                  }}
+                >
+                  {choice.label}
+                </Button>
+              );
+            })}
+          </div>
         </div>
-        <div className={styles.options}>
-          {REGION_CHOICES.map(function (choice) {
-            const selected = choice.theme === shownTheme();
-            return (
-              <Button
-                key={choice.theme}
-                variant="flat"
-                className={selected ? styles.optionSelected : styles.option}
-                selected={selected}
-                // Disabled from a PUBLISHED value only. The panel never decides the theme is locked;
-                // it renders the flag the engine published, and reports the code the engine returned.
-                disabled={settings.themeLocked || busy}
-                onSelect={function () {
-                  requestTheme(choice.theme);
-                }}
-              >
-                {choice.label}
+
+        {confirmTheme ? (
+          <div className={styles.confirm}>
+            <div className={styles.confirmText}>
+              Switching to {regionLabel(confirmTheme)} discards every party in this city and generates
+              a new set. {ownedParties === 1 ? "One party you" : ownedParties + " parties you"}{" "}
+              renamed or recoloured will be lost, and cannot be brought back.
+            </div>
+            <div className={styles.confirmActions}>
+              <Button variant="flat" className={styles.confirmCancel} onSelect={function () {
+                setConfirmTheme("");
+              }}>
+                Keep {regionLabel(settings.theme)}
               </Button>
-            );
-          })}
-        </div>
-      </div>
-
-      {confirmTheme ? (
-        <div className={styles.confirm}>
-          <div className={styles.confirmText}>
-            Switching to {regionLabel(confirmTheme)} discards every party in this city and generates
-            a new set. {ownedParties === 1 ? "One party you" : ownedParties + " parties you"}{" "}
-            renamed or recoloured will be lost, and cannot be brought back.
+              <Button variant="flat" className={styles.confirmGo} onSelect={confirmChange}>
+                Switch to {regionLabel(confirmTheme)}
+              </Button>
+            </div>
           </div>
-          <div className={styles.confirmActions}>
-            <Button variant="flat" className={styles.confirmCancel} onSelect={function () {
-              setConfirmTheme("");
-            }}>
-              Keep {regionLabel(settings.theme)}
-            </Button>
-            <Button variant="flat" className={styles.confirmGo} onSelect={confirmChange}>
-              Switch to {regionLabel(confirmTheme)}
-            </Button>
+        ) : null}
+
+        <ToggleRow
+          label="Pause on major news"
+          hint="Stop the clock when an election, a change of government, a party's founding or collapse, or a serious event is reported."
+          value={shownFlag("pauseOnMajorNews", settings.pauseOnMajorNews)}
+          disabled={busy}
+          onChange={function (next) {
+            send("pauseOnMajorNews", next ? "true" : "false");
+          }}
+        />
+
+        <ToggleRow
+          label="Show every report as a popup"
+          hint="On, every report comes up as a card as well; those never stop the clock. Off, the press stays in the News tab."
+          value={shownFlag("showAllReports", settings.showAllReports)}
+          disabled={busy}
+          onChange={function (next) {
+            send("showAllReports", next ? "true" : "false");
+          }}
+        />
+
+        {VOTER_SETTINGS.map(function (setting) {
+          // Same optimistic-render rule as the toggles: show the pending value while a write is in
+          // flight, and fall back to what the engine published, so a refused write puts the row back.
+          const shown =
+            pending !== null && pending.key === setting.key
+              ? pending.value
+              : setting.read(settings);
+
+          return (
+            <LevelRow
+              key={setting.key}
+              label={setting.label}
+              hint={setting.hint}
+              levels={setting.levels}
+              value={shown}
+              disabled={busy}
+              onChange={function (next) {
+                if (next !== shown) {
+                  send(setting.key, next);
+                }
+              }}
+            />
+          );
+        })}
+
+        <div className={styles.sectionTitle}>Stories</div>
+
+        <ToggleRow
+          label="Draft stories"
+          hint="On, the city sets you a small bundle of civic problems every cycle and judges how you answered them. Turning it off stops the next draft only — a story already running still finishes on its own month, and nothing is ever generated retrospectively."
+          value={shownFlag("storiesEnabled", settings.storiesEnabled)}
+          disabled={busy}
+          onChange={function (next) {
+            send("storiesEnabled", next ? "true" : "false");
+          }}
+        />
+
+        <LevelRow
+          label="Stories per cycle"
+          hint="How many stories the city drafts at once. Default hands the number back to the mod's own tuning rather than meaning none — pick a figure only if you want more or fewer than the city would choose."
+          levels={COUNT_LEVELS}
+          value={shownCount("storiesPerCycle", settings.storiesPerCycle)}
+          disabled={busy}
+          onChange={function (next) {
+            if (next !== shownCount("storiesPerCycle", settings.storiesPerCycle)) {
+              send("storiesPerCycle", next);
+            }
+          }}
+        />
+
+        <LevelRow
+          label="Events per story"
+          hint="How many civic problems each story bundles together. Default hands the number back to the mod's own tuning, the same as above; it does not mean a story with nothing in it."
+          levels={COUNT_LEVELS}
+          value={shownCount("eventsPerStory", settings.eventsPerStory)}
+          disabled={busy}
+          onChange={function (next) {
+            if (next !== shownCount("eventsPerStory", settings.eventsPerStory)) {
+              send("eventsPerStory", next);
+            }
+          }}
+        />
+
+        <ToggleRow
+          label="Political power"
+          hint="On, answering a story well earns political power you can spend to make an awkward problem go away, and answering badly costs it. Off, nothing can be bought off in this city and no debt can build up — stories still draft and still resolve."
+          value={shownFlag("politicalPowerEnabled", settings.politicalPowerEnabled)}
+          disabled={busy}
+          onChange={function (next) {
+            send("politicalPowerEnabled", next ? "true" : "false");
+          }}
+        />
+
+        {/*
+          Two published story settings and NO control for either, deliberately.
+
+          Contract §4.1's key table lists every writable key and states plainly that there is none for
+          `powerIntensity` or `storyDifficulty`: the preset tables behind them do not exist yet, so a
+          write would persist a value, republish it, and change no number in the engine — and would be
+          answered `UnknownKey` in the meantime. A switch that does nothing under hint text promising
+          behaviour there is none of is exactly what `PauseOnMajorNews` and `ShowAllReports` were before
+          W5, and it is not being shipped again. They are shown as text because a player who finds them
+          in a save file is owed an explanation of why they cannot be reached, and the note says when
+          they arrive rather than leaving that to be guessed at.
+        */}
+        <div className={styles.row}>
+          <div className={styles.rowLabel}>How stories are pitched</div>
+          <div className={styles.rowHint}>
+            What this city currently carries in its save. Neither can be changed yet.
+          </div>
+          <div className={styles.readOnlyValue}>
+            Power intensity: {settings.powerIntensity} &#183; Story difficulty:{" "}
+            {settings.storyDifficulty}
+          </div>
+          <div className={styles.readOnlyNote}>
+            Both are recorded and neither changes anything in this build. The settings that would give
+            them meaning arrive in a later pass, and they become adjustable in the same update — a
+            control here now would look like a choice and be none.
           </div>
         </div>
-      ) : null}
-
-      <ToggleRow
-        label="Pause on major news"
-        hint="Stop the clock when an election, a change of government, a party's founding or collapse, or a serious event is reported."
-        value={shownFlag("pauseOnMajorNews", settings.pauseOnMajorNews)}
-        disabled={busy}
-        onChange={function (next) {
-          send("pauseOnMajorNews", next ? "true" : "false");
-        }}
-      />
-
-      <ToggleRow
-        label="Show every report as a popup"
-        hint="On, every report comes up as a card as well; those never stop the clock. Off, the press stays in the News tab."
-        value={shownFlag("showAllReports", settings.showAllReports)}
-        disabled={busy}
-        onChange={function (next) {
-          send("showAllReports", next ? "true" : "false");
-        }}
-      />
-
-      {VOTER_SETTINGS.map(function (setting) {
-        // Same optimistic-render rule as the toggles: show the pending value while a write is in
-        // flight, and fall back to what the engine published, so a refused write puts the row back.
-        const shown =
-          pending !== null && pending.key === setting.key
-            ? pending.value
-            : setting.read(settings);
-
-        return (
-          <LevelRow
-            key={setting.key}
-            label={setting.label}
-            hint={setting.hint}
-            levels={setting.levels}
-            value={shown}
-            disabled={busy}
-            onChange={function (next) {
-              if (next !== shown) {
-                send(setting.key, next);
-              }
-            }}
-          />
-        );
-      })}
+      </Scrollable>
 
       {/* The engine's verdict, in English. Never a code and never an exception message. */}
       {message ? <div className={styles.refusal}>{message}</div> : null}

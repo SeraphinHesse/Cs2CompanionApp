@@ -13,12 +13,41 @@
   flex-direction: column;
   flex: 0 0 auto;
   width: 420rem;
+  // Capped and scrolled, like every other surface in this build — DistrictsPanel, PartiesPanel and
+  // ArticleModal's card all sit at 620rem and NewsPanel at 640rem.
+  //
+  // The cap is not cosmetic. Nothing in this card shrinks (see `.row`, and the same must stay true of
+  // anything added to it), so without a ceiling the drawer's height is the exact sum of its rows, and
+  // it grows past the bottom of the screen with no scrollbar and no wheel target — rows that exist,
+  // are correct, and cannot be reached by any means. That failure has happened once in this repo
+  // already; `PartyDetail.module.scss:7-12` records it. The drawer had no cap at all and was around
+  // 970rem before the story rows; it is the rows below the header that scroll, not the card.
+  max-height: 620rem;
+  min-height: 0;
   margin: 8rem 8rem 0 8rem;
   padding: 12rem 14rem 14rem 14rem;
   background-color: $surface;
   border-radius: 4rem;
   color: $text;
   font-size: 12rem;
+  // Nothing escapes the card, whatever the hint prose grows to.
+  overflow: hidden;
+}
+
+// The scrolling region: everything between the header and the engine's verdict.
+//
+// `flex: 1 1 auto` over `min-height: 0` is the recipe every other scrolling region in this build
+// uses, and both halves are load-bearing — a flex item's default `min-height: auto` refuses to shrink
+// below its content, so without the zero the region grows forever instead of scrolling.
+//
+// Its CHILDREN must never shrink. They are scrolled content, and a shrinkable child is squeezed to
+// the viewport and overflows its own box rather than scrolling. Every `.row` is `flex: 0 0 auto` for
+// that reason; keep it that way for anything added here.
+.scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .header {
@@ -101,6 +130,51 @@
   color: $text;
 }
 
+// ---- a group of settings -----------------------------------------------------------------------
+//
+// The drawer grew past the point where an unbroken run of rows reads as one list. A heading is
+// cheaper than splitting the surface in two, and it is the only thing separating them: no box, no
+// second background, so the rows below it still belong to the same card.
+
+.sectionTitle {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 12rem;
+  padding-bottom: 4rem;
+  color: $text-faint;
+  font-size: 10rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+// ---- a published setting with no control ---------------------------------------------------------
+//
+// Text, not a chip and not a disabled button. A disabled control says "not right now"; these two
+// cannot be written at all in this build (contract §4.1), and dressing them as controls is how a
+// player comes to believe there is a switch behind them.
+
+.readOnlyValue {
+  display: flex;
+  margin-top: 8rem;
+  color: $text-dim;
+  font-size: 11rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.readOnlyNote {
+  display: flex;
+  margin-top: 4rem;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 14rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
 // ---- the theme-change confirmation ---------------------------------------------------------------
 //
 // Not a rejection — the engine has not been asked yet. This is the panel telling the player what the
@@ -158,6 +232,10 @@
 
 .refusal {
   display: flex;
+  // Pinned below the scrolling region rather than inside it, and it must not be squeezed to make
+  // room for the rows: it is the engine's answer to something the player just pressed, and a verdict
+  // that has scrolled out of view — or been compressed to a sliver — is a verdict they never saw.
+  flex: 0 0 auto;
   margin-top: 12rem;
   padding: 8rem 10rem;
   background-color: $surface-inset;
