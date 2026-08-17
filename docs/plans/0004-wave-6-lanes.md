@@ -320,6 +320,50 @@ These outrank the plan. Found while landing the spine.
 
 ---
 
+## Findings for later waves, recorded here rather than acted on
+
+### Wave 7a will break `StoryModal` unless it moves four helpers first
+
+`ui/src/shell/StoryModal.tsx` imports `cx`, `formatSimDate`, `splitParagraphs` and `SEVERITY_STEPS`
+from `ui/src/panels/News/format`. **Wave 7a's row is "`ui/src/panels/News/**` (delete)."**
+
+This is not a wave-6 defect. Lane 6d was told to model itself on `ArticleModal.tsx`, which imports
+from exactly the same three News modules (`bindings`, `format`, `lookup`) and has done since W5 — so
+the lane followed the established precedent, and doing anything else would have been a second copy of
+four presentation helpers. But `ArticleModal` is retired *with* the news lane and `StoryModal` is
+not, so wave 7a inherits a dangling import that `npx tsc --noEmit` will catch and nothing else will.
+
+**What wave 7a must do before deleting the directory:** move `cx`, `formatSimDate`,
+`splitParagraphs` and `SEVERITY_STEPS` somewhere the shell owns — `ui/src/shell/format.ts` is the
+obvious home, and lane 6b independently wrote its own copies of the first three inside
+`ui/src/panels/Stories/format.ts`, so there will be two copies to reconcile at the same time. Doing
+the move first and the delete second keeps it a one-commit refactor instead of a broken build.
+
+### `pauseOnMajorNews` does not govern story cards, and nothing else does either
+
+Raised by lane 6d and confirmed by its review. The card holds the clock on the engine's `major`
+verdict alone. A player who has turned **off** "Pause on major news" — whose hint text enumerates
+elections, governments, party lifecycle and serious events, all news — still gets force-paused by a
+major story, and **has no way to prevent it** short of `storiesEnabled: false`, which turns the whole
+feature off.
+
+**6d's choice is correct and is not the thing to change.** Repointing `pauseOnMajorNews` would make a
+control whose own hint enumerates news categories silently govern a different surface, and the
+symmetric error is just as bad: a player who leaves it *on* has not consented to story pauses either.
+Neither position of that toggle is a statement about stories, so neither reading of it is honest.
+
+**The fix is a fifth story setting, `pauseOnMajorStory`, default true, with its own row** — a genuine
+setting rather than a repointed one. It is not taken in wave 6 because it is a new persisted field:
+settings schemaVersion 5 → 6, a migration step called from **both** the nested-in-state and standalone
+paths, and a fixture. That is `/schema-change` work, and wave 6 has moved no sidecar schema at all.
+It belongs with wave 7b, which is already opening the settings surface for the power presets.
+
+**Until then it is manual gate row 12 below**, which is what decides whether it is urgent. Note the
+mitigation: the card is always dismissable and dismissing releases the barrier, so this is a forced
+pause with a working exit, not a freeze.
+
+---
+
 ## Manual gate rows this wave opens
 
 Every one of these is here because the code behind it links into no test. **No coverage was
@@ -368,3 +412,18 @@ as well as these.
 11. **A goal whose metric is unreadable shows as held, not failed.** Carried from the plan's gate 5b,
     now walkable: an `Unmeasurable` slot renders as held, costs no power, and is excluded from the
     archive row's `scoredCount`.
+12. **The pause-setting gap, walked.** Turn **off** "Pause on major news", then let a major story
+    draft. Confirm the clock stops anyway, and that no control in the settings panel prevents it.
+    **This row decides whether `pauseOnMajorStory` is urgent or can wait for wave 7b** — walk it
+    early. Then dismiss the card and confirm the clock returns to the speed it was on, which is the
+    mitigation that makes this a gap rather than a defect.
+13. **Two barriers coexist without deadlocking the clock.** Get a major news alert and a major story
+    card up at the same time. Dismiss the story card: **the clock must stay held** by the news card,
+    and release only when that one goes too. The two queues are independent by contract and neither
+    is entitled to sit over the other; this row is where that stops being an assertion.
+14. **The mod switched off mid-card.** With a major story card up and the clock held, toggle the mod
+    off. The card must vanish **and the clock must come back.** The release is React running an
+    effect cleanup, which no static check can confirm.
+15. **The boundary's exit is reachable.** Force a render failure inside the story card. Confirm the
+    inline notice appears with a pressable control, **the clock is already back before it is
+    pressed**, and no further story card pops that session.
