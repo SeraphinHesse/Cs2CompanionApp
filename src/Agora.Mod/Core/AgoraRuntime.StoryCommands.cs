@@ -323,9 +323,11 @@ namespace Agora.Mod.Core
         /// <para>
         /// <b>Debt is not a refusal.</b> A negative balance still buys anything it covers, which is
         /// encoded in <see cref="PoliticalPower.CanAfford"/> and deliberately not re-decided here.
-        /// With <c>power.enabled</c> off the answer is <see cref="CommandOutcome.PowerDisabled"/>
-        /// rather than <see cref="CommandOutcome.InsufficientPower"/>: the balance cannot grow either,
-        /// so "you cannot afford it" would point the player at a number they can never reach.
+        /// With the power layer off — <b>either</b> the per-save
+        /// <see cref="Agora.Core.Contracts.AgoraSettings.PoliticalPowerEnabled"/> <b>or</b>
+        /// <c>power.enabled</c> — the answer is <see cref="CommandOutcome.PowerDisabled"/> rather than
+        /// <see cref="CommandOutcome.InsufficientPower"/>: the balance cannot grow either, so "you
+        /// cannot afford it" would point the player at a number they can never reach.
         /// </para>
         /// <para>
         /// <b>Buying a slot that is already bought is <see cref="CommandOutcome.Ok"/> and is not
@@ -347,6 +349,31 @@ namespace Agora.Mod.Core
 
                     // Already bought. Accepted, silent, and above all not charged twice.
                     if (slot.Response == SlotResponse.PowerOverride) return CommandOutcome.Ok;
+
+                    // BOTH halves of the switch, and the per-save half first, because non-negotiable
+                    // #10 puts the player's answer above the tuning default.
+                    //
+                    // Reading only the tuning half was a latent hole until wave 6, which is when this
+                    // surface first got a caller. On a save with `politicalPowerEnabled` false and
+                    // `power.enabled` true the counter hides, the projection quotes a cost of 0 and an
+                    // affordability of false — and this method would still have accepted the purchase
+                    // and debited a balance the player cannot see. `StoryCycle.MovePower` and
+                    // `AppendDebtPenalty` each already carry this guard, and their remarks predicted
+                    // that wave 6's cost quote would need a third copy. It does; this is it.
+                    //
+                    // The copies exist because the seam is deficient, not because three checks are
+                    // wanted: `PowerLedger` is handed `EngineTuning` and never `AgoraSettings`, so no
+                    // single place can enforce the per-save half. The fix named in
+                    // `StoryCycle.MovePower`'s remarks — pass the setting into the ledger — is still
+                    // the right one and is still not taken here; it reaches into `Agora.Core` and
+                    // belongs with wave 7b's power-preset work, which opens that seam anyway.
+                    // Fully qualified: `AgoraSettings` is ambiguous in this file. `Agora.Mod.Core`
+                    // has one of its own (the global ModSetting) and this namespace wins over the
+                    // `using`. AgoraRuntime.cs dodges it with a file-scoped `CoreSettings` alias,
+                    // which does not reach across a partial into this file.
+                    Agora.Core.Contracts.AgoraSettings settings =
+                        _saveSettings ?? new Agora.Core.Contracts.AgoraSettings();
+                    if (!settings.PoliticalPowerEnabled) return CommandOutcome.PowerDisabled;
 
                     EngineTuning tuning = Tuning;
                     if (!tuning.Power.Enabled) return CommandOutcome.PowerDisabled;
