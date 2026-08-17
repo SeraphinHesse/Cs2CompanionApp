@@ -79,7 +79,8 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | **3** | Catalog and content — 58 authored civic events, a validating catalog loader, and the timeline adapter. Pure content plus `Agora.Core`. `engine_tuning` v7. | ✅ **code complete**, five lanes reviewed and merged, [PR #6](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/6) open into `EventSystemRefresh` · **no new manual gates of its own** · 1703 → **1978 tests** |
 | **4** | Tick wiring, effects and persistence — the cycle runs, effects dispatch, power moves, and stories move votes. `engine_tuning` v8. | ✅ **code complete**, eight lanes reviewed and merged, [PR #7](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/7) open into `EventSystemRefresh` · **fifteen manual gates outstanding, none walked** · 1978 → **2109 tests** |
 | **5** | Prose — both writers now produce a headline and an article for every story. The canned pool transcribes from the civic catalog and is the everyday voice; Claude is woken on the story-draft month and its prose is **added beside** the pool's, never over it. `politics_flavor` v3, `engine_tuning` v9, **settings v5 and state v7** — the first real sidecar migration since wave 1. | ✅ **code complete**, four lanes reviewed and merged, [PR #8](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/8) open into `EventSystemRefresh` · **seven manual gates outstanding, none walked** · 2109 → **2178 tests** | 
-| **6–7** | UI · retirement | not started |
+| **6** | UI — the story system becomes visible. A fifth dashboard tab, a story card that interrupts once per story, a political-power counter, and the five commands wired at last. `ui_bindings.md` v9; **no sidecar schema moved at all.** | ✅ **code complete**, four lanes reviewed and merged, PR open into `EventSystemRefresh` · **nineteen manual gates outstanding, none walked** · 2178 → **2178 tests, unchanged and correct** — see below |
+| **7** | retirement · balance · gates | not started |
 
 ### Wave 3 — the engine now has something to read, and still nothing runs it
 
@@ -238,6 +239,54 @@ see**:
   watermark repair covered one field, and wave 4 added three more
 
 Every one was found by a reviewer probing arithmetic. **None was found by a test.**
+
+### Wave 6 — a player can finally see it, and no player has
+
+There is a fifth dashboard tab (**Stories**, third in the strip), showing live stories with **both**
+prose voices, three "Tackle &lt;event&gt;" controls per story expanding into four response options, six
+textareas, a **Resolve now** control and the archive below. A story card interrupts on the draft
+month — **one card per story, never one per event** — holding the clock only when the engine says the
+story is major, and **dismissing it answers nothing**: the story stays live and is tackled from the
+panel. A political-power counter sits beside the mod icon and **hides entirely** when the save has
+the power layer off, because a zero is a balance and "there is no such currency here" is not one.
+`docs/contracts/ui_bindings.md` is at **schemaVersion 9** with a new `agora.stories` group of ten
+bindings, five of them inbound.
+
+**What has only been built, not seen: every word of that.** Nobody has run the game. Every claim
+above is a review's reasoning or a gate row.
+
+**No sidecar schema moved, and `data/` is byte-identical to the base** — the first wave of this
+rework that persists nothing new, and the reason existing saves are entirely unaffected by it.
+
+**The suite is unchanged at 2178, and that is the correct outcome rather than a defect.** Every file
+this wave touched is in `UiBindings/`, `AgoraRuntime` or `ui/`, none of which links into the headless
+suite by design. No test was deleted (verified against the base) and **no coverage was manufactured**.
+The wave's evidence is four adversarial reviews and nineteen gate rows. It is recorded here so that
+nobody later closes the gap by faking the runtime.
+
+**Two lanes were blocked; every defect found was found by review, never by a test** — and three of
+the four landed in files the lane that found them was forbidden to touch:
+
+- **`SpendPowerOverride` read half the power switch.** It guarded on tuning and never on the per-save
+  `PoliticalPowerEnabled`. Latent until this wave, because the method had no caller. On a save with
+  the per-save switch off, the counter hides and the projection quotes a cost of 0 — **and the
+  purchase would still have been accepted and debited against a balance the player cannot see.**
+- **The settings drawer had no height cap and no scroll**, and wave 6's four rows would have taken it
+  from ~969rem to ~1770rem — taller than the screen, with every story row below the edge and no
+  scrollbar to reach them. Capped at 620rem.
+- **`ValueRequired` told story players to press a party-editor button.** One outcome map serves every
+  inbound binding, and the most reachable path to that code in the mod is now a story success
+  declared with an empty justification.
+
+**Two decisions worth knowing about.** `powerIntensity` and `storyDifficulty` are published but got
+**no write key**: `TuningPresets.Apply` reads three levels and there is no preset table behind either,
+so a control would persist a value and change no number — the defect W5 closed for
+`PauseOnMajorNews`. Wave 7b ships the presets and the keys together. And **nothing lets a player stop
+a story card pausing their game**: `pauseOnMajorNews` governs the news lane and was correctly not
+repointed, so the answer is a fifth setting, which is a persisted field and therefore 7b's.
+
+Full detail, including the trap that **wave 7a's deletion of `ui/src/panels/News/**` will break
+`StoryModal` unless four helpers move first**, is in `docs/plans/0004-wave-6-handoff.md`.
 
 ### Wave 5's manual gates — the wake, the migration and the write-back
 
@@ -701,9 +750,13 @@ would tell the ceiling an existing NA save has no majors and pin its whole ballo
    fixture where two majority candidates both have cohesion below 1.0 and the seed makes the first
    walk out, so a reordering changes which government forms. Cheap, and it guards the argument the
    whole refactor rests on.
-2. **`ui/types/bindings.d.ts:3652` still says "schemaVersion 5"** in its authority comment while
-   `docs/contracts/ui_bindings.md:3` is at **7**. Contract drift in the mirror rather than in a
-   payload, but it is exactly what the drift audit exists to catch. Fold into the re-run.
+2. ~~**`ui/types/bindings.d.ts` still says "schemaVersion 5"**~~ — **closed by wave 6 of the event
+   system rework, 2026-08-17.** The mirror's authority comment now reads 9, matching
+   `docs/contracts/ui_bindings.md`. It had drifted three versions, which is the case for the drift
+   audit being a scheduled re-run rather than something done when someone happens to notice.
+   **The audit itself is still owed**: the last one covered 26 `agora.*` bindings on 2026-08-09, and
+   waves 0–6 have since added the whole `agora.stories` group. Adding bindings is exactly when drift
+   appears, so the re-run belongs in wave 7.
 
 ## Blocked / needs a decision
 
