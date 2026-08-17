@@ -1,6 +1,6 @@
 # Contract — C# ↔ UI bindings
 
-**schemaVersion: 9**
+**schemaVersion: 10**
 
 The fourth data contract. It spans two languages and two build systems, so nothing checks it at
 compile time: rename a binding on one side and the panel silently renders nothing. Every binding
@@ -80,6 +80,53 @@ shape that already existed:
   at 7 and then 8 (`docs/status.md` known gap 2). Corrected to 9 in the same pass, which is what the
   drift audit exists to catch.
 
+**Version 10 is wave 7 of the event-system rework, and it is the first version of this contract that
+REMOVES anything.** Every unfreeze before it was purely additive. This one retires the news feed the
+story system replaced, which is the "remove the old name in a **later** change" half of §7's
+never-rename-in-place rule — wave 6 built the replacement, and this is what makes the removal safe.
+
+**Removed:** `agora.news.feed`, `agora.news.events`, and the payload shapes `NewsHeadline` and
+`TimelineEventBrief`. A consumer still reading either binding renders nothing; there are none,
+because `ui/src/panels/News/**` is deleted in the same wave.
+
+**Kept, and each for a reason that outlived the panel:**
+
+- **`agora.news.article` stays, narrowed.** It served two callers: the feed's reader, which is gone,
+  and the alert card's body fetch, which is not. It now answers only the ids the surviving alerts
+  carry — election, coalition and party-lifecycle prose. Wave 7 keeps the article *writer* scoped to
+  those same four kinds rather than retiring it, so the cards keep a real body instead of degrading
+  to a headline and a one-line summary; W5's election coverage was built deliberately and is not
+  discarded here. **What is removed is general monthly coverage**, which existed to fill the feed.
+- **`agora.news.alerts` / `agora.news.ackAlert` stay.** The plan's own removal list named them, and
+  that list was wrong about what they carry. The alert queue is not the feed's popup — it also
+  carries **elections, coalition formation and collapse, and party founding and dissolution**, and
+  the story card replaces only the event half of it. Retiring the lane would have meant an election
+  no longer interrupts the player at all, which nothing in this rework ever proposed. What *is*
+  removed is the **article alert**: with the feed gone there is no general monthly prose to
+  interrupt over.
+- **`agora.news.mandates` stays**, as the plan says: the mandate tracker is unrelated to stories, is
+  consumed by the Parties tab too, and is the one part of the News panel worth keeping. Its
+  **renderer** moved into the Stories panel; its **binding name did not move**, because renaming in
+  place is what §7 forbids.
+- **`agora.news.flavorStatus` and `agora.news.wakeFlavor` stay.** `wakeFlavor` is on the plan's
+  removal list and should not have been: it is the only manual route to a prose refresh anywhere in
+  the mod, and the story system still writes prose. Both controls moved into the Stories panel with
+  the mandate tracker.
+
+So `agora.news` shrinks from eight bindings to five and keeps its name. **The group is now named for
+a panel that no longer exists**, which is ugly and is deliberate: renaming it to `agora.stories.*`
+would break five live consumers to fix a word, and §7's rule exists precisely to stop that trade.
+
+**Two shapes changed outside the removals:**
+
+- **`SettingsPayload` gains `pauseOnMajorStory`** (§4.1), default true, with a write key. Wave 6
+  shipped the story card holding the clock on the engine's `major` verdict alone, with no way to stop
+  it short of turning stories off entirely. It is a **new persisted field**: sidecar settings 5 → 6
+  and state 7 → 8, migrated through both paths, with a fixture at the old version.
+- **`powerIntensity` and `storyDifficulty` gain write keys** (§4.1). Version 9 published them
+  read-only and said why — the presets behind them did not exist. Wave 7 lands the preset tables and
+  the keys in the same wave, so the setting and its effect reach a player together.
+
 The freeze otherwise stands; these notes exist so the next reviewer reads authorised changes rather
 than violations.
 
@@ -106,7 +153,7 @@ exactly one publisher of its own.
 | `agora.parties` | the party/faction lookup table every panel renders labels and colours from | `src/Agora.Mod/UiBindings/AgoraStateUISystem.cs` |
 | `agora.seats` | seat chart, government breakdown, mayor, last election, latest poll | `src/Agora.Mod/UiBindings/AgoraSeatsUISystem.cs` |
 | `agora.districts` | per-district vote splits, wealth × education crosstabs, indices | `src/Agora.Mod/UiBindings/AgoraDistrictsUISystem.cs` |
-| `agora.news` | news feed, timeline events, mandate tracker, LLM health, the alert queue | `src/Agora.Mod/UiBindings/AgoraNewsUISystem.cs` |
+| `agora.news` | mandate tracker, LLM health, the political-event alert queue. **The feed and the timeline-event list retired in v10**; the group keeps its name because renaming in place is what §7 forbids. | `src/Agora.Mod/UiBindings/AgoraNewsUISystem.cs` |
 | `agora.stories` | live stories, the archive, story prose, political power, the story card queue, and the five commands that answer a story | `src/Agora.Mod/UiBindings/AgoraStoriesUISystem.cs` |
 | `agora.debug` | M0 pipeline proof — not part of the dashboard, do not extend | `src/Agora.Mod/UiBindings/AgoraDebugUISystem.cs` |
 
@@ -138,12 +185,14 @@ These cross a Gameface bridge on every update. Keep them flat and bounded:
 - No payload nests more than one level (a row may contain a small named group like `wealth`; it may
   not contain a list of rows that themselves contain lists).
 - Unbounded histories are capped and the cap is part of the contract:
-  `AGORA_NEWS_FEED_MAX = 40`, `AGORA_EVENTS_MAX = 25`, `AGORA_ELECTION_HISTORY_MAX = 12`,
-  `AGORA_POLL_TREND_MAX = 24`, `AGORA_COALITION_OPTIONS_MAX = 8`.
+  `AGORA_ELECTION_HISTORY_MAX = 12`, `AGORA_POLL_TREND_MAX = 24`,
+  `AGORA_COALITION_OPTIONS_MAX = 8`. (`AGORA_NEWS_FEED_MAX` and `AGORA_EVENTS_MAX` retired with the
+  feed in v10.)
 - Anything per-district and expensive is a **map binding**, fetched only for the key the panel is
   actually showing — never a city-wide array of every district's full detail.
-- Prose bodies never ride in a list payload. The feed carries headline + one-line summary; the body
-  arrives through `agora.news.article` only when an item is opened.
+- Prose bodies never ride in a list payload. A list carries headline + one-line summary; the body
+  arrives through a map binding, fetched only when an item is opened — `agora.news.article` for an
+  alert card, `agora.stories.article` for a story.
 
 ---
 
@@ -246,16 +295,24 @@ the sidecar is how the two come to disagree.
 | `storiesPerCycle` | `"0"`–`"5"` | Stories drafted per cycle. **`"0"` means unset** — the engine falls back to `stories.storiesPerCycle`, which is how a player hands the decision back to tuning. Outside the range is `BadValue`. Parsed invariant; a non-decimal value is `BadValue`. |
 | `eventsPerStory` | `"0"`–`"5"` | Events bundled into one story, same unset rule and same range. |
 | `politicalPowerEnabled` | `"true"` \| `"false"` | The per-save power kill switch (W6). Off means overrides answer `PowerDisabled` and no debt penalty can arise; stories still draft and resolve. |
+| `powerIntensity` | `"Lenient"` \| `"Default"` \| `"Harsh"` | How punishing the power economy is — the gain, cost and penalty presets (wave 7). Enum **name**, case-sensitive, same parsing rule as `voteSharpness`. `"Default"` carries no preset entry and means "leave the tuning file alone", so a retune reaches every save that never chose otherwise. |
+| `storyDifficulty` | `"Forgiving"` \| `"Default"` \| `"Demanding"` | How hard story goals are to meet — the `stories` check-scaling presets (wave 7). Same parsing and same `"Default"` rule. |
+| `pauseOnMajorStory` | `"true"` \| `"false"` | Whether a **story** card the engine has judged major holds the clock. Default true (wave 7). Governs only whether the sim stops — the card appears either way and is always dismissable. |
 | `dismissFirstRun` | ignored | Clears `isFirstRun` without changing a setting. Not persisted. |
 
-**There is deliberately no key for `powerIntensity` or `storyDifficulty`**, and a panel must render no
-control for either. Both are published on `SettingsPayload` and both drive nothing —
-`TuningPresets.Apply` reads three levels and there is no preset table behind these two — so a write
-would persist a value, republish it, and change no number in the engine. That is a switch that does
-nothing with hint text promising behaviour there is none of, which is exactly what `PauseOnMajorNews`
-and `ShowAllReports` were before W5 and is not being shipped again. Wave 7b adds the preset tables
-and these two keys in one change, so the setting and its effect arrive together. Until then a write
-answers `UnknownKey`, which is the truthful answer.
+**`powerIntensity` and `storyDifficulty` were deliberately keyless in v9**, and the reason is worth
+keeping because it is the rule, not the episode: both were published on `SettingsPayload` and both
+drove nothing — `TuningPresets.Apply` read three levels and no preset table stood behind these two —
+so a write would have persisted a value, republished it, and changed no number in the engine. A
+switch that does nothing, with hint text promising behaviour there is none of, is exactly what
+`PauseOnMajorNews` and `ShowAllReports` were before W5. **The rule this encodes: a write key and the
+thing it drives ship in the same change.** Wave 7 landed the preset tables, so the keys open here.
+
+**`pauseOnMajorStory` is not `pauseOnMajorNews` under another name**, and a panel must never write
+one when the player asked for the other. `pauseOnMajorNews`'s hint enumerates elections, governments,
+party lifecycle and serious events — all *news* — so neither of its positions is an answer about
+stories. Repointing it would have silently redefined a choice existing saves already made about
+something else; a fifth setting was the honest route and it costs a sidecar migration, which v10 pays.
 
 The upper bound of 5 on the two counts is a bound on what a settings control may ask for, not a
 balance number: wave 2's concurrency retune sized the story effect budget and its non-saturation
@@ -548,14 +605,17 @@ three per day, exactly as the game bills them. The panel labels the periods rath
 because a converted figure would not match the number the player sees in the game's own district
 panel — which is the whole point of showing it.
 
-### 4.5 `agora.news` — feed + mandate tracker + the alert queue
+### 4.5 `agora.news` — mandate tracker + the political-event alert queue
+
+**The feed is gone (v10).** `agora.news.feed` and `agora.news.events` were removed with
+`ui/src/panels/News/**`; the story system replaced what they were for. The group keeps its name
+because renaming a live binding in place is what §7 forbids, and six consumers still read it — see
+the version-10 note at the top of this file for the full reasoning on each survivor.
 
 | Binding | Kind | Direction | C# type | TS type | Cadence | Empty / loading | Since |
 |---|---|---|---|---|---|---|---|
-| `agora.news.feed` | `ValueBinding<T>` | C# → UI | `List<NewsHeadline>` | `Agora.NewsHeadline[]` | on flavor publish + on event fire | `[]` | M4 |
-| `agora.news.article` | `GetterMapBinding<string,T>` | C# → UI | `NewsArticle` per key | `Agora.NewsArticle` | on demand, per subscribed key | `EMPTY_NEWS_ARTICLE` | M4 |
-| `agora.news.events` | `ValueBinding<T>` | C# → UI | `List<TimelineEventBrief>` | `Agora.TimelineEventBrief[]` | on event fire / expire | `[]` | M4 |
 | `agora.news.mandates` | `ValueBinding<T>` | C# → UI | `List<MandateRow>` | `Agora.MandateRow[]` | monthly | `[]` | M4 |
+| `agora.news.article` | `GetterMapBinding<string,T>` | C# → UI | `NewsArticle` per key | `Agora.NewsArticle` | on demand, per subscribed key | `EMPTY_NEWS_ARTICLE` | M4 |
 | `agora.news.flavorStatus` | `ValueBinding<T>` | C# → UI | `FlavorStatus` | `Agora.FlavorStatus` | on every flavor attempt, success or failure | `EMPTY_FLAVOR_STATUS` | M4 |
 | `agora.news.wakeFlavor` | `TriggerBinding` | **UI → C#** | — | `() => void` | on click | n/a | M4 |
 | `agora.news.alerts` | `ValueBinding<T>` | C# → UI | `List<NewsAlert>` | `Agora.NewsAlert[]` | on raise and on ack | `[]` | W5 |
@@ -567,15 +627,9 @@ the same rows twice.
 
 Sort keys:
 
-- `feed`: `date` **descending**, then `id` ordinal ascending. Capped at `AGORA_NEWS_FEED_MAX = 40`.
-- `events`: **fired before unfired** — every row carrying a `firedDate` sorts ahead of every row
-  whose `firedDate` is `""` — then `firedDate` **descending**, then `id` ordinal ascending. Capped at
-  `AGORA_EVENTS_MAX = 25`. The first key matters because `firedDate` is typed as possibly empty and
-  an empty string would otherwise sort as the *oldest* date and bury live rows.
 - `mandates`: **status rank** ascending — `Active` 0, `Pending` 1, `PartiallyFulfilled` 2,
   `Fulfilled` 3, `Defied` 4, `Abandoned` 5 — then `deadlineDate` ascending, then `id` ordinal
   ascending. So the tracker opens on what is live and closest to its deadline.
-- `events[].tags`, `events[].districtIds`: ordinal ascending.
 - `alerts`: **not sorted.** Emission order, oldest first — the order the alerts happened in, which is
   the order the player is asked to answer them in. A view that re-sorted it would change which card
   comes up first, which is §7 rule 7's territory. Bounded by the engine, which drops the oldest and
@@ -589,27 +643,42 @@ not assume the feed changes as a result — a failed wake keeps the last good fl
 `flavorStatus.lastError` is an **engine-authored** short code, never LLM output and never a raw
 exception message: `""`, `"CliMissing"`, `"Timeout"`, `"BadJson"`, `"Disabled"`, `"Unknown"`.
 
-`agora.news.alerts` is a **queue of pointers**, not a second feed. Every entry's `id` is a feed row's
-id, so anything the modal shows can be found again in the News tab; a body is fetched from
-`agora.news.article` under that same id, and **only when `hasArticle` is true** — the map binding
-answers an id it does not know with `EMPTY_NEWS_ARTICLE` rather than throwing, so a fetch for an
-event or a coalition renders a blank masthead instead of failing loudly. Branch on `hasArticle`,
-never on `kind`.
+**`agora.news.alerts` is the political-event alert queue, and as of v10 that is all it is.** It
+carries elections, coalition formation and collapse, and party founding and dissolution — the four
+things in this mod that happen *to* the player rather than being decided by them, and that nothing
+else announces. It no longer carries **article alerts** (there is no general monthly prose to
+interrupt over) and it never carried stories, which have their own lane and their own modal for the
+three reasons §4.7 gives.
+
+**A body is still fetched from `agora.news.article` under the alert's own `id`, and still only when
+`hasArticle` is true.** The map answers an id it does not know with `EMPTY_NEWS_ARTICLE` rather than
+throwing, so a fetch for an alert the writer produced no prose for renders a blank masthead instead
+of failing loudly. **Branch on `hasArticle`, never on `kind`** — unchanged since W5, and it matters
+more in v10 than before, because the writer now covers four kinds rather than every item and
+`hasArticle` is the only honest answer to "is there a body".
+
+What changed underneath is which ids can be present: the feed is gone, so an id is no longer "a feed
+row's id" but simply the alert's own. Nothing a consumer does had to change.
 
 `alerts[].major` is the **engine's** verdict on whether an item is grave enough to hold the clock,
 decided once when the alert is raised. The UI must never compare `severity` to a threshold of its
 own: the number lives in `EngineTuning` and a copy of it in a panel is a second definition of "major"
 that drifts on the next tuning pass (§7 rule 5). Whether the clock is actually held is the separate
-question `settings.pauseOnMajorNews` answers, and an article alert is never `major` — an ordinary
-month's prose must not stop the clock even for a player who asked to see all of it.
+question `settings.pauseOnMajorNews` answers **for this lane**. The story lane asks
+`settings.pauseOnMajorStory` instead, and the two must never be crossed: each control's hint text
+names the categories it governs, and reading the other one enforces a choice the player made about
+something else.
 
-**Every alert `id` is a feed row's id, and every kind is prefixed except one.** `event:`,
-`election:`, `coalition:` (an ending), `coalition:…:formed`, `party:…:founded` / `:dissolved` — but
-an **article alert carries the bare article id, unprefixed**, because that same string is the
-`agora.news.article` map key and the modal fetches the body with `useMapValue(article$, alert.id)`.
-The asymmetry is deliberate. Prefixing an article id breaks the fetch **silently**: `BuildArticle`
-answers an unknown key with an empty payload rather than throwing, so the player sees a blank
-masthead and nothing is logged.
+**Every alert `id` is prefixed, and as of v10 there is no longer an exception.** `event:`,
+`election:`, `coalition:` (an ending), `coalition:…:formed`, `party:…:founded` / `:dissolved`.
+
+The exception that existed until v10 is worth recording, because it is the shape of a whole class of
+bug this repo keeps meeting: an **article alert carried the bare article id, unprefixed**, because
+that same string doubled as the `agora.news.article` map key. Prefixing it broke the fetch
+**silently** — `BuildArticle` answered an unknown key with an empty payload rather than throwing, so
+the player saw a blank masthead and nothing was logged. Both the article alert and the map are gone,
+so the asymmetry is gone with them. **Do not reintroduce an id that doubles as a lookup key** without
+reading this paragraph first.
 
 `agora.news.ackAlert` takes the alert's id, or the sentinel `"*"` for dismiss-all, and answers a
 `CommandOutcomeName` like every other inbound call. Acking an id the engine no longer holds is
@@ -767,7 +836,9 @@ StateSummary        schemaVersion, date, termNumber, system, theme, nextElection
 SettingsPayload     schemaVersion, startYear, theme, system, themeLocked, pauseOnMajorNews,
                     showAllReports, effectsEnabled, voteSharpness, newsInfluence,
                     brandDiscipline, voteSharpnessValue, newsInfluenceValue,
-                    brandDisciplineValue
+                    brandDisciplineValue, storiesEnabled, storiesPerCycle, eventsPerStory,
+                    politicalPowerEnabled, powerIntensity, storyDifficulty,
+                    pauseOnMajorStory
 PartyBrief          id, name, shortName, description, slogan, colorHex, status, isIncumbent,
                     isInGovernment, coreGrievance, foundedDate, dissolvedDate, nameLocked,
                     descriptionLocked, colorLocked
@@ -814,14 +885,10 @@ CrosstabCell        wealth, education, population, populationShare, eligibleVote
                     leadingPartyId, leadingShare, happiness, discontent
 CityIndices         gini, brainDrain, serviceInequality, commuteMisery, polarization, legitimacy,
                     discontent
-NewsHeadline        id, date, kind, headline, summary, outletId, outletName, severity, partyId,
-                    districtId, eventId, hasArticle
 NewsAlert           id, kind, date, headline, summary, outletName, partyId, districtId, eventId,
                     severity, major, hasArticle
 NewsArticle         id, date, headline, body, tone, outletId, outletName, partyId,
                     districtId, eventId
-TimelineEventBrief  id, date, title, region, origin, severity, durationMonths, firedDate,
-                    expiresDate, archetypeId, localAngle, tags, districtIds
 MandateRow          id, partyId, coalitionId, districtId, issue, metric, direction, baselineValue,
                     targetValue, currentValue, progress, issuedDate, deadlineDate, resolvedDate,
                     status, salience, text, isMeasurementStalled, monthsRemaining
@@ -843,9 +910,8 @@ Three ownerships, not two, and the difference decides what the UI may offer to d
 **Flavor-owned** — `PartyBrief.name`/`shortName`/`description`/`slogan`,
 `PartyDetail.name`/`shortName`/`description`/`slogan`,
 `FactionBrief.name`/`shortName`/`leaderName`, `MayorSummary.name`, `PollSummary.pollsterName`,
-`NewsHeadline.headline`/`summary`/`outletName`, `NewsAlert.headline`/`summary`/`outletName`,
-`NewsArticle.*` prose,
-`TimelineEventBrief.localAngle` and `MandateRow.text`. Render them; never parse them, never sort by
+`NewsAlert.headline`/`summary`/`outletName`, `NewsArticle.*` prose and `MandateRow.text`. Render
+them; never parse them, never sort by
 them, never derive a number from them.
 
 **Engine-owned** — everything else, including **`PartyBrief.colorHex`**. Colour has never been
@@ -897,6 +963,7 @@ const EMPTY_SETTINGS: Agora.SettingsPayload = {
   voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
   storiesEnabled: true, storiesPerCycle: 2, eventsPerStory: 3,
   politicalPowerEnabled: true, powerIntensity: "Default", storyDifficulty: "Default",
+  pauseOnMajorStory: true,
 };
 
 // `enabled: false` is the one field here worth arguing about, and it is deliberate. Before the
@@ -979,7 +1046,8 @@ and `agora.seats.latestPoll` take `null`.
 
 **Map bindings are the exception: `bindMap` takes no fallback argument**, and
 `useMapValue(binding, key)` cannot return `undefined` for a key the panel has asked for. So
-`EMPTY_DISTRICT_DETAIL`, `EMPTY_NEWS_ARTICLE` and `EMPTY_PARTY_DETAIL` are not wired into a binding
+`EMPTY_DISTRICT_DETAIL`, `EMPTY_NEWS_ARTICLE`, `EMPTY_STORY_ARTICLE` and `EMPTY_PARTY_DETAIL` are
+not wired into a binding
 declaration — they are module-local guard constants the panel substitutes for whatever `useMapValue`
 hands back, `const detail = raw || EMPTY_PARTY_DETAIL`, covering the frame before the getter has run
 and any nested group the payload did not write. The C# side answers an unknown key with its own

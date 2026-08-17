@@ -93,6 +93,7 @@ namespace Agora.Mod.UiBindings
             payload.PoliticalPowerEnabled = settings.PoliticalPowerEnabled;
             payload.PowerIntensity = settings.PowerIntensity.ToString();
             payload.StoryDifficulty = settings.StoryDifficulty.ToString();
+            payload.PauseOnMajorStory = settings.PauseOnMajorStory;
 
             if (tuning != null)
             {

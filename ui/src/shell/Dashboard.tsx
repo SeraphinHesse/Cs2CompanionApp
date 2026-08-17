@@ -2,7 +2,6 @@ import { useValue } from "cs2/api";
 import { Button } from "cs2/ui";
 
 import { DistrictsPanel } from "../panels/Districts";
-import { NewsPanel } from "../panels/News";
 import { PartiesPanel } from "../panels/Parties";
 import { SeatsPanel } from "../panels/Seats";
 import { StoriesPanel } from "../panels/Stories";
@@ -49,8 +48,6 @@ function renderTab(tab: AgoraTab): JSX.Element {
       return <StoriesPanel />;
     case "districts":
       return <DistrictsPanel />;
-    case "news":
-      return <NewsPanel />;
     case "council":
     default:
       return <SeatsPanel />;

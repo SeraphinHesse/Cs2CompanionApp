@@ -4,13 +4,12 @@ import { Button, Portal, Scrollable } from "cs2/ui";
 
 import { ArticleModalBoundary } from "./ArticleModalBoundary";
 import {
-  ackAlert, alerts$, EMPTY_NEWS_ALERT, enabled$, isFirstRun$, isAccepted, roster$, settings$,
-  writeMessage,
+  ackAlert, alerts$, article$, EMPTY_NEWS_ALERT, EMPTY_NEWS_ARTICLE, enabled$, isFirstRun$,
+  isAccepted, roster$, settings$, writeMessage,
 } from "./bindings";
 import { useSimulationHeldPaused } from "./pause";
-import { article$, EMPTY_NEWS_ARTICLE } from "../panels/News/bindings";
-import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "../panels/News/format";
-import { NEUTRAL_COLOR } from "../panels/News/lookup";
+import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "./format";
+import { NEUTRAL_COLOR } from "./lookup";
 import styles from "./ArticleModal.module.scss";
 
 /**

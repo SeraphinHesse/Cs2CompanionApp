@@ -1479,20 +1479,27 @@ namespace Agora.Mod.Core
                         case "politicalPowerEnabled":
                             return SetFlag(value, v => _saveSettings.PoliticalPowerEnabled = v);
 
-                        // There is deliberately NO key for `powerIntensity` or `storyDifficulty`.
+                        // ---- the two levels that had no write key until wave 7 ----
                         //
-                        // Both enums are persisted, cloned and published — and both drive nothing:
-                        // `TuningPresets.Apply` reads VoteSharpness, NewsInfluence and BrandDiscipline
-                        // and no fourth or fifth level, so the presets behind these two do not exist
-                        // yet. Accepting a write would persist a value, republish it, and change no
-                        // number in the engine — a switch that does nothing, with hint text promising
-                        // behaviour there is none of, which is the exact defect `docs/status.md`
-                        // records against PauseOnMajorNews and ShowAllReports before W5 closed it.
-                        //
-                        // The presets are wave 7b's row ("the presets behind StoryDifficulty /
-                        // PowerIntensity"). The write key belongs in the same change as the preset
-                        // table, so the setting and its effect ship together. Until then an unknown
-                        // key answers `UnknownKey`, which is the truthful answer.
+                        // Wave 6 deliberately withheld these because `TuningPresets.Apply` read three
+                        // levels and no fourth or fifth, so a control would have persisted a value and
+                        // changed no number — the defect W5 closed for PauseOnMajorNews. Wave 7's
+                        // spine opens the key and wave 7b lands the preset tables behind it, in the
+                        // same wave and in the declared merge order, so the setting and its effect
+                        // reach a player together. Do not merge 7b's row without them.
+
+                        case "powerIntensity":
+                            return SetLevel<PowerIntensity>(value, v => _saveSettings.PowerIntensity = v);
+
+                        case "storyDifficulty":
+                            return SetLevel<StoryDifficulty>(value, v => _saveSettings.StoryDifficulty = v);
+
+                        case "pauseOnMajorStory":
+                            // Governs only whether the clock stops, never whether the card appears.
+                            // Separate from pauseOnMajorNews on purpose — that control's hint
+                            // enumerates news categories, so neither of its positions is an answer
+                            // about stories.
+                            return SetFlag(value, v => _saveSettings.PauseOnMajorStory = v);
 
                         case "dismissFirstRun":
                             // Not a setting and not persisted — the player closed the prompt. It is

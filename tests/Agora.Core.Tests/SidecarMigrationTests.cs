@@ -313,6 +313,12 @@ namespace Agora.Core.Tests
             // is what asserts the rewrite is the one intended, and it must be read alongside this.
             settings.Remove("wakeCadence");
 
+            // v7 -> v8 (state) / v5 -> v6 (settings): whether a major story card holds the clock.
+            // Seeded true, which is behaviour-preserving rather than merely a sensible default — the
+            // card held the clock unconditionally before the field existed, so every save has been
+            // playing with it effectively on.
+            settings.Remove("pauseOnMajorStory");
+
             foreach (JToken party in Arr(root, "parties"))
             {
                 ((JObject)party).Remove("playerOverrides");
@@ -1660,6 +1666,94 @@ namespace Agora.Core.Tests
             Assert.Equal(after, (string)settings["wakeCadence"]!);
         }
 
+        // --- 5g. v5 → v6 (settings) / v7 → v8 (state): pauseOnMajorStory -------------------------
+
+        /// <summary>
+        /// A standalone settings file at v5 gains <c>pauseOnMajorStory</c>, seeded <c>true</c>, and a
+        /// save that has already answered the question keeps its answer.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>true</c> is behaviour-preserving rather than merely a sensible default. Before the
+        /// field existed the story card held the clock on the engine's <c>major</c> verdict alone,
+        /// unconditionally, so every save in existence has been playing with this switch effectively
+        /// on. Seeding <c>false</c> would have turned an interruption off for players who never asked
+        /// for that — a migration changing behaviour is the thing these fixtures exist to catch.
+        /// </para>
+        /// <para>
+        /// The <c>false</c> case is the one worth reading: it proves the step is an <i>add</i> and
+        /// not a <i>write</i>. Re-running the chain over its own output must not resurrect the
+        /// default on top of a choice the player has since made, which is what idempotence means for
+        /// a settings step and what the final assertion pins.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(null, true)]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        public void Migrate_SettingsV5_AddsPauseOnMajorStory_WithoutOverwritingAChoice(
+            bool? existing, bool expected)
+        {
+            var settings = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 5,
+                ["startYear"] = 1990,
+                ["theme"] = "Eu",
+                ["system"] = "Proportional",
+                ["wakeCadence"] = "Yearly, Election, Manual, Story"
+            };
+            if (existing.HasValue) settings["pauseOnMajorStory"] = existing.Value;
+
+            MigrationResult result = SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
+            Assert.Equal(expected, (bool)settings["pauseOnMajorStory"]!);
+
+            // Idempotent: the chain re-run over its own output changes nothing. This is the assertion
+            // that would fail if the step were rewritten as an unconditional write.
+            SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+            Assert.Equal(expected, (bool)settings["pauseOnMajorStory"]!);
+        }
+
+        /// <summary>
+        /// The same field reaches the settings block <i>nested inside a state file</i>, which
+        /// <see cref="SidecarDocument.Settings"/>'s own step table never sees.
+        /// </summary>
+        /// <remarks>
+        /// A state file carries its settings inside itself, and the settings table is only ever
+        /// handed a standalone <c>settings.json</c> — so a settings addition needs a state step to
+        /// carry it or the nested copy sits at the old version forever, on every save that has one.
+        /// Waves 2 and 5 each had to learn this once; this fixture is what stops wave 7 learning it a
+        /// third time.
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV7_CarriesPauseOnMajorStoryIntoTheNestedSettingsBlock()
+        {
+            var root = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 7,
+                ["saveGuid"] = "11112222-3333-4444-5555-666677778888",
+                ["date"] = "1994-03-01",
+                ["settings"] = new JObject
+                {
+                    [SidecarSchema.VersionProperty] = 5,
+                    ["startYear"] = 1990,
+                    ["theme"] = "Eu",
+                    ["system"] = "Proportional",
+                    ["wakeCadence"] = "Yearly, Election, Manual, Story"
+                }
+            };
+
+            MigrationResult result = SidecarSchema.Migrate(root, SidecarDocument.State);
+            var settings = (JObject)root["settings"]!;
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal(SidecarSchema.CurrentStateVersion, (int)root[SidecarSchema.VersionProperty]!);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
+            Assert.True((bool)settings["pauseOnMajorStory"]!);
+        }
+
         /// <summary>
         /// Every settings upgrade helper stamps the literal version it produces, never the current
         /// one.
@@ -1704,9 +1798,13 @@ namespace Agora.Core.Tests
             SidecarSchema.UpgradeSettingsObjectToV5(toV5);
             Assert.Equal(5, (int)toV5[SidecarSchema.VersionProperty]!);
 
+            var toV6 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV6(toV6);
+            Assert.Equal(6, (int)toV6[SidecarSchema.VersionProperty]!);
+
             // The last helper in the chain is the one that must agree with the constant. If this
             // fails, a version was bumped without a helper to reach it.
-            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)toV5[SidecarSchema.VersionProperty]!);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)toV6[SidecarSchema.VersionProperty]!);
         }
 
         // --- Temp directories --------------------------------------------------------------------------

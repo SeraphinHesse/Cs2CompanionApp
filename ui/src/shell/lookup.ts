@@ -4,9 +4,14 @@ import { useValue } from "cs2/api";
 import { districts$, roster$ } from "./bindings";
 
 /**
- * Id -> label resolution for the News panel.
+ * Id -> label resolution, shared by the shell and by any panel that renders an id-bearing payload.
  *
- * News items, events and mandates all carry ids only. Party name and colour come from
+ * **Why it lives in the shell.** It was the News panel's until wave 7, and two things outside that
+ * panel need it after the panel is deleted: the alert card, which renders a party chip, and the
+ * mandate tracker, which moved into the Stories panel. Moving it is what makes the deletion a
+ * deletion rather than a broken build.
+ *
+ * Alerts, mandates and stories all carry ids only. Party name and colour come from
  * `agora.parties.roster` and district names from `agora.districts.list`, which is the whole point
  * of those bindings: resolve in one place so a party cannot end up two different colours in two
  * panels. Nothing here iterates a map in a way that reaches engine state — these are point

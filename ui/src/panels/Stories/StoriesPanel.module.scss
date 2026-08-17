@@ -16,7 +16,12 @@
   display: flex;
   flex-direction: column;
   width: 640rem;
-  max-height: 620rem;
+  // The COLUMN owns the height budget, not the panel — see .panelSlot in Shell.module.scss. A fixed
+  // ceiling here made every panel independently claim 620rem of a 1080rem screen while the tab strip,
+  // the header and an open settings drawer claimed the rest, and the column overflowed. 100% of a
+  // slot that is itself bounded is the same ceiling when there is room and a smaller one when there
+  // is not, which is the whole fix.
+  max-height: 100%;
   padding: 8rem 10rem 10rem 10rem;
   margin: 8rem;
   background-color: $surface;

@@ -212,6 +212,13 @@ namespace Agora.Mod.UiBindings
         public string PowerIntensity = "Default";
         public string StoryDifficulty = "Default";
 
+        /// <summary>
+        /// Whether a major story card holds the clock. New in wave 7; see
+        /// <c>AgoraSettings.PauseOnMajorStory</c> for why it is not
+        /// <see cref="PauseOnMajorNews"/> under another name.
+        /// </summary>
+        public bool PauseOnMajorStory = true;
+
         public void Write(IJsonWriter writer)
         {
             writer.TypeBegin("agora.SettingsPayload");
@@ -235,6 +242,7 @@ namespace Agora.Mod.UiBindings
             UiJson.Flag(writer, "politicalPowerEnabled", PoliticalPowerEnabled);
             UiJson.Text(writer, "powerIntensity", PowerIntensity);
             UiJson.Text(writer, "storyDifficulty", StoryDifficulty);
+            UiJson.Flag(writer, "pauseOnMajorStory", PauseOnMajorStory);
             writer.TypeEnd();
         }
     }
