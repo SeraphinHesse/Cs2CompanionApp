@@ -726,7 +726,7 @@ extended this set rather than starting a parallel one, adding the last four rows
 | `Busy` | Something the request would tear down is in flight. Retry shortly. |
 | `Failed` | It failed for a reason the player cannot act on. The detail is in `Agora.log`. |
 | `NotFound` | No party in this save carries that id. Unlike `UnknownKey`, the *field* was fine — the *subject* was not. |
-| `ValueRequired` | The field was left empty. **Empty is never a reset**; resetting is its own binding (§4.2). |
+| `ValueRequired` | The field was left empty. **Empty is never a reset**; where a reset exists it is its own binding (§4.2). Now reached from two surfaces — a cleared party name, and a self-declared story success with no justification (§4.7) — so its player-facing sentence must not name a control that exists on only one of them. |
 | `TooLong` | Over the limit published by `agora.parties.editLimits`. Separate from `BadValue` so the counter and the rejector say the same thing. |
 | `OkColorInUse` | **Accepted, with a warning.** The colour was applied; another party already wears it. |
 | `InsufficientPower` | The balance does not cover this override's cost. A statement about *now*, not about the save. |

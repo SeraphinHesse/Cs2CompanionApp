@@ -419,7 +419,16 @@ const OUTCOME_MESSAGE: { [outcome: string]: string } = {
   Busy: "Something this would tear down is still running. Try again in a moment.",
   Failed: "That did not take. The reason is in Agora.log.",
   NotFound: "That party is no longer part of this save.",
-  ValueRequired: "This field needs some text. To hand it back to the generator, use reset.",
+  // Worded for two surfaces, because one map serves both. The party editors reach this by clearing a
+  // name; the Stories panel reaches it by declaring a success with an empty justification — and that
+  // second path is far more reachable than the first. The old copy said "use reset", which is a
+  // party-editor control that does not exist anywhere on the Stories panel, so a player who left the
+  // justification box empty was pointed at a button they could not find. What the sentence must keep
+  // saying is the load-bearing half: an empty box is never read as a reset, deliberately, because a
+  // cleared field is a slipped keystroke as often as it is an intention (§4.2).
+  ValueRequired:
+    "This needs some text. An empty box is never read as a reset — where a reset is possible, it has "
+    + "its own control.",
   // No number in this sentence on purpose. The limits are published by `agora.parties.editLimits`
   // and rendered by the character counter; a literal here would be a second copy of the same number
   // that can drift from the engine's, which is the whole reason that binding exists.
