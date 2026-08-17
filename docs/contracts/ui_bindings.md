@@ -172,9 +172,10 @@ Selection state (which district is open, which party is highlighted) is UI-only.
 
 ## 4. Registered bindings
 
-Direction is C# → UI unless a row says otherwise. Nine bindings run the other way and every one of
-them is marked **UI → C#** in its own table: `agora.news.wakeFlavor` (the only trigger),
-`agora.news.ackAlert`, `agora.state.setSetting`, and the six party editors in §4.2. "Cadence" is when the publisher calls
+Direction is C# → UI unless a row says otherwise. **Fourteen** bindings run the other way and every
+one of them is marked **UI → C#** in its own table: `agora.news.wakeFlavor` (the only trigger),
+`agora.news.ackAlert`, `agora.state.setSetting`, the six party editors in §4.2, and the five story
+commands in §4.7. "Cadence" is when the publisher calls
 `Update`, not how often the UI re-renders. An inbound binding has no cadence and no empty value: its
 row reads `n/a` where the table has those columns, and §4.2 drops them entirely.
 
