@@ -101,6 +101,51 @@
   color: $text;
 }
 
+// ---- a group of settings -----------------------------------------------------------------------
+//
+// The drawer grew past the point where an unbroken run of rows reads as one list. A heading is
+// cheaper than splitting the surface in two, and it is the only thing separating them: no box, no
+// second background, so the rows below it still belong to the same card.
+
+.sectionTitle {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 12rem;
+  padding-bottom: 4rem;
+  color: $text-faint;
+  font-size: 10rem;
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+// ---- a published setting with no control ---------------------------------------------------------
+//
+// Text, not a chip and not a disabled button. A disabled control says "not right now"; these two
+// cannot be written at all in this build (contract §4.1), and dressing them as controls is how a
+// player comes to believe there is a switch behind them.
+
+.readOnlyValue {
+  display: flex;
+  margin-top: 8rem;
+  color: $text-dim;
+  font-size: 11rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.readOnlyNote {
+  display: flex;
+  margin-top: 4rem;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 14rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
 // ---- the theme-change confirmation ---------------------------------------------------------------
 //
 // Not a rejection — the engine has not been asked yet. This is the panel telling the player what the

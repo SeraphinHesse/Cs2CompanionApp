@@ -69,6 +69,50 @@
   font-variant-numeric: tabular-nums;
 }
 
+// The political-power counter, last on the toggle's face.
+//
+// Written as two exclusive states like the dot and the button above it. Both carry a border of the
+// same width so the chip does not resize when the balance crosses into debt — a control that changes
+// width on a state change drags the whole top-left cluster with it.
+//
+// There is deliberately no "off" state here. Off is the absence of the element (see AgoraButton).
+@mixin toggle-power-base {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: 8rem;
+  padding: 1rem 6rem;
+  border-radius: 3rem;
+  font-size: 11rem;
+  // Tabular figures: the chip is read at a glance while the balance ticks, and proportional digits
+  // make it jitter every time the number changes width.
+  font-variant-numeric: tabular-nums;
+}
+
+.togglePower {
+  @include toggle-power-base;
+  background-color: $surface-raised;
+  border: 1rem solid $line;
+  color: $text-dim;
+}
+
+// Debt reads as a warning, not as a failure: it is a state the player can be in and trade out of.
+.togglePowerDebt {
+  @include toggle-power-base;
+  background-color: rgba(224, 96, 62, 0.28);
+  border: 1rem solid $bad;
+  color: $text;
+}
+
+.togglePowerUnit {
+  display: flex;
+  margin-left: 4rem;
+  opacity: 0.72;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+}
+
 // ---- the dashboard (GameTopRight) -------------------------------------------------------------
 
 .shell {

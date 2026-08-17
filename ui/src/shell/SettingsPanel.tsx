@@ -33,7 +33,11 @@ type SettingKey =
   | "showAllReports"
   | "voteSharpness"
   | "newsInfluence"
-  | "brandDiscipline";
+  | "brandDiscipline"
+  | "storiesEnabled"
+  | "storiesPerCycle"
+  | "eventsPerStory"
+  | "politicalPowerEnabled";
 
 /** One level of a voter-model setting: the wire name, a label, and what it does. */
 interface Level {
@@ -107,6 +111,27 @@ const VOTER_SETTINGS: {
       { value: "Locked", label: "Locked" },
     ],
   },
+];
+
+/**
+ * The two story counts, offered as levels rather than as a number field.
+ *
+ * **`"0"` is not "no stories".** Contract §4.1 makes zero the unset value on both keys: the engine
+ * falls back to `stories.storiesPerCycle` / `stories.eventsPerStory`, which is how a player hands the
+ * decision back to tuning — the same convention, and the same reason, as `SnapshotRetention`. A row
+ * that printed a bare `0` here would tell the player the exact opposite of what the setting does, so
+ * the unset level is labelled and the hint says what it falls back to.
+ *
+ * The ceiling of 5 is the contract's, not a balance number. Values outside [0, 5] answer `BadValue`,
+ * and this row cannot produce one — but the range check is still the engine's, not this panel's.
+ */
+const COUNT_LEVELS: Level[] = [
+  { value: "0", label: "Default" },
+  { value: "1", label: "1" },
+  { value: "2", label: "2" },
+  { value: "3", label: "3" },
+  { value: "4", label: "4" },
+  { value: "5", label: "5" },
 ];
 
 /** A write that has been sent and not yet answered. */
@@ -258,6 +283,18 @@ export const SettingsPanel = (): JSX.Element => {
     return published;
   }
 
+  /**
+   * The same optimistic render as `shownFlag`, for the two counts. A string because that is what
+   * crosses the wire and what the level buttons compare against — the panel never does arithmetic on
+   * a setting it only mirrors.
+   */
+  function shownCount(key: SettingKey, published: number): string {
+    if (pending !== null && pending.key === key) {
+      return pending.value;
+    }
+    return String(published);
+  }
+
   function requestTheme(theme: Agora.RegionThemeName): void {
     if (theme === settings.theme) {
       return;
@@ -396,6 +433,82 @@ export const SettingsPanel = (): JSX.Element => {
           />
         );
       })}
+
+      <div className={styles.sectionTitle}>Stories</div>
+
+      <ToggleRow
+        label="Draft stories"
+        hint="On, the city sets you a small bundle of civic problems every cycle and judges how you answered them. Turning it off stops the next draft only — a story already running still finishes on its own month, and nothing is ever generated retrospectively."
+        value={shownFlag("storiesEnabled", settings.storiesEnabled)}
+        disabled={busy}
+        onChange={function (next) {
+          send("storiesEnabled", next ? "true" : "false");
+        }}
+      />
+
+      <LevelRow
+        label="Stories per cycle"
+        hint="How many stories the city drafts at once. Default hands the number back to the mod's own tuning rather than meaning none — pick a figure only if you want more or fewer than the city would choose."
+        levels={COUNT_LEVELS}
+        value={shownCount("storiesPerCycle", settings.storiesPerCycle)}
+        disabled={busy}
+        onChange={function (next) {
+          if (next !== shownCount("storiesPerCycle", settings.storiesPerCycle)) {
+            send("storiesPerCycle", next);
+          }
+        }}
+      />
+
+      <LevelRow
+        label="Events per story"
+        hint="How many civic problems each story bundles together. Default hands the number back to the mod's own tuning, the same as above; it does not mean a story with nothing in it."
+        levels={COUNT_LEVELS}
+        value={shownCount("eventsPerStory", settings.eventsPerStory)}
+        disabled={busy}
+        onChange={function (next) {
+          if (next !== shownCount("eventsPerStory", settings.eventsPerStory)) {
+            send("eventsPerStory", next);
+          }
+        }}
+      />
+
+      <ToggleRow
+        label="Political power"
+        hint="On, answering a story well earns political power you can spend to make an awkward problem go away, and answering badly costs it. Off, nothing can be bought off in this city and no debt can build up — stories still draft and still resolve."
+        value={shownFlag("politicalPowerEnabled", settings.politicalPowerEnabled)}
+        disabled={busy}
+        onChange={function (next) {
+          send("politicalPowerEnabled", next ? "true" : "false");
+        }}
+      />
+
+      {/*
+        Two published story settings and NO control for either, deliberately.
+
+        Contract §4.1's key table lists every writable key and states plainly that there is none for
+        `powerIntensity` or `storyDifficulty`: the preset tables behind them do not exist yet, so a
+        write would persist a value, republish it, and change no number in the engine — and would be
+        answered `UnknownKey` in the meantime. A switch that does nothing under hint text promising
+        behaviour there is none of is exactly what `PauseOnMajorNews` and `ShowAllReports` were before
+        W5, and it is not being shipped again. They are shown as text because a player who finds them
+        in a save file is owed an explanation of why they cannot be reached, and the note says when
+        they arrive rather than leaving that to be guessed at.
+      */}
+      <div className={styles.row}>
+        <div className={styles.rowLabel}>How stories are pitched</div>
+        <div className={styles.rowHint}>
+          What this city currently carries in its save. Neither can be changed yet.
+        </div>
+        <div className={styles.readOnlyValue}>
+          Power intensity: {settings.powerIntensity} &#183; Story difficulty:{" "}
+          {settings.storyDifficulty}
+        </div>
+        <div className={styles.readOnlyNote}>
+          Both are recorded and neither changes anything in this build. The settings that would give
+          them meaning arrive in a later pass, and they become adjustable in the same update — a
+          control here now would look like a choice and be none.
+        </div>
+      </div>
 
       {/* The engine's verdict, in English. Never a code and never an exception message. */}
       {message ? <div className={styles.refusal}>{message}</div> : null}
