@@ -197,7 +197,7 @@ namespace Agora.Mod.UiBindings
         /// <para>
         /// <b><see cref="StoryBriefPayload.MetCount"/> and <see cref="StoryBriefPayload.ScoredCount"/>
         /// both exclude <see cref="SlotOutcome.Unmeasurable"/> slots</b>, counted exactly as
-        /// <c>StoryResolution.Score</c> counts them: met into both, not-met into the denominator
+        /// <c>StoryResolution.Resolve</c> counts them: met into both, not-met into the denominator
         /// alone, and a slot the engine could not read into neither. So a three-slot story can
         /// legitimately read "1 of 2", and <see cref="StoryBriefPayload.SlotCount"/> — which is the
         /// full complement, holes included — is what says the third slot has not gone missing.
