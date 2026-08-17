@@ -339,6 +339,35 @@ obvious home, and lane 6b independently wrote its own copies of the first three 
 `ui/src/panels/Stories/format.ts`, so there will be two copies to reconcile at the same time. Doing
 the move first and the delete second keeps it a one-commit refactor instead of a broken build.
 
+### The dashboard column overflows when Settings is open — improved here, not closed
+
+Wave 6 **reduced** this by about two thirds and did not create it. Recorded with numbers because the
+obvious summary — "the settings drawer is too tall" — loses the part that matters.
+
+`Dashboard.tsx` renders the drawer and the tab panel as siblings in one column. Measured from the
+stylesheets at the repo's 1080rem column: with Settings open and a panel showing, the column wants
+bar ~40 + drawer 628 + panel 628 ≈ **1296rem**, overflowing by ~216rem. **Before wave 6 the same
+combination wanted ~1646rem, overflowing by ~566rem** — lane 6c's 620rem cap took ~350rem out of it.
+
+What is actually lost: the bottom ~216rem of the tab panel falls below the screen edge. Content
+inside a panel's own `Scrollable` is still reachable, because it scrolls up into view. The only
+strictly unreachable element is anything pinned *outside* that scroll region at a panel's bottom —
+today that is `SeatsPanel`'s footer legend.
+
+**And `SeatsPanel` has no `max-height` and no scroll region at all**, independently of any of this,
+so the Council tab overflows on a large chamber with Settings closed too. That is the finding most
+likely to be lost if this is written up as a drawer problem, and it is older than this rework.
+
+**Not the fix: collapsing the panel slot while Settings is open.** That makes the drawer a de facto
+fifth tab and re-litigates the decision recorded at `Dashboard.tsx` ("Not a fifth tab"). **Not the
+fix either:** shrinking Settings below 620rem, which would degrade a correct surface to compensate
+for a spine decision it does not own, and would not touch the Council case at all.
+
+**The fix is a shell-owned column budget** — a height ceiling on `.shell`, `.panelSlot` becoming
+`flex: 1 1 auto` over `min-height: 0`, each panel's fixed `max-height` becoming `max-height: 100%`,
+and `SeatsPanel` gaining the scroll region it never had. That is the spine plus all four panels: a
+lane of its own, for wave 7.
+
 ### `pauseOnMajorNews` does not govern story cards, and nothing else does either
 
 Raised by lane 6d and confirmed by its review. The card holds the clock on the engine's `major`
@@ -427,3 +456,21 @@ as well as these.
 15. **The boundary's exit is reachable.** Force a render failure inside the story card. Confirm the
     inline notice appears with a pressable control, **the clock is already back before it is
     pressed**, and no further story card pops that session.
+16. **The settings drawer caps and scrolls.** Open Settings. The card stops partway down the screen,
+    the header and its × stay fixed while the rows scroll under them, and **every story row is
+    reachable** — the STORIES heading, all four writable rows, and the read-only levels row. Then
+    look for the scrollbar **before** touching the wheel: this lane omits `trackVisibility`, matching
+    `PartyList` and unlike `NewsPanel`, and the whole defect being repaired here was "no visible
+    affordance", so an invisible track would be a one-prop fix but must be seen to be ruled out.
+17. **Buttons still work inside the scroll.** Click an option button in the middle of the scrolled
+    list, then drag from a button to scroll. The click registers and the drag scrolls rather than
+    being swallowed. `PartyEditor` puts `cs2/ui` buttons inside a `Scrollable` already, so this is
+    confirming a copied pattern in a new geometry.
+18. **The verdict line stays put.** Trigger a refusal — change a setting on a themeLocked save — then
+    scroll. The engine's answer stays pinned at the card's bottom, at full height, never scrolling
+    away and never compressed to a sliver.
+19. **Measure the column overflow.** With Settings open, switch through Council / Parties / Districts
+    / News and note for each how much falls below the screen edge and whether its bottom-most element
+    is reachable. Expect ~216rem lost and **expect Council to be worst**, because `SeatsPanel` has no
+    cap of its own. This row is the measurement behind the known gap above, and it sizes wave 7's
+    column-budget lane.
