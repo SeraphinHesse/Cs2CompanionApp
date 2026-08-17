@@ -15,22 +15,27 @@ import { bindLocalValue } from "cs2/api";
  * once — so the binding object below is a single instance both trees subscribe to.
  */
 
-export type AgoraTab = "council" | "parties" | "districts" | "news";
+export type AgoraTab = "council" | "parties" | "stories" | "districts" | "news";
 
 /**
  * Left-to-right order of the tab strip. Parties sits second deliberately: Council answers "who
  * governs" and Parties answers "who are they", and the two are read together. Districts and News
  * are drill-downs.
  *
+ * Stories sits third — after the two that describe the city's politics and before the two that
+ * drill into them — because it is the only tab the player must ACT on. A tab holding decisions
+ * with a deadline does not belong behind the archives.
+ *
  * Every tab here needs a matching `case` in `renderTab` (Dashboard.tsx). The `default:` branch
  * falls through to the Council panel, so a tab added here and nowhere else renders the wrong panel
  * with no error anywhere.
  */
-export const TAB_ORDER: AgoraTab[] = ["council", "parties", "districts", "news"];
+export const TAB_ORDER: AgoraTab[] = ["council", "parties", "stories", "districts", "news"];
 
 export const TAB_LABEL: { [tab in AgoraTab]: string } = {
   council: "Council",
   parties: "Parties",
+  stories: "Stories",
   districts: "Districts",
   news: "News",
 };

@@ -1,0 +1,593 @@
+// Panel 28 — Stories. Flex only; Coherent Gameface has no CSS grid and fails silently on it, and no
+// `backdrop-filter`. `gap` is avoided throughout; spacing is done with margins, as in the rest of the
+// dashboard.
+//
+// The geometry matches the Parties and Districts panels — 640rem by 620rem — so the shell's panel
+// slot does not resize when the player moves between tabs.
+//
+// One stylesheet for the whole directory, imported by every component in it. That is deliberate:
+// nothing in the toolchain checks class parity between a `.module.scss` and the `.tsx` that names
+// its classes, and one sheet is one list to diff by hand.
+//
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+@use "../../shell/tokens" as *;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 640rem;
+  max-height: 620rem;
+  padding: 8rem 10rem 10rem 10rem;
+  margin: 8rem;
+  background-color: $surface;
+  border-radius: 4rem;
+  color: $text;
+  font-size: 12rem;
+}
+
+// -- header ---------------------------------------------------------------------------------------
+
+.header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-bottom: 8rem;
+  padding-bottom: 5rem;
+  border-bottom: 1rem solid $line;
+}
+
+.title {
+  display: flex;
+  font-weight: bold;
+  font-size: 13rem;
+  letter-spacing: 2rem;
+  opacity: 0.85;
+}
+
+.headerMeta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.headerDate {
+  display: flex;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  color: $text-faint;
+}
+
+@mixin header-power-base {
+  display: flex;
+  margin-left: 8rem;
+  padding: 1rem 5rem;
+  border-radius: 8rem;
+  background-color: $surface-track;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+// Rendered only when the engine says this save runs the power layer. "Off" is not a balance of zero.
+.headerPower {
+  @include header-power-base;
+  color: $text-dim;
+}
+
+// `inDebt` is the engine's rule, never `balance < 0` read in the panel.
+.headerPowerDebt {
+  @include header-power-base;
+  color: $bad;
+}
+
+// -- panel states ---------------------------------------------------------------------------------
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  padding: 14rem 10rem;
+}
+
+.skeletonTitle {
+  display: flex;
+  font-size: 13rem;
+  font-weight: bold;
+  margin-bottom: 4rem;
+  color: $text-dim;
+}
+
+.skeletonBody {
+  display: flex;
+  font-size: 11rem;
+  line-height: 1.4;
+  color: $text-dim;
+}
+
+.boundary {
+  display: flex;
+  flex-direction: column;
+  padding: 12rem 10rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.4;
+}
+
+.boundaryDetail {
+  display: flex;
+  margin-top: 5rem;
+  color: $text-faint;
+  font-size: 10rem;
+}
+
+// -- body -----------------------------------------------------------------------------------------
+
+.scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sectionLabel {
+  display: flex;
+  margin: 6rem 0 4rem 0;
+  padding-bottom: 2rem;
+  border-bottom: 1rem solid $line-soft;
+  color: $text-faint;
+  font-size: 9rem;
+  letter-spacing: 2rem;
+  text-transform: uppercase;
+}
+
+// An empty state, or a line of explanation where a list would be. Never a political claim.
+.bodyNote {
+  display: flex;
+  padding: 8rem 2rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.45;
+}
+
+// -- one live story -------------------------------------------------------------------------------
+
+.story {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8rem;
+  padding: 7rem 8rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+}
+
+.storyHead {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 5rem;
+}
+
+.storyHeadline {
+  display: flex;
+  margin-bottom: 3rem;
+  font-size: 13rem;
+  font-weight: bold;
+  line-height: 1.35;
+}
+
+.storyDates {
+  display: flex;
+  margin-top: 3rem;
+  color: $text-faint;
+  font-size: 10rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.storyFoot {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4rem;
+  padding-top: 5rem;
+  border-top: 1rem solid $line-soft;
+}
+
+// -- chips ----------------------------------------------------------------------------------------
+
+.chips {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@mixin chip-base {
+  display: flex;
+  margin: 0 4rem 2rem 0;
+  padding: 0 5rem;
+  border-radius: 8rem;
+  background-color: $surface-inset;
+  color: $text-dim;
+  font-size: 9rem;
+  line-height: 14rem;
+  white-space: nowrap;
+}
+
+.chip {
+  @include chip-base;
+}
+
+.chipQuiet {
+  @include chip-base;
+  color: $text-faint;
+}
+
+// The engine's tier, straight off the wire. Never derived from a severity in the panel.
+.chipTier {
+  @include chip-base;
+  background-color: $surface-hover;
+  color: $text;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.chipResponse {
+  @include chip-base;
+  background-color: $surface-raised;
+  color: $text;
+}
+
+.chipOutcome {
+  @include chip-base;
+  background-color: $surface-raised;
+}
+
+// "Not answered yet" — silence, which is a different state from a deliberate refusal and is the only
+// signal that there is work outstanding. Accented rather than styled as a failure: nothing has gone
+// wrong, there is simply something to do.
+.chipUnanswered {
+  @include chip-base;
+  background-color: $surface-hover;
+  color: $accent;
+}
+
+// `Unmeasurable`: the engine could not read the city. HELD, not failed — it costs the player nothing
+// and it is excluded from the archive row's scored count, so it must never wear the failure colour.
+.chipHeld {
+  @include chip-base;
+  background-color: $surface-raised;
+  color: $warn;
+}
+
+.chipGood {
+  @include chip-base;
+  background-color: $surface-raised;
+  color: $good;
+}
+
+.chipBad {
+  @include chip-base;
+  background-color: $surface-raised;
+  color: $bad;
+}
+
+// -- the two prose voices -------------------------------------------------------------------------
+//
+// Side by side when both exist. The pool's text is always shown and the model's appears BESIDE it,
+// never instead of it — otherwise text the player had already read would change under them.
+
+.voices {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin-bottom: 5rem;
+}
+
+.voice {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 240rem;
+  min-width: 0;
+  margin-right: 6rem;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-inset;
+}
+
+.voiceLabel {
+  display: flex;
+  margin-bottom: 3rem;
+  color: $text-faint;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.voiceHeadline {
+  display: flex;
+  margin-bottom: 3rem;
+  font-size: 11rem;
+  font-weight: bold;
+  line-height: 1.35;
+}
+
+.para {
+  display: flex;
+  margin-bottom: 4rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.45;
+}
+
+// -- one slot -------------------------------------------------------------------------------------
+
+.slots {
+  display: flex;
+  flex-direction: column;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 5rem;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-inset;
+}
+
+.slotHead {
+  display: flex;
+  flex-direction: column;
+}
+
+@mixin tackle-base {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  margin: 0 0 3rem 0;
+  padding: 0 9rem;
+  border: 1rem solid $line-strong;
+  border-radius: 3rem;
+  background-color: transparent;
+  color: $text;
+  font-size: 11rem;
+  line-height: 20rem;
+  text-align: left;
+}
+
+.tackle {
+  @include tackle-base;
+}
+
+.tackleOpen {
+  @include tackle-base;
+  border-color: $accent;
+  background-color: $surface-hover;
+}
+
+.slotDescription {
+  display: flex;
+  margin-bottom: 3rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 1.45;
+}
+
+// The catalog no longer explains this event. Said in words — the event id is never printed where a
+// name belongs, because a raw id on screen looks like it worked.
+.unknownEvent {
+  display: flex;
+  margin-bottom: 3rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+  color: $warn;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.tierNote {
+  display: flex;
+  margin-bottom: 3rem;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.stakes {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 3rem;
+}
+
+.stake {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  margin-bottom: 2rem;
+}
+
+.stakeLabel {
+  display: flex;
+  flex: 0 0 auto;
+  width: 78rem;
+  color: $text-faint;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.stakeText {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: $text-dim;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+// -- the four responses ---------------------------------------------------------------------------
+
+.options {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin-top: 3rem;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 260rem;
+  min-width: 0;
+  margin: 0 4rem 4rem 0;
+  padding: 5rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+}
+
+.optionTitle {
+  display: flex;
+  margin-bottom: 2rem;
+  font-size: 11rem;
+  font-weight: bold;
+}
+
+.optionText {
+  display: flex;
+  margin-bottom: 4rem;
+  color: $text-dim;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.optionNote {
+  display: flex;
+  margin-top: 3rem;
+  color: $text-faint;
+  font-size: 9rem;
+  line-height: 1.4;
+}
+
+// Six of these per story. Key propagation is stopped in the component — see SlotEditor.tsx.
+.textarea {
+  display: flex;
+  width: 100%;
+  min-height: 44rem;
+  margin-bottom: 4rem;
+  padding: 3rem 5rem;
+  border: 1rem solid $line-strong;
+  border-radius: 3rem;
+  background-color: $surface-inset;
+  color: $text;
+  font-size: 11rem;
+  line-height: 1.4;
+  resize: none;
+}
+
+@mixin act-base {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  margin: 0 5rem 2rem 0;
+  padding: 0 9rem;
+  border: 1rem solid $line-strong;
+  border-radius: 3rem;
+  background-color: transparent;
+  font-size: 10rem;
+  line-height: 18rem;
+  white-space: nowrap;
+}
+
+.act {
+  @include act-base;
+  border-color: $accent;
+  color: $accent;
+}
+
+// The published balance does not cover the published price. This is what the button LOOKS like and
+// nothing more: the press is still sent, and whether the purchase happens is the engine's answer.
+.actShort {
+  @include act-base;
+  border-color: $line;
+  color: $text-faint;
+}
+
+.declare {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+// -- the archive ----------------------------------------------------------------------------------
+
+.archive {
+  display: flex;
+  flex-direction: column;
+}
+
+.archiveRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4rem 2rem;
+  border-bottom: 1rem solid $line-soft;
+}
+
+.archiveMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-right: 6rem;
+}
+
+.archiveHeadline {
+  display: flex;
+  font-size: 11rem;
+  line-height: 1.35;
+}
+
+.archiveDates {
+  display: flex;
+  color: $text-faint;
+  font-size: 9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+// -- what came back -------------------------------------------------------------------------------
+
+// A write that WAS accepted and carries a warning. Never styled as a refusal.
+.warning {
+  display: flex;
+  margin-top: 4rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+  color: $warn;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
+.refusal {
+  display: flex;
+  margin-top: 4rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+  background-color: $surface-raised;
+  color: $bad;
+  font-size: 10rem;
+  line-height: 1.4;
+}

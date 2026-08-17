@@ -84,6 +84,16 @@ namespace Agora.Mod.UiBindings
             payload.NewsInfluence = settings.NewsInfluence.ToString();
             payload.BrandDiscipline = settings.BrandDiscipline.ToString();
 
+            // Straight across, like every field above. The two counts are published as they are
+            // stored — zero means "not set, fall back to tuning", which is the sidecar's own
+            // convention (see AgoraSettings.StoriesPerCycle) and not a value to be tidied up here.
+            payload.StoriesEnabled = settings.StoriesEnabled;
+            payload.StoriesPerCycle = settings.StoriesPerCycle;
+            payload.EventsPerStory = settings.EventsPerStory;
+            payload.PoliticalPowerEnabled = settings.PoliticalPowerEnabled;
+            payload.PowerIntensity = settings.PowerIntensity.ToString();
+            payload.StoryDifficulty = settings.StoryDifficulty.ToString();
+
             if (tuning != null)
             {
                 payload.VoteSharpnessValue =

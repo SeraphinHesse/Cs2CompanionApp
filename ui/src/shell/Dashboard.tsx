@@ -5,6 +5,7 @@ import { DistrictsPanel } from "../panels/Districts";
 import { NewsPanel } from "../panels/News";
 import { PartiesPanel } from "../panels/Parties";
 import { SeatsPanel } from "../panels/Seats";
+import { StoriesPanel } from "../panels/Stories";
 import { ShellBoundary } from "./Boundary";
 import { SettingsPanel } from "./SettingsPanel";
 import { enabled$, settings$ } from "./bindings";
@@ -44,6 +45,8 @@ function renderTab(tab: AgoraTab): JSX.Element {
   switch (tab) {
     case "parties":
       return <PartiesPanel />;
+    case "stories":
+      return <StoriesPanel />;
     case "districts":
       return <DistrictsPanel />;
     case "news":

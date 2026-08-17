@@ -195,6 +195,23 @@ namespace Agora.Mod.UiBindings
         public double NewsInfluenceValue;
         public double BrandDisciplineValue;
 
+        /// <summary>
+        /// The six story settings, published for the first time in wave 6.
+        /// </summary>
+        /// <remarks>
+        /// They have been in the sidecar since wave 2 and reachable from no surface since — a
+        /// per-save setting nothing can read or write is a setting only a text editor can change.
+        /// <see cref="StoriesPerCycle"/> and <see cref="EventsPerStory"/> are plain counts rather
+        /// than levels because the design document names them as numbers; the other two are levels
+        /// because the shipped settings already express intensity that way.
+        /// </remarks>
+        public bool StoriesEnabled = true;
+        public int StoriesPerCycle = 2;
+        public int EventsPerStory = 3;
+        public bool PoliticalPowerEnabled = true;
+        public string PowerIntensity = "Default";
+        public string StoryDifficulty = "Default";
+
         public void Write(IJsonWriter writer)
         {
             writer.TypeBegin("agora.SettingsPayload");
@@ -212,6 +229,12 @@ namespace Agora.Mod.UiBindings
             UiJson.Number(writer, "voteSharpnessValue", VoteSharpnessValue);
             UiJson.Number(writer, "newsInfluenceValue", NewsInfluenceValue);
             UiJson.Number(writer, "brandDisciplineValue", BrandDisciplineValue);
+            UiJson.Flag(writer, "storiesEnabled", StoriesEnabled);
+            UiJson.Number(writer, "storiesPerCycle", StoriesPerCycle);
+            UiJson.Number(writer, "eventsPerStory", EventsPerStory);
+            UiJson.Flag(writer, "politicalPowerEnabled", PoliticalPowerEnabled);
+            UiJson.Text(writer, "powerIntensity", PowerIntensity);
+            UiJson.Text(writer, "storyDifficulty", StoryDifficulty);
             writer.TypeEnd();
         }
     }
@@ -1289,6 +1312,363 @@ namespace Agora.Mod.UiBindings
             UiJson.Flag(writer, "pendingWake", PendingWake);
             UiJson.Text(writer, "lastError", LastError);
             UiJson.Number(writer, "articleCount", ArticleCount);
+            writer.TypeEnd();
+        }
+    }
+
+    // ---------------------------------------------------------------------------- agora.stories
+
+    /// <summary>
+    /// One event inside a story: what it is, how the player answered it, and how it came out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="Tier"/> is the engine's verdict and the panel may not recompute it.</b> Mandatory
+    /// / Major / Minor is a projection of the 1–5 <see cref="Severity"/> through
+    /// <c>stories.mandatorySeverityThreshold</c> and <c>stories.majorSeverityThreshold</c>, and
+    /// <c>docs/contracts/ui_bindings.md</c> §4.5 already states in bold that the UI must never
+    /// re-derive a tier from a severity. <see cref="Severity"/> ships alongside for display only.
+    /// </para>
+    /// <para>
+    /// <see cref="OverrideCost"/> and <see cref="CanAfford"/> are likewise the engine's, priced from
+    /// this slot's own tier against the live balance. With <c>power.enabled</c> off the cost is
+    /// published as <b>0</b> and <see cref="CanAfford"/> as false — quoting a live price against a
+    /// balance that cannot move would invite the player to save up for a purchase the engine will
+    /// refuse with <c>PowerDisabled</c> whatever they do.
+    /// </para>
+    /// </remarks>
+    public sealed class StorySlotPayload : IJsonWritable
+    {
+        public string EventId = "";
+
+        /// <summary><c>"Major"</c> or <c>"Minor"</c> — <c>SlotRole</c>'s member name.</summary>
+        public string Role = "Minor";
+
+        /// <summary>The catalog's authored name. Never an id — a raw id on screen is a defect.</summary>
+        public string Name = "";
+
+        public string Description = "";
+
+        /// <summary>The four response blurbs, authored in the civic catalog.</summary>
+        public string IgnoreText = "";
+        public string GoalText = "";
+        public string PowerOverrideText = "";
+
+        /// <summary>
+        /// The authored aftermath lines. Only one of the two is true once the slot resolves; both
+        /// ship so the card can show the stakes before it does.
+        /// </summary>
+        public string SuccessText = "";
+        public string FailText = "";
+
+        /// <summary>The catalog's 1–5 integer. Display only — see the remark on tier.</summary>
+        public int Severity;
+
+        /// <summary><c>"Mandatory"</c>, <c>"Major"</c> or <c>"Minor"</c>. The engine's, not the UI's.</summary>
+        public string Tier = "Minor";
+
+        /// <summary>
+        /// <c>SlotResponse</c>'s member name. <c>"Unaddressed"</c> is silence and <c>"Ignore"</c> is a
+        /// decision; they score the same and read completely differently, so do not merge them.
+        /// </summary>
+        public string Response = "Unaddressed";
+
+        /// <summary>The player's own words, for Ignore and Manual. Prose — never parse it.</summary>
+        public string PlayerText = "";
+
+        /// <summary><c>SlotOutcome</c>'s member name: Pending, Met, NotMet or Unmeasurable.</summary>
+        public string Outcome = "Pending";
+
+        /// <summary>True once a Manual slot's outcome has been declared.</summary>
+        public bool ManualDeclared;
+
+        /// <summary>Price of buying this slot off, or 0 when the power layer is off.</summary>
+        public int OverrideCost;
+
+        /// <summary>Whether the current balance covers <see cref="OverrideCost"/>.</summary>
+        public bool CanAfford;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.StorySlot");
+            UiJson.Id(writer, "eventId", EventId);
+            UiJson.Text(writer, "role", Role);
+            UiJson.Text(writer, "name", Name);
+            UiJson.Text(writer, "description", Description);
+            UiJson.Text(writer, "ignoreText", IgnoreText);
+            UiJson.Text(writer, "goalText", GoalText);
+            UiJson.Text(writer, "powerOverrideText", PowerOverrideText);
+            UiJson.Text(writer, "successText", SuccessText);
+            UiJson.Text(writer, "failText", FailText);
+            UiJson.Number(writer, "severity", Severity);
+            UiJson.Text(writer, "tier", Tier);
+            UiJson.Text(writer, "response", Response);
+            UiJson.Text(writer, "playerText", PlayerText);
+            UiJson.Text(writer, "outcome", Outcome);
+            UiJson.Flag(writer, "manualDeclared", ManualDeclared);
+            UiJson.Number(writer, "overrideCost", OverrideCost);
+            UiJson.Flag(writer, "canAfford", CanAfford);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>
+    /// One live story: its slots, its clock and the headline that names it.
+    /// </summary>
+    /// <remarks>
+    /// The bodies are deliberately absent. A story's two articles run to 1260 characters each and
+    /// exist in up to two voices, so shipping them on the list binding would push the largest thing
+    /// on this bridge across it every republish to render one of them. Fetch them per story from
+    /// <c>agora.stories.article</c>, exactly as the news feed fetches an article body.
+    /// </remarks>
+    public sealed class StoryPayload : IJsonWritable
+    {
+        public string Id = "";
+
+        public Agora.Core.Contracts.SimDate? OpenedDate;
+
+        /// <summary>The month it resolves on by itself, absent a <c>Resolve now</c>.</summary>
+        public Agora.Core.Contracts.SimDate? ResolvesDate;
+
+        public bool IsMandatory;
+
+        /// <summary><c>StoryOutcome</c>'s member name: Pending, Success, Failure or Abandoned.</summary>
+        public string Outcome = "Pending";
+
+        /// <summary>True once the player has asked for an early close and it has not yet run.</summary>
+        public bool ResolveEarlyRequested;
+
+        /// <summary>
+        /// The headline to put on the card. The pool's, which always exists — the model's version, if
+        /// one arrived, is fetched with the body and rendered beside it rather than instead of it.
+        /// </summary>
+        public string Headline = "";
+
+        /// <summary>
+        /// The slots, in the engine's order: <b>major first, then minors ascending by event id
+        /// ordinal.</b> A declared total order — do not re-sort it in the panel.
+        /// </summary>
+        public List<StorySlotPayload> Slots = new List<StorySlotPayload>();
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.Story");
+            UiJson.Id(writer, "id", Id);
+            UiJson.Date(writer, "openedDate", OpenedDate);
+            UiJson.Date(writer, "resolvesDate", ResolvesDate);
+            UiJson.Flag(writer, "isMandatory", IsMandatory);
+            UiJson.Text(writer, "outcome", Outcome);
+            UiJson.Flag(writer, "resolveEarlyRequested", ResolveEarlyRequested);
+            UiJson.Text(writer, "headline", Headline);
+
+            writer.PropertyName("slots");
+            List<StorySlotPayload> slots = Slots ?? new List<StorySlotPayload>();
+            writer.ArrayBegin((uint)slots.Count);
+            for (int i = 0; i < slots.Count; i++) slots[i].Write(writer);
+            writer.ArrayEnd();
+
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>One archived story, as a row: enough to list it and to fetch its articles again.</summary>
+    public sealed class StoryBriefPayload : IJsonWritable
+    {
+        public string Id = "";
+        public Agora.Core.Contracts.SimDate? OpenedDate;
+        public Agora.Core.Contracts.SimDate? ResolvesDate;
+        public string Outcome = "Pending";
+        public string Headline = "";
+
+        /// <summary>Slots that resolved <c>Met</c>, and how many were scored at all.</summary>
+        /// <remarks>
+        /// <see cref="ScoredCount"/> excludes <c>Unmeasurable</c> slots from both halves of the ratio,
+        /// which is the same exclusion the 2-of-3 rule makes. A card reading "1 of 2" on a
+        /// three-slot story is therefore correct rather than a missing slot, and the panel must not
+        /// substitute <see cref="SlotCount"/> to make the arithmetic look tidier.
+        /// </remarks>
+        public int MetCount;
+        public int ScoredCount;
+        public int SlotCount;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.StoryBrief");
+            UiJson.Id(writer, "id", Id);
+            UiJson.Date(writer, "openedDate", OpenedDate);
+            UiJson.Date(writer, "resolvesDate", ResolvesDate);
+            UiJson.Text(writer, "outcome", Outcome);
+            UiJson.Text(writer, "headline", Headline);
+            UiJson.Number(writer, "metCount", MetCount);
+            UiJson.Number(writer, "scoredCount", ScoredCount);
+            UiJson.Number(writer, "slotCount", SlotCount);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>
+    /// A story's prose, fetched per story id. Every field is flavor; parse none of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two voices, and both are rendered when both exist</b> — owner decision 2 of wave 5, not an
+    /// implementation detail. The canned pool answers every poll and always has an answer; the CLI
+    /// answers rarely. A "latest wins" read would erase the model's prose within a minute of it
+    /// arriving, and worse, would change text the player had already read. The pool half is therefore
+    /// the text that is always shown, and the CLI half is shown <i>beside</i> it when present.
+    /// </para>
+    /// <para>
+    /// <see cref="CliHeadline"/> / <see cref="CliArticle"/> are <c>""</c> when the model has not
+    /// written about this story — which is the ordinary case, not an error.
+    /// </para>
+    /// </remarks>
+    public sealed class StoryArticlePayload : IJsonWritable
+    {
+        public string StoryId = "";
+
+        /// <summary>The opening article, always present once the story has drafted.</summary>
+        public string PoolHeadline = "";
+        public string PoolArticle = "";
+        public string CliHeadline = "";
+        public string CliArticle = "";
+
+        /// <summary>
+        /// The resolution article. All four are <c>""</c> until the story resolves.
+        /// </summary>
+        public string PoolResolutionHeadline = "";
+        public string PoolResolutionArticle = "";
+        public string CliResolutionHeadline = "";
+        public string CliResolutionArticle = "";
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.StoryArticle");
+            UiJson.Id(writer, "storyId", StoryId);
+            UiJson.Text(writer, "poolHeadline", PoolHeadline);
+            UiJson.Text(writer, "poolArticle", PoolArticle);
+            UiJson.Text(writer, "cliHeadline", CliHeadline);
+            UiJson.Text(writer, "cliArticle", CliArticle);
+            UiJson.Text(writer, "poolResolutionHeadline", PoolResolutionHeadline);
+            UiJson.Text(writer, "poolResolutionArticle", PoolResolutionArticle);
+            UiJson.Text(writer, "cliResolutionHeadline", CliResolutionHeadline);
+            UiJson.Text(writer, "cliResolutionArticle", CliResolutionArticle);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>One movement of the political-power balance, for the ledger strip.</summary>
+    public sealed class PowerLedgerRowPayload : IJsonWritable
+    {
+        /// <summary>Month of the movement, as <c>SimDate.TotalMonths</c>.</summary>
+        public int Month;
+
+        /// <summary>Ordinal within the month. <c>(month, sequence)</c> is the sort key.</summary>
+        public int Sequence;
+
+        /// <summary>
+        /// <c>PowerLedgerReason</c>'s member name: Accrual, SuccessAward, FailurePenalty,
+        /// OverrideSpend or ManualAward.
+        /// </summary>
+        public string Reason = "Accrual";
+
+        /// <summary>Signed. Negative for a spend or a penalty.</summary>
+        public int Delta;
+
+        public string StoryId = "";
+        public string EventId = "";
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.PowerLedgerRow");
+            UiJson.Number(writer, "month", Month);
+            UiJson.Number(writer, "sequence", Sequence);
+            UiJson.Text(writer, "reason", Reason);
+            UiJson.Number(writer, "delta", Delta);
+            UiJson.Id(writer, "storyId", StoryId);
+            UiJson.Id(writer, "eventId", EventId);
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>The political-power currency, for the counter beside the mod icon.</summary>
+    /// <remarks>
+    /// <see cref="Balance"/> is signed and debt is a state rather than a refusal. <see cref="InDebt"/>
+    /// ships as the engine's own reading rather than leaving the counter to test <c>balance &lt; 0</c>,
+    /// because what counts as debt is the engine's rule and the consequence attached to it is a
+    /// capped, tuned effect — not a sign test the UI happens to agree with today.
+    /// </remarks>
+    public sealed class PowerPayload : IJsonWritable
+    {
+        /// <summary>False when the save has the power layer switched off. The counter hides.</summary>
+        public bool Enabled;
+
+        public int Balance;
+        public int LifetimeEarned;
+        public int LifetimeSpent;
+        public bool InDebt;
+
+        /// <summary>
+        /// Newest last, bounded by <c>power.ledgerRetention</c>, sorted by <c>(month, sequence)</c>.
+        /// </summary>
+        public List<PowerLedgerRowPayload> Ledger = new List<PowerLedgerRowPayload>();
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.Power");
+            UiJson.Flag(writer, "enabled", Enabled);
+            UiJson.Number(writer, "balance", Balance);
+            UiJson.Number(writer, "lifetimeEarned", LifetimeEarned);
+            UiJson.Number(writer, "lifetimeSpent", LifetimeSpent);
+            UiJson.Flag(writer, "inDebt", InDebt);
+
+            writer.PropertyName("ledger");
+            List<PowerLedgerRowPayload> rows = Ledger ?? new List<PowerLedgerRowPayload>();
+            writer.ArrayBegin((uint)rows.Count);
+            for (int i = 0; i < rows.Count; i++) rows[i].Write(writer);
+            writer.ArrayEnd();
+
+            writer.TypeEnd();
+        }
+    }
+
+    /// <summary>
+    /// One story card the player has not answered yet.
+    /// </summary>
+    /// <remarks>
+    /// <b>One card per story, never one per event.</b> All three events render inside this one card,
+    /// which is why the payload carries a <see cref="SlotCount"/> rather than an event id: at two
+    /// stories per cycle that is two interruptions, and six would be six serialised forced pauses on
+    /// the first frame of the month.
+    /// </remarks>
+    public sealed class StoryAlertPayload : IJsonWritable
+    {
+        /// <summary>The story id, and the ack key. Also the <c>agora.stories.article</c> map key.</summary>
+        public string Id = "";
+
+        public Agora.Core.Contracts.SimDate? Date;
+
+        public string Headline = "";
+
+        /// <summary>One line — the major event's description.</summary>
+        public string Summary = "";
+
+        public int SlotCount;
+
+        /// <summary>
+        /// The engine's verdict on whether this card holds the clock, decided once when the alert is
+        /// raised. The UI never compares a severity to a threshold of its own.
+        /// </summary>
+        public bool Major;
+
+        public void Write(IJsonWriter writer)
+        {
+            writer.TypeBegin("agora.StoryAlert");
+            UiJson.Id(writer, "id", Id);
+            UiJson.Date(writer, "date", Date);
+            UiJson.Text(writer, "headline", Headline);
+            UiJson.Text(writer, "summary", Summary);
+            UiJson.Number(writer, "slotCount", SlotCount);
+            UiJson.Flag(writer, "major", Major);
             writer.TypeEnd();
         }
     }

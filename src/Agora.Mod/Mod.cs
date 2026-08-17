@@ -152,6 +152,13 @@ namespace Agora.Mod
             register(() => updateSystem.UpdateAt<AgoraSeatsUISystem>(SystemUpdatePhase.UIUpdate));
             register(() => updateSystem.UpdateAt<AgoraDistrictsUISystem>(SystemUpdatePhase.UIUpdate));
             register(() => updateSystem.UpdateAt<AgoraNewsUISystem>(SystemUpdatePhase.UIUpdate));
+
+            // Stories last, and it is the only publisher that also carries a write surface the player
+            // reaches every month. Its five inbound CallBindings run on this same phase, which is what
+            // lets a player answer a story while the sim is held paused behind a card — GameSimulation
+            // does not tick then, so a command deferred to the engine's own phase would appear to do
+            // nothing at all. Same reasoning as agora.state.setSetting.
+            register(() => updateSystem.UpdateAt<AgoraStoriesUISystem>(SystemUpdatePhase.UIUpdate));
         }
 
         public void OnDispose()
