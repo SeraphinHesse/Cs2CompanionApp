@@ -1,0 +1,432 @@
+// The story card — one drafted story over the city — and the fallback its error boundary renders.
+//
+// Flexbox only: `display: grid` fails silently in Coherent Gameface, and so does `backdrop-filter`,
+// so the scrim is a plain black wash and the card surface is the near-solid token. Opacity is the
+// only lever there is for lifting a sheet off a moving city.
+//
+// A sibling of `ArticleModal.module.scss` and deliberately not a share of it. The news card is a
+// front page and wears a masthead serif; this one is a briefing note and reads as one, so the two
+// diverge on purpose rather than by neglect. What they do share — the scrim geometry, the action
+// row, the boundary fallback — is shared through the tokens and through the shape being obviously
+// the same, because one stylesheet serving two mounts would make either card's layout change the
+// other's.
+//
+// Colours come from the shared token file — see _tokens.scss for why none are declared here.
+
+@use "./tokens" as *;
+
+// ---- the overlay ---------------------------------------------------------------------------------
+//
+// This renders through `Portal`, so it sits over the whole HUD rather than inside a hook point. The
+// scrim is fixed to the viewport and centres one child.
+
+// `pointer-events` and `z-index` are set explicitly rather than relied on as defaults, for the same
+// reason `ArticleModal`'s scrim does. This card is the same Portal-relocated pattern and would fail
+// the same way. The z-index matches the news card's: the two queues are independent and only one of
+// them is ever mounted with a card up at a time in practice, so neither is entitled to sit over the
+// other.
+.scrim {
+  position: fixed;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  pointer-events: auto;
+  background-color: rgba(0, 0, 0, 0.65);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  width: 620rem;
+  max-height: 640rem;
+  padding: 18rem 24rem 16rem 24rem;
+  background-color: $surface;
+  border: 1rem solid $line;
+  border-radius: 6rem;
+  color: $text;
+  pointer-events: auto;
+}
+
+// ---- the head ------------------------------------------------------------------------------------
+
+// One rule across the top. `.ruleMajor` is the only colour difference a clock-holding card gets —
+// the badge beside the date is what says it in words, because a colour alone is not a statement.
+.rule {
+  display: flex;
+  flex: 0 0 auto;
+  height: 3rem;
+  margin-bottom: 12rem;
+  border-radius: 2rem;
+  background-color: $accent;
+}
+
+.ruleMajor {
+  background-color: $warn;
+}
+
+.kicker {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  color: $text-faint;
+  font-size: 11rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.kickerLabel {
+  display: flex;
+}
+
+.kickerSep {
+  display: flex;
+  margin: 0 6rem;
+}
+
+.kickerDate {
+  display: flex;
+}
+
+// "Clock held" — the engine's own verdict rendered in words, so the pause is never a thing the
+// player has to infer from the speed controls having gone dead.
+.held {
+  display: flex;
+  margin-left: 10rem;
+  padding: 2rem 7rem;
+  background-color: $surface-raised;
+  border-radius: 3rem;
+  color: $warn;
+  font-size: 10rem;
+}
+
+.headline {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 10rem;
+  font-size: 22rem;
+  font-weight: bold;
+  line-height: 27rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.summary {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 7rem;
+  color: $text-dim;
+  font-size: 13rem;
+  line-height: 19rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// ---- the body ------------------------------------------------------------------------------------
+
+// The body scrolls inside the card rather than growing it, so a long story cannot push the actions
+// off the bottom of the screen. `min-height: 0` is what lets a flex child shrink below its content.
+.scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: 12rem;
+  padding-top: 12rem;
+  border-top: 1rem solid $line;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// One prose voice. Two of these stack when the model has written about this story as well as the
+// pool — beside, never instead of, which is why the second is a sibling block and not a swap.
+.voice {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-bottom: 4rem;
+}
+
+.voiceLabel {
+  display: flex;
+  margin-bottom: 6rem;
+  color: $text-faint;
+  font-size: 10rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.voiceHeadline {
+  display: flex;
+  margin-bottom: 6rem;
+  color: $text;
+  font-size: 14rem;
+  font-weight: bold;
+  line-height: 19rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.para {
+  display: flex;
+  margin-bottom: 9rem;
+  color: $text-dim;
+  font-size: 14rem;
+  line-height: 21rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// ---- the story's events --------------------------------------------------------------------------
+//
+// All of them, inside the one card. Read-only: the response controls are the Stories panel's, and
+// the interruption budget is why.
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  margin-top: 6rem;
+  padding-top: 10rem;
+  border-top: 1rem solid $line-soft;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  margin-bottom: 8rem;
+  padding: 8rem 10rem;
+  background-color: $surface-inset;
+  border-radius: 3rem;
+}
+
+.slotHead {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.slotName {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: $text;
+  font-size: 13rem;
+  font-weight: bold;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// A slot whose event the catalog no longer explains says so in words. It is quieter than a named
+// one and it never carries the event id — a raw id where a name belongs is a defect, not a fallback.
+.slotNameUnknown {
+  color: $text-faint;
+  font-style: italic;
+  font-weight: normal;
+}
+
+.slotSpacer {
+  display: flex;
+  flex: 1 1 auto;
+}
+
+// Severity, display only. The same dot meter the News tab prints, so the two surfaces agree about
+// how loud a thing is. It is never compared to a threshold here.
+.sev {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: 8rem;
+}
+
+.sevDot {
+  display: flex;
+  flex: 0 0 auto;
+  width: 4rem;
+  height: 4rem;
+  margin-right: 2rem;
+  border-radius: 2rem;
+  background-color: $surface-track;
+}
+
+.sevDotOn {
+  background-color: $warn;
+}
+
+// The engine's tier, rendered and never derived.
+.tier {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: 8rem;
+  padding: 2rem 7rem;
+  background-color: $surface-raised;
+  border-radius: 3rem;
+  color: $text-faint;
+  font-size: 10rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.tierMandatory {
+  color: $bad;
+}
+
+.slotDesc {
+  display: flex;
+  margin-top: 5rem;
+  color: $text-dim;
+  font-size: 12rem;
+  line-height: 17rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// Stands in when the alert names a story the live list does not carry — the count the alert itself
+// carries, so the card still says how much is at stake.
+.slotFallback {
+  display: flex;
+  color: $text-faint;
+  font-size: 12rem;
+}
+
+// Where the player actually answers this. The card offers no response of its own, so it has to say
+// where the responses are.
+.note {
+  display: flex;
+  margin-top: 4rem;
+  padding: 8rem 10rem;
+  background-color: $surface-inset;
+  border-left: 2rem solid $accent;
+  border-radius: 3rem;
+  color: $text-faint;
+  font-size: 11rem;
+  line-height: 16rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// ---- state and actions -----------------------------------------------------------------------------
+
+// A refusal the engine returned, in English. Never a code and never an exception message, so it is
+// prose of unpredictable length and must wrap rather than widen the card.
+.refusal {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: 12rem;
+  padding: 8rem 10rem;
+  background-color: $surface-inset;
+  border-left: 2rem solid $warn;
+  border-radius: 3rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 16rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.actions {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-top: 14rem;
+  padding-top: 12rem;
+  border-top: 1rem solid $line;
+}
+
+.counter {
+  display: flex;
+  color: $text-faint;
+  font-size: 11rem;
+}
+
+.working {
+  display: flex;
+  margin-left: 10rem;
+  color: $text-faint;
+  font-size: 11rem;
+}
+
+// Pushes the buttons to the right edge without `justify-content: space-between`, which would need
+// the counter to always be present to hold the left end.
+.spacer {
+  display: flex;
+  flex: 1 1 auto;
+}
+
+.action {
+  flex: 0 0 auto;
+  margin-left: 8rem;
+  padding: 5rem 18rem;
+  background-color: $surface-hover;
+  border-radius: 3rem;
+  color: $text;
+  font-size: 13rem;
+}
+
+.secondaryAction {
+  flex: 0 0 auto;
+  margin-left: 8rem;
+  padding: 5rem 14rem;
+  background-color: $surface-raised;
+  border-radius: 3rem;
+  color: $text-dim;
+  font-size: 12rem;
+}
+
+// ---- StoryModalBoundary fallback ------------------------------------------------------------------
+
+// Rendered inline at the hook point rather than through `Portal` — see StoryModalBoundary.tsx. It
+// therefore carries the hook point's own margin the way the toggle button beside it does.
+.failure {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 420rem;
+  margin: 8rem;
+  padding: 16rem 18rem;
+  background-color: $surface;
+  border: 1rem solid $line;
+  border-left: 2rem solid $bad;
+  border-radius: 5rem;
+  color: $text-dim;
+  font-size: 12rem;
+  line-height: 17rem;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.failureAction {
+  align-self: flex-end;
+  margin-top: 14rem;
+  padding: 4rem 14rem;
+  background-color: $surface-hover;
+  border-radius: 3rem;
+  color: $text;
+  font-size: 12rem;
+}
