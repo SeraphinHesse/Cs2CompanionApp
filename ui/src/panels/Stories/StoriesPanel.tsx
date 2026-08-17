@@ -2,17 +2,23 @@ import { useValue } from "cs2/api";
 import { Scrollable } from "cs2/ui";
 
 import {
+  EMPTY_FLAVOR_STATUS,
   EMPTY_POWER,
   EMPTY_SETTINGS,
   enabled$,
+  flavorStatus$,
+  mandates$,
   power$,
   ready$,
   settings$,
   stories$,
   storyArchive$,
 } from "../../shell/bindings";
+import { useLookups } from "../../shell/lookup";
 import { ArchiveList } from "./ArchiveList";
 import { PanelBoundary } from "./Boundary";
+import { FlavorStatusLine } from "./FlavorStatusLine";
+import { MandateTracker } from "./MandateTracker";
 import { StoryCard } from "./StoryCard";
 import { EMPTY_STATE_SUMMARY, summary$ } from "./bindings";
 import styles from "./StoriesPanel.module.scss";
@@ -29,6 +35,12 @@ import styles from "./StoriesPanel.module.scss";
  * three surfaces read it from three React trees, and one declaration is what makes that one
  * subscription. Only the story article map and `agora.state.summary` are declared locally, in
  * `./bindings.ts`, which says why.
+ *
+ * **Two things below came from the News panel in wave 7**, which is deleted: the mandate tracker and
+ * the flavor status line with its manual wake. Both read `agora.news.*` — the binding group keeps its
+ * name because renaming a live binding in place is what contract §7 forbids. Both sit INSIDE the
+ * scroll region rather than under it: this panel's height is the column's to budget, and content
+ * parked below the scrollable would be unreachable on a short screen.
  */
 
 const StoriesPanelInner = (): JSX.Element | null => {
@@ -39,6 +51,9 @@ const StoriesPanelInner = (): JSX.Element | null => {
   const rawStories = useValue(stories$);
   const rawArchive = useValue(storyArchive$);
   const rawPower = useValue(power$);
+  const rawMandates = useValue(mandates$);
+  const rawFlavor = useValue(flavorStatus$);
+  const lookups = useLookups();
 
   // A binding can hand over a null payload during a partial deploy; the fallback argument only covers
   // the frames before the first publish. Guard rather than let a null reach a field.
@@ -47,6 +62,8 @@ const StoriesPanelInner = (): JSX.Element | null => {
   const stories: Agora.Story[] = rawStories || [];
   const archive: Agora.StoryBrief[] = rawArchive || [];
   const power: Agora.Power = rawPower || EMPTY_POWER;
+  const mandates: Agora.MandateRow[] = rawMandates || [];
+  const flavor: Agora.FlavorStatus = rawFlavor || EMPTY_FLAVOR_STATUS;
 
   // Master toggle off means the player sees no trace of the mod - not a disabled shell.
   if (!enabled) {
@@ -97,6 +114,14 @@ const StoriesPanelInner = (): JSX.Element | null => {
 
             <div className={styles.sectionLabel}>Closed</div>
             <ArchiveList rows={archive} />
+
+            {/* In the engine's order — status rank, then deadline, then id (contract §4.5). Never
+                re-sorted here, so the tracker opens on what is live and closest to due. */}
+            <div className={styles.sectionLabel}>Mandates</div>
+            <MandateTracker mandates={mandates} lookups={lookups} />
+
+            <div className={styles.sectionLabel}>Prose writer</div>
+            <FlavorStatusLine status={flavor} />
           </div>
         </Scrollable>
       )}
