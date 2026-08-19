@@ -436,10 +436,6 @@ namespace Agora.Mod.Llm
         private static void AppendTask(StringBuilder sb, FlavorRequest request,
                                        List<StoryBrief> running, List<StoryBrief> resolved)
         {
-            int articles = request.ArticleCount;
-            if (articles < 0) articles = 0;
-            if (articles > 12) articles = 12;
-
             sb.Append("WRITE:\n");
             if (request.Parties.Count > 0)
             {
@@ -455,8 +451,63 @@ namespace Agora.Mod.Llm
             {
                 sb.Append("- factionFlavor for every faction listed, including a leader's name.\n");
             }
-            sb.Append("- ").Append(articles.ToString(CultureInfo.InvariantCulture));
-            sb.Append(" articles from local outlets covering the city as described above.\n");
+            AppendArticles(sb, request);
+            if (request.Events.Count > 0)
+            {
+                sb.Append("- eventProse for every event listed: how that event lands in THIS city specifically.\n");
+            }
+            AppendStoryCoverage(sb, running, resolved);
+            sb.Append("- generatedAtSimDate exactly \"").Append(request.Date.ToString()).Append("\".\n");
+            sb.Append("- schemaVersion exactly ").Append(FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture));
+            sb.Append(" (the only number allowed in your entire response).\n\n");
+        }
+
+        /// <summary>
+        /// The round's article instruction: the dedicated election pieces, or a bullet saying there
+        /// are no articles to write at all.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>General monthly coverage is gone, and with it the count that used to be a free
+        /// parameter.</b> The articles it produced existed to fill the news feed; the feed was
+        /// retired in v10 of <c>docs/contracts/ui_bindings.md</c>, so that prose reached no reader.
+        /// What survives is coverage of the political occasions that still raise a card a player can
+        /// open — and the only one of those either writer is handed a signal for is the election, so
+        /// the election is what this asks for. See the remarks on <see cref="AppendElectionCoverage"/>
+        /// for what the other three would need.
+        /// </para>
+        /// <para>
+        /// <b>The count is derived from the pieces, never carried over from the old one.</b> It is
+        /// <see cref="FlavorRequest.ElectionArticleCount"/>: three under NA rules — result, claim,
+        /// challenge — and four under EU rules, which adds the coalition outlook. The 7/8 W5 ratified
+        /// was those same pieces <i>plus</i> the ordinary month's four, so with general coverage gone
+        /// the honest number is what the pieces alone need and not the old total less something.
+        /// <see cref="FlavorRequest.ArticleCount"/> is deliberately not read here: the count is now a
+        /// property of the occasion rather than of the request, so the prompt and
+        /// <c>StaticPoolProvider.PlanRound</c> cannot drift into asking for different rounds.
+        /// </para>
+        /// <para>
+        /// A round that is not an election says so outright rather than staying silent about
+        /// articles. The schema still permits them, and a model left to infer would file the general
+        /// coverage it has always filed — prose nothing renders, written against a budget the round
+        /// needs for its stories. An articleless round is not a failed one:
+        /// <c>FlavorValidationResult.ArticlesAllDiscarded</c> is zero-out-of-some, never zero-out-of-
+        /// zero, so a round that legitimately carries none is accepted and cached like any other.
+        /// </para>
+        /// </remarks>
+        private static void AppendArticles(StringBuilder sb, FlavorRequest request)
+        {
+            if (request.Reason != FlavorWakeReason.Election)
+            {
+                sb.Append("- no articles this round. The press covers the ballot and the parties, and ");
+                sb.Append("nothing has gone to the ballot this round, so there is nothing for it to file. ");
+                sb.Append("An article written anyway reaches no reader.\n");
+                return;
+            }
+
+            sb.Append("- ").Append(FlavorRequest.ElectionArticleCount(request.Theme)
+                                                .ToString(CultureInfo.InvariantCulture));
+            sb.Append(" articles from local outlets covering the election just decided.\n");
             sb.Append("  1. Lead with what happened, to whom, and why it matters. ");
             sb.Append("The concrete change goes in the first sentence, not the last.\n");
             // The claim in the last sentence is now true: FilterAgainstCatalog drops an article whose
@@ -491,21 +542,24 @@ namespace Agora.Mod.Llm
               .Append(FlavorCacheMigration.BodyMaxLength.ToString(CultureInfo.InvariantCulture))
               .Append(" - a longer one fails validation and the whole response is discarded.\n");
             AppendElectionCoverage(sb, request);
-            if (request.Events.Count > 0)
-            {
-                sb.Append("- eventProse for every event listed: how that event lands in THIS city specifically.\n");
-            }
-            AppendStoryCoverage(sb, running, resolved);
-            sb.Append("- generatedAtSimDate exactly \"").Append(request.Date.ToString()).Append("\".\n");
-            sb.Append("- schemaVersion exactly ").Append(FlavorSchema.SupportedSchemaVersion.ToString(CultureInfo.InvariantCulture));
-            sb.Append(" (the only number allowed in your entire response).\n\n");
         }
 
         /// <summary>
-        /// The extra pieces an election round asks for, emitted inside WRITE so that a non-election
+        /// The pieces an election round asks for, emitted inside WRITE so that a non-election
         /// prompt is unchanged byte for byte.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// <b>The election is the one political occasion this prompt can see.</b> Four kinds still
+        /// raise a card the player can open — the election, a coalition forming, a coalition ending,
+        /// and a party founded or dissolved — and the other three reach no writer:
+        /// <see cref="FlavorRequest"/> carries parties, factions, events and stories, none of which
+        /// says that a government took office this month or that a brand left the ballot, and
+        /// <see cref="FlavorWakeReason"/> has no value for either. Covering them needs a signal on the
+        /// request naming the month's political occasions, which is a contract change and another
+        /// lane's file; writing about them from what is here would mean inferring an occasion from a
+        /// roster, which is how prose starts claiming things the engine did not decide.
+        /// </para>
         /// <para>
         /// Neither <see cref="FlavorRequest"/> nor <see cref="PartyBrief"/> carries a vote share, a
         /// seat count or a turnout figure — deliberately, see the remarks on <c>PartyBrief</c>. The

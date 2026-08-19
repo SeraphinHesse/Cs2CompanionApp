@@ -1,6 +1,7 @@
 // Requires the FlavorValidator.cs / FlavorCache.cs / FlavorDocument.cs <Compile Link> lines in
 // Agora.Core.Tests.csproj (see the comment there for why).
 
+using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -30,6 +31,15 @@ namespace Agora.Core.Tests
     /// failed round. Two things it is deliberately not: a <i>partial</i> drop, which is thin prose
     /// and thin prose beats none; and a round that carried no articles to begin with, which is the
     /// correct output for a save with nothing to write about.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>That second exclusion stopped being an edge case in wave 7.</b> General monthly coverage
+    /// was written for the news feed, the feed is gone, and both writers stopped producing it — so an
+    /// ordinary month is now an articleless round by design, every month, on every save. If the
+    /// distinction between "asked for none" and "lost them all" ever collapsed, every ordinary month
+    /// would read as a failed generation: the CLI would retry rounds that succeeded and the cache
+    /// would refuse to load files that are perfectly good.
     /// </para>
     /// </summary>
     public class FlavorEmptiedRoundTests
@@ -150,6 +160,43 @@ namespace Agora.Core.Tests
             Assert.False(result.IsValid);
             Assert.Equal(0, result.ArticlesReceived);
             Assert.False(result.ArticlesAllDiscarded);
+        }
+
+        // --- the writer that now files one every ordinary month --------------------------------------
+
+        [Fact]
+        public void TheCannedPoolsOrdinaryMonthIsAnArticlelessRoundAndNotAFailedOne()
+        {
+            // Wave 7 made the zero-in-zero-out case the common one rather than the early-save one:
+            // general monthly coverage was written for the news feed, the feed is gone, so an
+            // ordinary month files no articles at all. The pool validates its own document and
+            // answers null if it fails, so a document coming back at all is the assertion that an
+            // articleless round passes the same gate a model's response does — and the party names,
+            // which are the load-bearing content of the file, come back with it.
+            var pool = new StaticPoolProvider(
+                new Guid("5d2ae9c4-0000-4000-8000-0123456789ab"), RegionTheme.Eu,
+                Validator(), NullFlavorLog.Instance);
+
+            var request = new FlavorRequest
+            {
+                Date = RequestDate,
+                Reason = FlavorWakeReason.Yearly,
+                Theme = RegionTheme.Eu
+            };
+            request.Parties.Add(new PartyBrief
+            {
+                PartyId = "party-riverside",
+                ArchetypeId = "greens",
+                CoreGrievance = Issue.Environment,
+                StatusWord = "in opposition",
+                FoundedDate = new SimDate(1994, 3, 1)
+            });
+
+            FlavorDocument document = pool.Generate(request);
+
+            Assert.NotNull(document);
+            Assert.Empty(document!.Articles);
+            Assert.Equal("party-riverside", Assert.Single(document.PartyFlavor).PartyId);
         }
 
         // --- the cache load path --------------------------------------------------------------------
