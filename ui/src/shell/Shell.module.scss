@@ -115,12 +115,36 @@
 
 // ---- the dashboard (GameTopRight) -------------------------------------------------------------
 
+// The column budget lives here, on the one element that can see every piece of the stack.
+//
+// `Dashboard.tsx` renders the bar, the settings drawer and the tab panel as siblings in this column.
+// Each of them used to declare its own height and none of them knew about the others, so the sum was
+// whatever the three happened to add up to: with the drawer open the column wanted ~1296rem of a
+// 1080rem screen and the bottom of the panel fell off the edge. A ceiling here is what makes the
+// three sizes one budget instead of three independent claims.
+//
+// `vh` rather than a rem figure on purpose. `rem` is the CS2 UI's scaling unit, so the screen is
+// 1080rem tall only at 100% interface size and fewer rem than that at any larger one — a 1080rem
+// ceiling would be the screen height on exactly one setting. The viewport is 100vh tall on all of
+// them.
+//
+// What shrinks under the ceiling is decided by the children, not here: the bar and the settings
+// drawer are both `flex: 0 0 auto` (see SettingsPanel.module.scss), so the whole of any shortfall
+// lands on `.panelSlot` below. That is deliberate: the drawer caps itself at 620rem and scrolls its
+// own rows, so it is already a bounded, correct surface, and shrinking it further to pay for a
+// decision it does not own would degrade it for nothing. `.panelSlot` holds panels that scroll — as
+// of this change, all four of them — so a shortfall taken there costs reachability of nothing.
+//
+// The ceiling assumes this column starts at the top of the viewport, which is where `GameTopRight`
+// puts it. If that hook point ever gains a top offset, the budget is loose by exactly that offset
+// rather than wrong — worth knowing, not worth a magic number here.
 .shell {
   display: flex;
   flex-direction: column;
   // The hook point is wider than the dashboard. Pin both the bar and the panel to the same right
   // edge so they read as one unit instead of two cards that happen to be near each other.
   align-items: flex-end;
+  max-height: 100vh;
 }
 
 .bar {
@@ -208,10 +232,24 @@
   color: $text-dim;
 }
 
+// Whatever height is left of the budget above, after the bar and the drawer have taken theirs.
+//
+// `flex: 1 1 auto` over `min-height: 0` is the same recipe every scrolling region in this build uses,
+// and the zero is the half that actually does the work: a flex item's default `min-height: auto` is
+// its content's intrinsic size, so without it the slot refuses to shrink, the ceiling on `.shell`
+// binds nothing, and the column overflows exactly as it did before. It is also the half most often
+// left out, because the layout looks identical until the content is tall enough to need it.
+//
+// The panel inside is capped at `max-height: 100%` of this slot — the contract all four panels now
+// follow. The panel keeps its default `flex-shrink: 1` and its own scroll region carries
+// `min-height: 0`, so its intrinsic minimum is a header rather than its whole body and the flex line
+// resolves to an exact fit: panel + its 8rem margins = this slot, with nothing left over to hang off
+// the bottom of the screen.
 .panelSlot {
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 // ---- ShellBoundary fallback -------------------------------------------------------------------
