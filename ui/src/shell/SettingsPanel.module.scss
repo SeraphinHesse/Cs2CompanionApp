@@ -148,32 +148,11 @@
   text-transform: uppercase;
 }
 
-// ---- a published setting with no control ---------------------------------------------------------
-//
-// Text, not a chip and not a disabled button. A disabled control says "not right now"; these two
-// cannot be written at all in this build (contract §4.1), and dressing them as controls is how a
-// player comes to believe there is a switch behind them.
-
-.readOnlyValue {
-  display: flex;
-  margin-top: 8rem;
-  color: $text-dim;
-  font-size: 11rem;
-  overflow: hidden;
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-}
-
-.readOnlyNote {
-  display: flex;
-  margin-top: 4rem;
-  color: $text-faint;
-  font-size: 10rem;
-  line-height: 14rem;
-  overflow: hidden;
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-}
+// `.readOnlyValue` and `.readOnlyNote` lived here and are gone. They rendered `powerIntensity` and
+// `storyDifficulty` as text because neither had a write key or a preset table behind it; wave 7
+// landed both, so the pair are ordinary `.option` rows now and the two classes had no second caller.
+// Recorded rather than silently deleted: a class removed with its only markup is the one kind of
+// deletion a class-name diff cannot distinguish from an accident.
 
 // ---- the theme-change confirmation ---------------------------------------------------------------
 //
