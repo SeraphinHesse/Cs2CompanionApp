@@ -1727,22 +1727,38 @@ namespace Agora.Core.Tests
         /// Waves 2 and 5 each had to learn this once; this fixture is what stops wave 7 learning it a
         /// third time.
         /// </remarks>
-        [Fact]
-        public void Migrate_StateV7_CarriesPauseOnMajorStoryIntoTheNestedSettingsBlock()
+        /// <remarks>
+        /// Widened to carry the same three cases as the standalone theory above, and for a reason
+        /// the single <c>null</c> case did not reach: the nested block travels a <i>different</i>
+        /// route — the state chain calls the helper directly rather than going round the settings
+        /// loop — so "the step is an add and not a write" has to be proven on both, and a state step
+        /// that stamped the default over an answer the player had already given would have passed the
+        /// original fixture without complaint. The idempotence pass at the end is the whole sweep's
+        /// acceptance condition (non-negotiable #6) applied to the one step this wave added.
+        /// </remarks>
+        [Theory]
+        [InlineData(null, true)]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        public void Migrate_StateV7_CarriesPauseOnMajorStoryIntoTheNestedSettingsBlock(
+            bool? existing, bool expected)
         {
+            var nested = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 5,
+                ["startYear"] = 1990,
+                ["theme"] = "Eu",
+                ["system"] = "Proportional",
+                ["wakeCadence"] = "Yearly, Election, Manual, Story"
+            };
+            if (existing.HasValue) nested["pauseOnMajorStory"] = existing.Value;
+
             var root = new JObject
             {
                 [SidecarSchema.VersionProperty] = 7,
                 ["saveGuid"] = "11112222-3333-4444-5555-666677778888",
                 ["date"] = "1994-03-01",
-                ["settings"] = new JObject
-                {
-                    [SidecarSchema.VersionProperty] = 5,
-                    ["startYear"] = 1990,
-                    ["theme"] = "Eu",
-                    ["system"] = "Proportional",
-                    ["wakeCadence"] = "Yearly, Election, Manual, Story"
-                }
+                ["settings"] = nested
             };
 
             MigrationResult result = SidecarSchema.Migrate(root, SidecarDocument.State);
@@ -1751,7 +1767,16 @@ namespace Agora.Core.Tests
             Assert.True(result.IsLoadable);
             Assert.Equal(SidecarSchema.CurrentStateVersion, (int)root[SidecarSchema.VersionProperty]!);
             Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
-            Assert.True((bool)settings["pauseOnMajorStory"]!);
+            Assert.Equal(expected, (bool)settings["pauseOnMajorStory"]!);
+
+            // The chain re-run over its own output changes nothing at all — the whole document, not
+            // just the field this step added. Serializing both sides catches a later step that had
+            // been quietly re-applying its own edit every load.
+            string once = AgoraJson.Serialize(root);
+            MigrationResult again = SidecarSchema.Migrate(root, SidecarDocument.State);
+
+            Assert.Equal(MigrationOutcome.Current, again.Outcome);
+            Assert.Equal(once, AgoraJson.Serialize(root));
         }
 
         /// <summary>
