@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Agora.Core.Contracts;
 using Agora.Core.Engine.Government.Coalitions;
 using Agora.Core.Engine.Parties;
@@ -24,8 +23,6 @@ namespace Agora.Mod.UiBindings
     // new file instead of queueing on this one.
     internal static partial class AgoraUiProjection
     {
-        internal const int NewsFeedMax = 40;
-        internal const int EventsMax = 25;
         internal const int ElectionHistoryMax = 12;
         internal const int PollTrendMax = 24;
         internal const int CoalitionOptionsMax = 8;
@@ -1175,69 +1172,6 @@ namespace Agora.Mod.UiBindings
 
         // ------------------------------------------------------------------ agora.news
 
-        /// <summary>Live timeline events, newest fired first, capped at twenty-five.</summary>
-        internal static List<TimelineEventBriefPayload> BuildEvents(PoliticalState state)
-        {
-            var rows = new List<TimelineEventBriefPayload>();
-            if (state == null) return rows;
-
-            for (int i = 0; i < state.ActiveEvents.Count; i++)
-            {
-                TimelineEvent ev = state.ActiveEvents[i];
-                if (ev == null) continue;
-
-                var row = new TimelineEventBriefPayload
-                {
-                    Id = ev.Id,
-                    Date = ev.Date,
-                    Title = ev.Title,
-                    Region = ev.Region.ToString(),
-                    Origin = ev.Origin.ToString(),
-                    Severity = ev.Severity,
-                    DurationMonths = ev.DurationMonths,
-                    FiredDate = ev.FiredDate,
-                    ExpiresDate = ev.ExpiresDate,
-                    ArchetypeId = ev.ArchetypeId ?? "",
-                    LocalAngle = ev.LocalAngle ?? "",
-                    Tags = SortedCopy(ev.Tags)
-                };
-
-                // Districts this event's effects actually landed on. Empty reads as city-wide.
-                var districts = new List<string>();
-                for (int f = 0; f < ev.Effects.Count; f++)
-                {
-                    string id = ev.Effects[f].DistrictId;
-                    if (!string.IsNullOrEmpty(id) && !districts.Contains(id)) districts.Add(id);
-                }
-                districts.Sort(CompareOrdinal);
-                row.DistrictIds = districts;
-
-                rows.Add(row);
-            }
-
-            rows.Sort(CompareEventRows);
-            if (rows.Count > EventsMax) rows.RemoveRange(EventsMax, rows.Count - EventsMax);
-            return rows;
-        }
-
-        private static int CompareEventRows(TimelineEventBriefPayload a, TimelineEventBriefPayload b)
-        {
-            bool aHas = a.FiredDate.HasValue;
-            bool bHas = b.FiredDate.HasValue;
-
-            if (aHas && bHas)
-            {
-                int byDate = b.FiredDate.Value.CompareTo(a.FiredDate.Value);
-                if (byDate != 0) return byDate;
-            }
-            else if (aHas != bHas)
-            {
-                return aHas ? -1 : 1;
-            }
-
-            return string.CompareOrdinal(a.Id, b.Id);
-        }
-
         /// <summary>
         /// The mandate tracker, ordered so it opens on what is live and closest to its deadline:
         /// status rank, then deadline, then id.
@@ -1306,230 +1240,21 @@ namespace Agora.Mod.UiBindings
         }
 
         /// <summary>
-        /// The news feed: prose articles, plus engine milestones that deserve a line whether or not
-        /// the model ever ran. Newest first, capped at forty.
+        /// The body behind an alert card, or an empty payload for an unknown id.
         /// </summary>
         /// <remarks>
-        /// Bodies deliberately stay out of this payload — the feed carries a headline and one line,
-        /// and <c>agora.news.article</c> serves the body when an item is opened. Forty feed rows with
-        /// 120-word bodies attached would be the largest thing crossing the bridge, every month.
+        /// <para>
+        /// <b>The feed's reader is gone; this one is not.</b> The alert queue still carries elections,
+        /// coalition formation and collapse, and party founding and dissolution, and a card with
+        /// <c>hasArticle</c> set fetches its body from here under the alert's own id. Retiring this
+        /// with the feed would have left those cards a headline and one line
+        /// (<c>docs/contracts/ui_bindings.md</c> §4.5).
+        /// </para>
+        /// <para>
+        /// An unknown id answers an empty payload rather than throwing — the card then renders a blank
+        /// masthead, which is why <c>hasArticle</c> and not the id is what a consumer branches on.
+        /// </para>
         /// </remarks>
-        /// <param name="startDate">
-        /// The save's first political date, for the opening-roster exclusion on party rows —
-        /// <c>AgoraRuntime.StartDate</c>, which derives it once at load from the persisted start year.
-        /// Every party the initial registry is minted with carries that date as its founding date, so
-        /// without it a new save's first publish would announce the founding of the entire field.
-        /// </param>
-        internal static List<NewsHeadlinePayload> BuildFeed(PoliticalState state, FlavorPayload prose,
-                                                            SimDate startDate)
-        {
-            var rows = new List<NewsHeadlinePayload>();
-
-            if (prose != null)
-            {
-                for (int i = 0; i < prose.Articles.Count; i++)
-                {
-                    Article article = prose.Articles[i];
-                    if (article == null || string.IsNullOrEmpty(article.Id)) continue;
-
-                    rows.Add(new NewsHeadlinePayload
-                    {
-                        Id = article.Id,
-                        Date = prose.GeneratedAt,
-                        Kind = "Article",
-                        Headline = article.Headline,
-                        Summary = FirstLine(article.Body),
-                        OutletId = article.Outlet ?? "",
-                        OutletName = article.Outlet ?? "",
-                        PartyId = article.PartyId ?? "",
-                        DistrictId = article.DistrictId ?? "",
-                        EventId = article.EventId ?? "",
-                        HasArticle = true
-                    });
-                }
-            }
-
-            if (state != null)
-            {
-                for (int i = 0; i < state.ActiveEvents.Count; i++)
-                {
-                    TimelineEvent ev = state.ActiveEvents[i];
-                    if (ev == null || !ev.FiredDate.HasValue) continue;
-
-                    rows.Add(new NewsHeadlinePayload
-                    {
-                        Id = "event:" + ev.Id,
-                        Date = ev.FiredDate.Value,
-                        Kind = "Event",
-                        Headline = ev.Title,
-                        Summary = ev.HeadlineBrief ?? "",
-                        Severity = ev.Severity,
-                        EventId = ev.Id,
-                        HasArticle = false
-                    });
-                }
-
-                for (int i = 0; i < state.ElectionHistory.Count; i++)
-                {
-                    ElectionResult election = state.ElectionHistory[i];
-                    if (election == null) continue;
-
-                    rows.Add(new NewsHeadlinePayload
-                    {
-                        Id = "election:" + election.Id,
-                        Date = election.Date,
-                        Kind = "Election",
-                        Headline = election.IsSnapElection ? "Snap election held" : "Election held",
-                        Summary = "Turnout " + Percent(election.Turnout) + " across " +
-                                  election.TotalSeats + " seats.",
-                        PartyId = WinnerOf(election),
-                        HasArticle = false
-                    });
-                }
-
-                for (int i = 0; i < state.CoalitionHistory.Count; i++)
-                {
-                    Coalition coalition = state.CoalitionHistory[i];
-                    if (coalition == null || !coalition.EndedDate.HasValue) continue;
-
-                    rows.Add(new NewsHeadlinePayload
-                    {
-                        Id = "coalition:" + coalition.Id,
-                        Date = coalition.EndedDate.Value,
-                        Kind = "Coalition",
-                        Headline = coalition.Status == CoalitionStatus.Collapsed
-                            ? "Government collapsed"
-                            : "Government's term ended",
-                        // Not the enum's own name. AgoraRuntime.CollapseReasonSentence maps every
-                        // member to a sentence, because "Reason: PartnerWithdrawal." is C# leaking
-                        // into the player's news, and the same map is what the alert card shows.
-                        Summary = AgoraRuntime.CollapseReasonSentence(coalition.CollapseReason),
-                        PartyId = coalition.LeadPartyId,
-                        HasArticle = false
-                    });
-                }
-
-                // The formation side. Two sources and both are needed: CoalitionHistory only ever
-                // receives governments that have already ended, so the sitting one — the only
-                // formation the player is likely to be looking for — is in state.Government alone.
-                for (int i = 0; i < state.CoalitionHistory.Count; i++)
-                {
-                    AddCoalitionFormedRow(rows, state.CoalitionHistory[i]);
-                }
-                AddCoalitionFormedRow(rows, state.Government);
-
-                // Party lifecycle. The query is in Agora.Core so that the opening-roster exclusion
-                // and the whole-roster-regeneration suppression are testable without the game;
-                // everything below is wording. NOT a per-date cap: an earlier revision capped
-                // reported changes at two a date on the false premise that the engine cannot
-                // produce three in one month, and deaths, merges and splits each loop over their
-                // own candidates stamping the same date. Do not reintroduce a count.
-                //
-                // KNOWN AND ACCEPTED — a revival erases its own dissolution row. PartyLifecycle
-                // clears Party.DissolvedDate when a brand returns, so this feed loses the death of
-                // any party that later comes back, retroactively, on the publish after the revival.
-                // Not an oversight: the fix is a persisted lifecycle log, which is a sidecar field
-                // this lane is not permitted to add, and the alert for the death already fired at
-                // the time. Recorded here so the next reader does not file it as a bug.
-                PartyLifecycleChangeSet lifecycle =
-                    PartyLifecycleChanges.Collect(state.Parties, startDate);
-
-                // Deliberately no log line for lifecycle.SuppressedDates. This builder is a view,
-                // rebuilt from scratch on every publish, so a warning here would repeat for the rest
-                // of the save rather than reporting an event once. The one-shot log belongs on the
-                // emission path, which runs once per sim month — and now lives there:
-                // AgoraRuntime.RaisePartyAlerts logs it, keyed into _raisedAlertIds under a
-                // "suppressed-lifecycle|" kind segment so it fires once per occurrence. This comment says
-                // "no log HERE", not "no log anywhere"; do not read the two as contradicting.
-                for (int i = 0; i < lifecycle.Records.Count; i++)
-                {
-                    PartyLifecycleRecord change = lifecycle.Records[i];
-                    bool founded = change.Kind == PartyLifecycleKind.Founded;
-
-                    rows.Add(new NewsHeadlinePayload
-                    {
-                        // Merged and Dissolved share the ":dissolved" suffix: they are one thing from
-                        // the feed's point of view — the brand leaving the ballot — and the headline
-                        // is where the two stories part.
-                        Id = "party:" + change.PartyId + (founded ? ":founded" : ":dissolved"),
-                        Date = change.Date,
-                        Kind = "Party",
-                        Headline = founded
-                            ? "New party founded"
-                            : change.Kind == PartyLifecycleKind.Merged
-                                ? "Party absorbed into another"
-                                : "Party dissolved",
-                        Summary = founded
-                            ? "A new party has entered the field."
-                            : change.Kind == PartyLifecycleKind.Merged
-                                ? "Its members and its seats pass to the party that took it in."
-                                : "It fell below the threshold once too often and leaves the ballot.",
-                        PartyId = change.PartyId,
-                        HasArticle = false
-                    });
-                }
-            }
-
-            rows.Sort(CompareFeedRows);
-            if (rows.Count > NewsFeedMax) rows.RemoveRange(NewsFeedMax, rows.Count - NewsFeedMax);
-            return rows;
-        }
-
-        /// <summary>
-        /// A "government formed" row, for a government that has actually formed.
-        /// </summary>
-        /// <remarks>
-        /// The <c>":formed"</c> suffix keeps this row distinct from the same coalition's ending row,
-        /// which is keyed on the bare id. Without it the two collide, and <see cref="CompareFeedRows"/>
-        /// — which falls back to the id when the dates differ by nothing else — would file them
-        /// adjacently, reading as one row printed twice.
-        /// </remarks>
-        private static void AddCoalitionFormedRow(List<NewsHeadlinePayload> rows, Coalition coalition)
-        {
-            // Talks are not a government. No engine path assigns Negotiating — it is the Coalition
-            // initialiser's value — so this guards a default-constructed or half-migrated coalition
-            // rather than a state the shipped engine reaches, and it stays for that reason.
-            if (coalition == null || coalition.Status == CoalitionStatus.Negotiating) return;
-
-            int members = coalition.MemberPartyIds != null ? coalition.MemberPartyIds.Count : 0;
-
-            rows.Add(new NewsHeadlinePayload
-            {
-                Id = "coalition:" + coalition.Id + ":formed",
-                Date = coalition.FormedDate,
-                Kind = "Coalition",
-
-                // An empty ElectionId means a government that no ballot produced. Today that branch
-                // is unreachable: CoalitionFormation.Form has exactly one caller and it always hands
-                // over the election's id, because a collapse schedules a snap election rather than
-                // reassembling a government mid-term. Kept, and kept first, because the alternative
-                // is a headline announcing an election that did not happen the day something else
-                // ever does form a government.
-                Headline = string.IsNullOrEmpty(coalition.ElectionId)
-                    ? "New government formed mid-term"
-                    : "New government takes office",
-
-                // A count and a mood, never a member id: the panel resolves names and colours through
-                // agora.parties.roster, and PartyId below carries the lead for it to resolve.
-                Summary = members <= 1
-                    ? (coalition.HasMajority
-                        ? "One party governs alone."
-                        : "One party governs without a majority.")
-                    : ("A coalition of " + members + " parties" +
-                       (coalition.HasMajority ? "." : ", governing without a majority.")),
-
-                PartyId = coalition.LeadPartyId,
-                HasArticle = false
-            });
-        }
-
-        private static int CompareFeedRows(NewsHeadlinePayload a, NewsHeadlinePayload b)
-        {
-            int byDate = b.Date.Value.CompareTo(a.Date.Value);
-            return byDate != 0 ? byDate : string.CompareOrdinal(a.Id, b.Id);
-        }
-
-        /// <summary>The body behind a feed item, or an empty payload for an unknown id.</summary>
         internal static NewsArticlePayload BuildArticle(FlavorPayload prose, string id)
         {
             var payload = new NewsArticlePayload();
@@ -1731,39 +1456,6 @@ namespace Agora.Mod.UiBindings
             copy.Sort(CompareOrdinal);
             return copy;
         }
-
-        /// <summary>
-        /// First line of an article body, for a one-line preview.
-        /// </summary>
-        /// <remarks>
-        /// Byte-identical to <c>AgoraRuntime.FirstLine</c>, deliberately. Sharing it would make
-        /// Agora.Mod.Core depend on Agora.Mod.UiBindings, inverting the layering for a string
-        /// truncation helper, and a drift here changes how long a preview line is rather than any
-        /// decision. Change one, change the other.
-        /// </remarks>
-        private static string FirstLine(string body)
-        {
-            if (string.IsNullOrEmpty(body)) return "";
-
-            int stop = body.IndexOf('.');
-            if (stop > 0 && stop + 1 < body.Length) return body.Substring(0, stop + 1);
-            return body.Length <= 160 ? body : body.Substring(0, 160);
-        }
-
-        /// <summary>
-        /// Whole percent, away from zero, invariant.
-        /// </summary>
-        /// <remarks>
-        /// The invariance is load-bearing, not habit. <c>AgoraRuntime.RaiseAlerts</c> renders the
-        /// same figure the same way in an election alert's summary, so a card and the feed row it
-        /// points at cannot disagree about one ballot; this helper is the other half of that pair.
-        /// Concatenating the <c>int</c> directly would format under <c>CurrentCulture</c> — the
-        /// same output for the non-negative values fed in today, and a silent split the first time
-        /// one is not. Change one, change the other.
-        /// </remarks>
-        private static string Percent(double value) =>
-            ((int)Math.Round(value * 100.0, MidpointRounding.AwayFromZero))
-                .ToString(CultureInfo.InvariantCulture) + "%";
 
         private static int CompareOrdinal(string a, string b) => string.CompareOrdinal(a, b);
     }
