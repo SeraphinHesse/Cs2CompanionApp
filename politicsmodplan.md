@@ -26,7 +26,7 @@ The player is sovereign: never removable, never overridden. Politics applies pre
 
 1. **LLM is flavor-only.** No number that enters engine state may originate from Claude output. Claude output is prose fields validated against schema; anything else is discarded.
 2. **No naked randomness.** Every stochastic draw uses a named, seeded stream: `seed = Hash(saveGuid, simDate, streamName)`. `System.Random` without a derived seed is a review-blocking defect.
-3. **Determinism.** Engine state is a pure function of (city metrics history, prior state, seeds, catalogs, settings). Reloading a save and playing identically must reproduce identical political outcomes. ⟐ **"Desync" is defined precisely:** the SHA-256 of serialized Agora state at sim-date D after a reload must equal the hash taken before it. Vague gates never fail, so they never catch anything.
+3. **Determinism.** Engine state is a pure function of (city metrics history, prior state, seeds, catalogs, settings). Reloading a save and playing identically must reproduce identical political outcomes. ⟐ **"Desync" is defined precisely:** the SHA-256 of serialized Agora state at sim-date D after a reload must equal the hash taken before it. Vague gates never fail, so they never catch anything. ⟐ **Amended in §5** — the ordered, dated log of player commands is part of that input tuple and part of engine state (§15.5).
 4. **No map mutation.** Effects never create/modify districts, zoning, buildings, or terrain. The sanctioned effect palette (§7) is a closed registry; events reference effects by ID only.
 5. **Effects are capped.** Every effect declares scope (city|district), magnitude cap, duration cap, and a fallback effect (default: happiness modifier). Uncapped effects do not merge.
 6. **Sidecar integrity.** Political state writes are atomic (temp file + rename). A snapshot is written on every save-complete callback. Load must never desync (§5).
@@ -207,6 +207,62 @@ RCI demand shifts (only the narrow `OfficeSoftwareDemand` / `IndustrialElectroni
 
 Each implementation ships with: scope, magnitude cap, duration cap, fallback effect, and a unit test proving the cap holds.
 
+### ⟐ Ratified 2026-08-19 — the political-power debt penalty, and the money effect kind that was not built
+
+The story system's political-power currency (§15) can go negative, and the rework plan proposed
+paying for that with a **new kind of effect**: a capped recurring debit against `Game.City.PlayerMoney`,
+carrying a `kind: "money"` discriminator in `effects.perEffect` and living outside `EffectDispatcher`
+entirely — no decay, no stacking, no `maxStackedPerModifier`. The plan required that kind to be
+**ratified here rather than assumed**. This is the ratification, and the answer is that the kind was
+**struck by owner decision and never built** (wave-3 handoff item 4; wave-4 handoff item 2).
+
+**What ships is an existing palette entry.** A negative balance costs the city
+`city-service-building-upkeep` → `Game.City.CityModifierType.CityServiceBuildingBaseUpkeepCost`, requested
+by `PowerLedger.TryDebtPenalty` at `power.debtRevenuePenalty` for **one month**, re-asked every month
+the balance stays negative. There is no `kind: "money"` effect, no `PlayerMoney` write and no
+`AgoraTreasurySystem`; the request goes out through the ordinary resolver, so the palette owns the
+caps and nothing new owns anything.
+
+**The FORBIDDEN check, recorded.** It is written down for the shipped route *and* for the struck one,
+because the question the plan raised — whether taking a city's money is sanctionable at all — deserves
+an answer rather than lapsing with the implementation. Both pass:
+
+- **It creates or modifies no district, zoning, building or terrain.** It moves a modifier the
+  simulation already owns and already serialises; a `PlayerMoney` debit would move a number the game
+  already lets its own `GameModeGovernmentSubsidiesSystem` move.
+- **It is capped in magnitude.** `power.debtRevenuePenalty` is 0.20 and the palette entry's
+  `magnitudeCap` is also 0.20, so the tuned figure sits exactly at the ceiling the resolver enforces
+  (the tighter of the per-effect cap and `effects.globalMagnitudeCap`) and cannot be raised past it
+  from the `power` block alone.
+- **It is capped in duration.** The request is for a single month by construction, against an entry
+  whose `durationCapMonths` is 36 — a ceiling it can never approach. A city that clears its debt stops
+  paying for it within a month, which is the property a longer request would lose.
+- **It takes money rather than control.** It raises what the city's own service buildings cost to run.
+  It touches neither `ServiceFee` nor `TaxRates`, and **those two stay forbidden**: they are the
+  player's own sliders, so writing them is "targeting the player's authority" in the plainest sense of
+  the list above, and the player would watch their settings move without having touched them.
+
+**What a later wave would have to come back here for.** The `kind: "money"` route is not condemned,
+only unratified and unbuilt. Reviving it needs four things none of which exists: its own declared
+scope, `magnitudeCap` and bounded `durationCapMonths`, since `EffectDispatcher` would supply none of
+them; the `kind` discriminator in `effects.perEffect`, so `EffectPalette` stays a closed registry;
+`ModifierRegistry` taught to **skip** such an entry rather than report-and-drop it; and a sequencing
+decision against `BudgetApplySystem`, which writes `PlayerMoney` from a Burst job every 1/128 of a day,
+so a managed write races it and one of the two is lost. Adding it is a `/add-effect` decision plus a
+return to this section.
+
+**One tuning key is deliberately inert.** `power.debtPenaltyCapPerMonth` is denominated in money and
+nothing on the shipped route spends money, so `PowerLedger` never reads it. It is recorded here so
+that nobody tunes it expecting the penalty to move.
+
+### The prose rule
+
+**An event's prose may only claim what its effect ids can actually do.** The palette above is closed,
+and a headline promising something outside it — deaths, a tourism boom, a cut to the prison budget —
+is contradicted by the player's own city within the month. That is not a flavour problem; it is the
+mod telling the player something false about the simulation it is running. `/add-event` carries the
+specific traps and is where an author meets this rule.
+
 ---
 
 ## 8. ⟐ Repository & Context Routing
@@ -226,7 +282,7 @@ Cs2CompanionApp/
 │ └ CLAUDE.md  README.md  mod.json  package.json  webpack.config.js
 │   src/  types/           # types/ = the cs2/* .d.ts, from the shipped template
 ├ data/
-│ └ CLAUDE.md  schemas/  timeline_*.json  engine_tuning.json  seeds/
+│ └ CLAUDE.md  schemas/  timeline_*.json  events_*.json  engine_tuning.json  seeds/
 ├ tests/
 │ └ CLAUDE.md  Agora.Core.Tests/
 ├ tools/                   # ⟐⟐ verify-setup.ps1  api-query.ps1  decompile.ps1
@@ -371,3 +427,141 @@ Tasks: political map overlay (districts tinted by leading party, toggleable like
 - ~~Toolchain vs direct `Managed` references~~ → toolchain mode is the build; fallback retained behind `-p:UseCsiiToolchain=false` as a contributor compile check.
 - ~~`Agora.Core` target framework~~ → netstandard2.0, forced by `net48`. Not revisitable without leaving toolchain mode.
 - ~~How the UI bundle reaches the game~~ → webpack writes directly into the deploy folder; `BuildUI` runs after `DeployWIP`.
+
+---
+
+## 15. ⟐ The Story System
+
+Ratified through waves 0–7 of `docs/plans/0004-event-system-rework.md`, which replaced the derived
+news feed with something the player can act on. This section is the standing summary; the plan and its
+per-wave handoffs are the record of how each decision was reached.
+
+### 15.1 What it is
+
+A **civic event** is authored content — a problem the city has, expressed declaratively. It carries a
+1–5 `Severity`, a `TriggerSpec` saying when the city qualifies for it, a `CheckSpec` saying what
+counts as fixing it, three capped effect lists (active / success / failure), three `IssuePosition`
+pressures, and seven prose fields. Content, never code: 58 of them ship in
+`data/events_{global,eu,na}.json`.
+
+A **story** bundles three of them — one major, two minor — into one narrative with one headline and
+one article. The player *tackles* each slot: **Ignore**, **Goal**, **PowerOverride** or **Manual**
+(`SlotResponse`, `src/Agora.Core/Stories/Story.cs:44`). On resolution each slot scores, and a story of
+three needs `stories.successThreshold` (2) of them met; a story of fewer needs all of them.
+
+**Tiers are derived, never stored.** Mandatory / Major / Minor is a projection of that same `Severity`
+integer through `stories.mandatorySeverityThreshold` and `stories.majorSeverityThreshold`. There is
+exactly one number per concept, and `stories.majorSeverityThreshold` is deliberately equal to
+`catalog.majorSeverityThreshold` because "major" already had one definition, shared with
+`EventScheduler.IsMajor`, `CoalitionStability` and the alert lane. The UI never re-derives it.
+
+**A check has three answers, not two:** `Met`, `NotMet`, `Unmeasurable` (`CheckResult`,
+`Stories/CivicEvent.cs:219`). A deleted district, a city-fallback reading or an absent metric is
+**held**, and an `Unmeasurable` slot leaves both halves of the 2-of-3. Scoring it as failure would
+charge the player political power for a sensor gap — the same rule §4.5 of `ui_bindings.md` already
+writes for a mandate whose metric is unreadable.
+
+### 15.2 The cycle, and the one month a player actually has
+
+`stories.cycleMonths` is **2**, and `TickPlanner.Plan` projects it onto two phases, `IsStoryDraft` and
+`IsStoryResolve`, measured from the save start date exactly like every other cadence in that file.
+Draft on phase 0, resolve on phase 1, next batch at phase 0 again.
+
+> **A story lives `cycleMonths - 1` months — ONE, not two.** `StoryAssembler` sets
+> `months = stories.CycleMonths - 1` (`StoryAssembler.cs:532`). `cycleMonths` is the **cadence**; the
+> story's life is the cadence minus one, and the two differ by one.
+
+This is written as a display quote because it has had to be re-explained in five consecutive waves,
+and because getting it wrong is not cosmetic: every authored threshold and every `windowMonths` is
+sized against the window the player can actually influence. A check reading further back than that
+scores the player on months that predate their decision, and the loader now refuses it
+(`CatalogIssueCode.CheckWindowOutrunsStoryLife`, 120). **Do not retune `cycleMonths` without
+re-deriving every threshold in `data/events_*.json`.**
+
+A **Resolve now** command closes a story early. Because a player command's timing is already exogenous,
+that path may take a fresh sample — and writes it into the story record as the resolution's evidence,
+so a replay reads the recorded number instead of measuring a different city.
+
+### 15.3 Why there is no day 15
+
+The source design said stories resolve "halfway through the month". They cannot, and the reason is
+structural rather than an implementation difficulty. Recorded here because it is the question anyone
+reading the two-month cycle asks first, and it has a real answer:
+
+- **There is no day 15.** CS2 ships `TimeSettingsData.m_DaysPerYear = 12`, so **one in-game "day" is
+  one calendar month** (`src/Agora.Mod/Time/SimClockMath.cs:14-20`). `SimClockMath.ToSimDate` returns
+  `new SimDate(year, month, 1)` — `Day` is a literal `1`, and the heartbeat's "day change" fires
+  exactly twelve times a sim year. There is no daily call site to hang a mid-month resolution on.
+- **Nothing would have changed anyway.** The snapshot is sampled once per that month-pinned date, so a
+  mid-month read hands back the byte-identical snapshot taken at month start. Every `metric` and
+  `delta` check would be provably unmeasurable — the number cannot have moved.
+- **Forcing a fresh mid-month sample trades one problem for a worse one.** The reading would then
+  depend on which 128-frame tick crossed the threshold, which varies with sim speed and frame timing.
+  That is a non-deterministic input, and non-negotiable #3 forbids it.
+- **A real intra-month tick would break every existing save.** `SeedStreams.Derive` folds `date.Day`
+  into the seed, so making `Day` meaningful rewrites every seed in every save;
+  `SidecarPaths.StateFileName` is `(year, month)` only, so two states in one month would collide on
+  one file; `LoadReconciliation` and `TickPlanner.CatchUpDates` are month-granular throughout.
+
+Drafting at M and resolving at M+1 is a genuinely later measurement, so `windowMonths` and `delta`
+mean something — with no new cadence, no new seed input and no schema break. The same argument is
+frozen into `data/engine_tuning.json`'s `stories._comment`, where a future retuner meets it.
+
+### 15.4 Political power
+
+A signed currency the player spends to override a slot and earns by resolving stories well. All of it
+is tuned in `engine_tuning.json`'s `power` block; `PoliticalPower` is the arithmetic and `PowerLedger`
+owns the state transition and the ledger the player is shown.
+
+- **Accrual** is once per month, at most `power.maxMonthlyGain`, scaled by the governing party's or
+  coalition's vote share. The guard is `==` on the stamped month, not `>=`: equality refuses a
+  *re-entry* of the same month — the save-scum case — while still paying a legitimate rollback, which
+  `>=` would have frozen into an unrecoverable debt spiral.
+- **Awards and penalties** are per slot at that slot's own tier, since a story is a bundle and its
+  slots can differ. A **manually declared** success is capped at the minor rate whatever the tier: the
+  player writes their own justification, so it is the one path that could otherwise mint 50 power for
+  a sentence.
+- **Overrides** cost `power.overrideCost` by tier. Debt is a state, not a bar to play — a negative
+  balance still buys anything it covers.
+- **Debt costs the city money**, through the capped palette entry ratified in §7. It is re-asked each
+  month the balance stays negative and stops within a month of the balance recovering.
+
+### 15.5 Determinism — the amendment this system required
+
+Player choices arrive asynchronously through `CallBinding`. That does not break non-negotiable #3, but
+"add player choices to the input tuple" is not a precise enough statement of why. The precise one is
+ratified in **§5**, and is repeated here because §15 is where a reader of the story system meets it:
+
+> Engine state at date D is a pure function of *(metrics history, prior state, seeds, catalogs,
+> settings, and the ordered, dated log of player commands with timestamp ≤ D)*. The command log
+> **is** engine state: it is persisted in `PoliticalState`, it has a total order, and it is replayed,
+> never re-solicited.
+
+§5 carries what that forces concretely — the append-only dated record, persistence at the moment of
+the choice, free text never parsed for a number, and the recorded-not-re-measured reading.
+
+Two further determinism rules specific to this system:
+
+- **Story drafting and resolution are suspended during replay.** `Replay` dispatches no effects and
+  scores every replayed month against *today's* city, so a story inside a replayed window would award
+  power while applying nothing, and would evaluate 2005's crime wave against 2031's crime rate. A
+  replayed decade produces no stories and no power, and the catch-up log says how many cycles were
+  skipped. Inventing either would be fiction the player never got to participate in.
+- **Story events do not enter `state.ActiveEvents`.** They live in `LiveStories` and contribute
+  through their own term with its own budget. Six live story events would otherwise sit at
+  `catalog.maxConcurrentEvents` and start refusing *timeline* events, and would saturate
+  `AffinityEngine.EventTerm`'s clamp permanently, so the event term would stop discriminating between
+  a flood and a bus-fare rise.
+
+### 15.6 Where it lives
+
+| Layer | Files |
+|---|---|
+| Contracts and arithmetic (pure) | `src/Agora.Core/Stories/` — `CivicEvent`, `Story`, `TriggerEvaluator`, `MetricRegistry`, `StoryAssembler`, `EventPoolWeighting`, `StoryResolution`, `StoryCycle`, `StoryEffects`, `StoryPressure`, `PoliticalPower`, `PowerLedger` |
+| Catalog | `src/Agora.Core/Stories/Catalog/` — `CivicEventCatalogLoader`, `TimelineEventAdapter` |
+| Content | `data/events_{global,eu,na}.json`, `data/timeline_adaptation.json`, `data/schemas/civic_events.schema.json` |
+| Tuning | `data/engine_tuning.json` → `stories` and `power` |
+| Game glue | `src/Agora.Mod/Core/AgoraRuntime.cs` + `AgoraRuntime.StoryCommands.cs`, `Core/StoryAlert.cs`, `UiBindings/AgoraStoriesUISystem.cs`, `UiBindings/AgoraUiProjection.Stories.cs` |
+| Prose | `Llm/FlavorPromptBuilder.cs`, `StaticPoolProvider.cs` — the canned pool is the everyday voice, Claude's prose is added **beside** it, never over it |
+| UI | `ui/src/panels/Stories/`, `ui/src/shell/StoryModal.tsx`; contract in `docs/contracts/ui_bindings.md` `agora.stories` |
+| Authoring | `/add-event` — timeline half and civic half, and the prose rule in §7 |
