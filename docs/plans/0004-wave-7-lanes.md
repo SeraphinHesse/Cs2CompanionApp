@@ -119,7 +119,7 @@ checks neither this nor types.
 
 | | |
 |---|---|
-| **Owns, exclusively** | `data/engine_tuning.json` · `data/schemas/engine_tuning.schema.json` · `src/Agora.Core/Tuning/TuningPresets.cs` · `ui/src/shell/SettingsPanel.tsx` · `ui/src/shell/SettingsPanel.module.scss` · `tests/Agora.Core.Tests/StoryPresetTests.cs` (**new file, this name**) |
+| **Owns, exclusively** | `data/engine_tuning.json` · `data/schemas/engine_tuning.schema.json` · `src/Agora.Core/Tuning/TuningPresets.cs` · `src/Agora.Core/Tuning/EngineTuning.cs` · `ui/src/shell/SettingsPanel.tsx` · `ui/src/shell/SettingsPanel.module.scss` · `tests/Agora.Core.Tests/StoryPresetTests.cs` (**new file, this name**) |
 | **Must not touch** | any other file under `tests/` (7c) · `Shell.module.scss` (7e) · `src/Agora.Mod/**` |
 
 **The spine has already opened `setSetting`'s `powerIntensity` and `storyDifficulty` keys.** Until
@@ -254,6 +254,13 @@ resolved:
   own sheet, not `Shell.module.scss`, so the two never meet. **7b owns both; 7e owns `Shell`.**
 - **`tests/Agora.Core.Tests/**`** — 7c (the sweep) vs 7b (preset tests) vs 7f (writer tests). Split by
   **named file**, listed in each row. A lane adding a test file not named in its row is a collision.
+
+**Corrected mid-wave: `src/Agora.Core/Tuning/EngineTuning.cs` belongs to 7b** and was missing from
+its row. A preset ladder needs somewhere for the per-level coefficients to live, and that is the
+file; the row named only `TuningPresets.cs`, which reads them. **The orchestrator's omission, not a
+lane's violation** — no other lane touches the file, so nothing collided, but a lane following its
+row exactly could not have finished. Recorded rather than quietly fixed, because the next reader's
+question is why a Core tuning file sits in a lane at all.
 
 ## What no lane owns, and why
 
