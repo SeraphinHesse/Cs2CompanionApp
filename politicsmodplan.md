@@ -247,9 +247,15 @@ only unratified and unbuilt. Reviving it needs four things none of which exists:
 scope, `magnitudeCap` and bounded `durationCapMonths`, since `EffectDispatcher` would supply none of
 them; the `kind` discriminator in `effects.perEffect`, so `EffectPalette` stays a closed registry;
 `ModifierRegistry` taught to **skip** such an entry rather than report-and-drop it; and a sequencing
-decision against `BudgetApplySystem`, which writes `PlayerMoney` from a Burst job every 1/128 of a day,
-so a managed write races it and one of the two is lost. Adding it is a `/add-effect` decision plus a
-return to this section.
+decision against `BudgetApplySystem`, which writes `PlayerMoney` from a Burst job **1024 times a
+sim day** — `kUpdatesPerDay = 1024` and `GetUpdateInterval` returns `262144 / kUpdatesPerDay`, read
+off `refsrc/Game/Game.Simulation/BudgetApplySystem.cs:74` — so a managed write races it and one of
+the two is lost. Adding it is a `/add-effect` decision plus a return to this section.
+
+*(That figure was `1/128 of a day` here and in `docs/plans/0004-event-system-rework.md` until it was
+checked against `refsrc/`. It is corrected rather than quietly dropped because the conclusion it
+supports survives it unchanged, which is exactly the shape of number nobody re-derives once it sits
+in a document whose header says not to re-litigate what it contains.)*
 
 **One tuning key is deliberately inert.** `power.debtPenaltyCapPerMonth` is denominated in money and
 nothing on the shipped route spends money, so `PowerLedger` never reads it. It is recorded here so
@@ -562,6 +568,6 @@ Two further determinism rules specific to this system:
 | Content | `data/events_{global,eu,na}.json`, `data/timeline_adaptation.json`, `data/schemas/civic_events.schema.json` |
 | Tuning | `data/engine_tuning.json` → `stories` and `power` |
 | Game glue | `src/Agora.Mod/Core/AgoraRuntime.cs` + `AgoraRuntime.StoryCommands.cs`, `Core/StoryAlert.cs`, `UiBindings/AgoraStoriesUISystem.cs`, `UiBindings/AgoraUiProjection.Stories.cs` |
-| Prose | `Llm/FlavorPromptBuilder.cs`, `StaticPoolProvider.cs` — the canned pool is the everyday voice, Claude's prose is added **beside** it, never over it |
+| Prose | `src/Agora.Mod/Llm/` — `FlavorPromptBuilder.cs`, `StaticPoolProvider.cs` — the canned pool is the everyday voice, Claude's prose is added **beside** it, never over it |
 | UI | `ui/src/panels/Stories/`, `ui/src/shell/StoryModal.tsx`; contract in `docs/contracts/ui_bindings.md` `agora.stories` |
 | Authoring | `/add-event` — timeline half and civic half, and the prose rule in §7 |

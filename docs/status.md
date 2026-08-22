@@ -4,6 +4,15 @@
 running ahead of it against defects found in the first real play session.
 **Updated:** 2026-08-19
 
+> ⚠️ **DO NOT LAUNCH THE GAME YET — the deployed mod is mid-wave and ahead of every save on disk.**
+> The player's live install (`…\Mods\Agora.Mod`) holds a build deployed **2026-08-19 17:08**, from the
+> middle of wave 7, carrying **settings v6 and state v8**. Every save on disk predates it. **No save
+> has been touched** — the newest sidecar is older than the deploy — but *loading one would migrate it
+> forward*, past what the released build can read, and a migration is not reversible. **Owner decision:
+> leave the install as it is and do not launch until wave 7 ships and deploys a coherent build.** This
+> is also why `dotnet build Agora.sln` and `npm run build` are not casual commands in this repo: both
+> deploy, so building to check something compiles is a deploy nobody asked for.
+
 > **The fix-plan pass is code complete across all seven workstreams.** W0–W6 and the backlog are
 > merged and independently reviewed; W5's popup lane, the largest remaining piece, was planned in
 > `docs/plans/0003-w5-popup-lane.md` and executed across six chunks. Statuses below are keyed to
@@ -124,6 +133,22 @@ wave 0's double-tick (the whole power economy rests on the month running once); 
 and thresholds were authored without the answer); wave 4's rewound load (no test by construction, and
 three lanes were misdiagnosed before it was found); and wave 6's text entry under Gameface (six
 textareas per story, and the highest-risk unverified area in the project).
+
+**Wave 7's own rows accrue as its lanes report.** Two so far, both from lane 7e's column budget, and
+both recorded here because that lane does not own this file. Their line references are against 7e's
+branch, not the wave-7 spine:
+
+- **`max-height: 100vh` on `.shell` clamps the column with Settings open.** It is the **first
+  viewport unit anywhere in this codebase**, and if Gameface drops the declaration the failure is
+  total and silent: the column never shrinks, every panel's `max-height: 100%` resolves against an
+  unbounded slot, and the whole change does nothing while passing `npx tsc --noEmit`, `npm run check`
+  and every review. **Case:** Council or Stories, Settings **open**, at any interface scale — the
+  bottom of the panel must be on screen and reachable.
+- **`GameTopRight` has no top offset, so the column starts at y=0.** Acknowledged in a comment at
+  `Shell.module.scss:138-140` and equally unverifiable headless. If the hook point does carry an
+  offset, the budget is loose by exactly that amount and the drawer-open case still clips — so this
+  row is not a duplicate of the one above, it is the reason the one above can pass and still leave a
+  clipped panel.
 
 ### Wave 3 — the engine now has something to read, and still nothing runs it
 

@@ -111,9 +111,11 @@ The schema is `additionalProperties: false`: a typo'd key is a rejection, not a 
 
 ### The rules the loader enforces, and why each exists
 
-Every one of these was a real defect in wave 3 that a green test suite waved through, which is why it
-is machine-checked rather than only written down. `CatalogIssueCode` numbers in brackets; the shipped
-catalog gate holds `data/events_*.json` to **zero warnings**, so a warning fails the build too.
+Every one of these was a real defect in wave 3 that a green test suite waved through, which is why
+each is machine-checked rather than only written down — **every rule in this list carries the
+`CatalogIssueCode` in brackets that fails the build on it.** The shipped-catalog gate holds
+`data/events_*.json` to **zero warnings**, so a warning fails it too. The rules that follow this list
+carry no code, and that difference is the point of the two headings.
 
 1. **A story lives `cycleMonths - 1` months — ONE, not two** [120]. `StoryAssembler.NewStory` sets
    `months = stories.CycleMonths - 1`: draft on M, resolve on M+1, next batch at M+2. `cycleMonths`
@@ -140,17 +142,30 @@ catalog gate holds `data/events_*.json` to **zero warnings**, so a warning fails
    quieter, failure louder. A mirror-negated success pressure does not release the issue: it moves
    voters to the **opposite pole**, rewarding the party that opposed doing anything. Government credit
    and blame are derived by the engine from the slot outcome and its tier, never authored here.
-6. **No effect id in both `activeEffects` and `successEffects`.** The palette carries no sign and all
-   three story scales are positive, so that shape reapplies the same modifier at twice the magnitude
-   and calls it a reward.
-7. **`policy` triggers do not exist and are rejected by name.** No sensor writes
+6. **`policy` triggers do not exist and are rejected by name** [108]. No sensor writes
    `CitySnapshot.ActivePolicyIds`, so a policy spec can never fire and an `absent` policy spec fires
    on every city forever. `unlock` is gated on wave 1's unwalked gate 11 — its ids are raw prefab-name
-   strings nobody has read. `manual` never fires from the city and is never pooled.
-8. **Every threshold must be hittable in a normal game**, and the expected trigger frequency goes in
-   `notes`. An event nobody can trigger is not content.
-9. **Severity 1–5, conservative.** Mandatory (5) should feel rare: it is the tier that can hold the
-   player's clock and costs 500 power to override.
+   strings nobody has read — an id not declared in `featureIds` is [109]. `manual` never fires from the
+   city and is never pooled.
+
+### The rules nothing checks — you are the only enforcement
+
+**These three carry no `CatalogIssueCode` and no test.** They are separated from the list above
+because a reviewer who assumes the shipped-catalog gate covers them stops looking, and the first is
+one a green build will happily ship.
+
+1. **No effect id in both `activeEffects` and `successEffects`.** The palette carries no sign and all
+   three story scales are positive, so that shape reapplies the same modifier at twice the magnitude
+   and calls it a reward. **`DuplicateEffectId` [114] does not catch this**: it is raised inside
+   `ReadEffectList` against a `HashSet` local to one call
+   (`CivicEventCatalogLoader.cs:984`), so it catches a repeat *within* one list and never an overlap
+   *across* two. Check it by eye, per entry.
+2. **Every threshold must be hittable in a normal game**, and the expected trigger frequency goes in
+   `notes`. No loader can know what a normal game looks like. An event nobody can trigger is not
+   content, and it fails silently — it simply never appears.
+3. **Severity 1–5, conservative.** Mandatory (5) should feel rare: it is the tier that can hold the
+   player's clock and costs 500 power to override. A catalog where everything is a 4 passes every
+   check in the build and has no dynamic range at all.
 
 ---
 
@@ -158,8 +173,8 @@ catalog gate holds `data/events_*.json` to **zero warnings**, so a warning fails
 
 > **An event's prose may only claim what its effect ids can actually do.**
 
-The palette is a **closed registry** — `politicsmodplan.md` §7, which carries this rule too. A civic event's
-seven prose fields are published to the player *verbatim*, beside a simulation that is running the
+The palette is a **closed registry** — `politicsmodplan.md` §7, which carries this rule too. A civic
+event's seven prose fields are published to the player *verbatim*, beside a simulation running the
 effect ids — so a headline promising something the palette cannot deliver is contradicted by the
 player's own city within the month. That is not a flavour problem. It is the mod telling the player
 something false about the simulation it is running, and once one event does it no number the
