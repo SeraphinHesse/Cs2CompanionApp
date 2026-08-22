@@ -124,12 +124,66 @@ namespace Agora.Core.Tests
 
             Assert.Contains("- no articles this round.", prompt);
 
-            // And none of the article instruction survives to contradict it. Each of these is a
-            // sentence that only makes sense to a round that is writing articles.
+            // The instructions that only make sense to a round writing articles are gone with the
+            // round. The refs rule is deliberately NOT among them — see the test below.
             Assert.DoesNotContain("articles from local outlets", prompt);
-            Assert.DoesNotContain("Every article must include refs", prompt);
             Assert.DoesNotContain("Vary the outlets and the tones", prompt);
             Assert.DoesNotContain("Headlines are at most", prompt);
+        }
+
+        [Theory]
+        [InlineData(FlavorWakeReason.Yearly)]
+        [InlineData(FlavorWakeReason.Manual)]
+        [InlineData(FlavorWakeReason.StoryDraft)]
+        [InlineData(FlavorWakeReason.Election)]
+        public void EveryRound_SaysWhatARefselessArticleCostsTheWholeRound(FlavorWakeReason reason)
+        {
+            // THE HALF OF THE EMPTIED-ROUND HAZARD A PROHIBITION ALONE OPENS. A round that asks for no
+            // articles still ships the embedded schema, which permits an articles array with refs
+            // optional — so "write none" on its own leaves the model a legal shape to fill and no
+            // statement of the price. One refless article is ArticlesReceived 1 against
+            // Document.Articles.Count 0, which is ArticlesAllDiscarded: ClaudeCliProvider burns every
+            // retry on it and FlavorCache refuses to load the file. Most months are not election
+            // months, so a rule living on the election branch alone would move "the flavor keeps
+            // reporting stale" from a rare month into the common one.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = reason;
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            // The requirement, in the wording both branches emit.
+            Assert.Contains("Every article must include refs", prompt);
+            Assert.Contains("name at least one party or district in the prose by the id given in the " +
+                            "lists above, and put that same id in refs", prompt);
+            Assert.Contains("an article without refs is dropped", prompt);
+
+            // The round-level consequence, which is the part a per-article drop understates.
+            Assert.Contains("If that leaves no articles at all, the whole response is rejected, the " +
+                            "previous round's prose is kept and the round is asked for again.", prompt);
+
+            // And the sentence that stops the schema being read as the governing surface, since the
+            // schema is what makes a stray article plausible in the first place.
+            Assert.Contains("The schema below lists refs among the optional properties", prompt);
+            Assert.Contains("the drop runs after schema validation", prompt);
+        }
+
+        [Fact]
+        public void OrdinaryRound_TiesTheRefsRuleToTheArticleItToldTheModelNotToWrite()
+        {
+            // The join between the two: the rule has to arrive as the price of the thing just
+            // prohibited, not as a free-floating paragraph a model can read as belonging to a round
+            // it was not asked for. Asserted in order, because a prompt that stated the price before
+            // the prohibition would satisfy the Contains pair above and read as two unrelated
+            // instructions.
+            string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
+
+            int prohibition = prompt.IndexOf("- no articles this round.", System.StringComparison.Ordinal);
+            int price = prompt.IndexOf("If you write one regardless", System.StringComparison.Ordinal);
+            int rule = prompt.IndexOf("Every article must include refs", System.StringComparison.Ordinal);
+
+            Assert.True(prohibition >= 0, "the round must say it wants no articles");
+            Assert.True(price > prohibition, "the price must follow the prohibition it is the price of");
+            Assert.True(rule > price, "the rule itself must follow the sentence introducing it");
         }
 
         [Fact]

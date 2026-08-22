@@ -488,9 +488,11 @@ namespace Agora.Mod.Llm
         /// </para>
         /// <para>
         /// A round that is not an election says so outright rather than staying silent about
-        /// articles. The schema still permits them, and a model left to infer would file the general
-        /// coverage it has always filed — prose nothing renders, written against a budget the round
-        /// needs for its stories. An articleless round is not a failed one:
+        /// articles, and then says what one written anyway would cost — see
+        /// <see cref="AppendRefsRule"/>, which both branches emit. The schema still permits an
+        /// <c>articles</c> array, so a model left to infer would file the general coverage it has
+        /// always filed, and a model told only not to would file one occasionally and empty the round
+        /// when it did. An articleless round is not a failed one:
         /// <c>FlavorValidationResult.ArticlesAllDiscarded</c> is zero-out-of-some, never zero-out-of-
         /// zero, so a round that legitimately carries none is accepted and cached like any other.
         /// </para>
@@ -502,6 +504,18 @@ namespace Agora.Mod.Llm
                 sb.Append("- no articles this round. The press covers the ballot and the parties, and ");
                 sb.Append("nothing has gone to the ballot this round, so there is nothing for it to file. ");
                 sb.Append("An article written anyway reaches no reader.\n");
+                // AND WHAT ONE COSTS IF IT IS WRITTEN ANYWAY. This is not belt and braces; it is the
+                // half of the emptied-round hazard a prohibition on its own opens. The schema below is
+                // appended to every prompt and shows articles as a legal array with refs among its
+                // optional properties, so a round told only not to is a round where one stray article
+                // is entirely plausible - and one refless article makes ArticlesReceived one against
+                // Document.Articles.Count zero, which is ArticlesAllDiscarded, which ClaudeCliProvider
+                // retries to exhaustion and FlavorCache then refuses to load. Most months are not
+                // election months, so leaving the rule on the election branch alone would have moved
+                // "the flavor keeps reporting stale" out of a rare month and into the common one.
+                sb.Append("  If you write one regardless, it is held to the same rule as any other, ");
+                sb.Append("and one that breaks it costs the whole round: ");
+                AppendRefsRule(sb);
                 return;
             }
 
@@ -510,25 +524,11 @@ namespace Agora.Mod.Llm
             sb.Append(" articles from local outlets covering the election just decided.\n");
             sb.Append("  1. Lead with what happened, to whom, and why it matters. ");
             sb.Append("The concrete change goes in the first sentence, not the last.\n");
-            // The claim in the last sentence is now true: FilterAgainstCatalog drops an article whose
-            // three ref fields are all empty. Do not soften it again without loosening that check in
-            // the same edit - the prompt must not describe a check that does not run, and it must not
-            // understate one that does. The round-level consequence is stated for the same reason:
-            // FlavorValidationResult.ArticlesAllDiscarded turns an emptied round into a failed one in
-            // both holders (ClaudeCliProvider retries it, FlavorCache refuses to load it), so a prompt
-            // that mentioned only the per-article drop would understate what a missing refs costs.
-            sb.Append("  2. Every article must include refs: name at least one party or district in the ");
-            sb.Append("prose by the id given in the lists above, and put that same id in refs. refs takes ");
-            sb.Append("at least one of eventId, districtId or partyId, and only ids from the lists above. ");
-            sb.Append("Write nothing you cannot point at; an article without refs is dropped. ");
-            // The embedded schema is a verbatim copy of data/schemas/politics_flavor.schema.json and
-            // FlavorSchemaDriftTests pins the two together, so making it agree with this rule would be
-            // a /schema-change. Saying which of the two surfaces governs is the honest fix here.
-            sb.Append("The schema below lists refs among the optional properties; that is the schema's ");
-            sb.Append("reading and not the rule - the drop runs after schema validation, so an article ");
-            sb.Append("that satisfies the schema without refs is discarded all the same. ");
-            sb.Append("If that leaves no articles at all, the whole response is rejected, the previous ");
-            sb.Append("round's prose is kept and the round is asked for again.\n");
+            // Rule 2 is the shared paragraph, prefixed with its number here and with an indent on
+            // the no-articles branch: one wording, two callers, and the reasoning for every sentence
+            // of it on AppendRefsRule.
+            sb.Append("  2. ");
+            AppendRefsRule(sb);
             sb.Append("  3. Never attribute to a subject you have not named. Do not write \"residents say\", ");
             sb.Append("\"officials say\", \"critics say\", \"sources say\", \"some argue\", \"many feel\", ");
             sb.Append("or any variant of them. Name the party, the faction or the district, or do not attribute at all.\n");
@@ -542,6 +542,55 @@ namespace Agora.Mod.Llm
               .Append(FlavorCacheMigration.BodyMaxLength.ToString(CultureInfo.InvariantCulture))
               .Append(" - a longer one fails validation and the whole response is discarded.\n");
             AppendElectionCoverage(sb, request);
+        }
+
+        /// <summary>
+        /// The refs requirement and what breaking it costs, in the one wording both branches emit.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Every prompt carries this, the rounds that ask for no articles at all included.</b> The
+        /// embedded schema is appended unconditionally and permits an <c>articles</c> array with
+        /// <c>refs</c> optional, so a bare prohibition would stand next to a permission - and a model
+        /// that files one anyway has to know the price before it does. The price is the whole round:
+        /// <c>FlavorValidationResult.ArticlesAllDiscarded</c> is true at one article in and none out,
+        /// <c>ClaudeCliProvider</c> spends its retries on it, and <c>FlavorCache</c> then refuses to
+        /// load the file it wrote. On an ordinary month - which is most months - that is the
+        /// difference between prose that refreshes and a dashboard reporting stale for the rest of the
+        /// save.
+        /// </para>
+        /// <para>
+        /// The claim in the fourth sentence is true: <c>FilterAgainstCatalog</c> drops an article
+        /// whose three ref fields are all empty. Do not soften it again without loosening that check
+        /// in the same edit - the prompt must not describe a check that does not run, and it must not
+        /// understate one that does.
+        /// </para>
+        /// <para>
+        /// The embedded schema is a verbatim copy of <c>data/schemas/politics_flavor.schema.json</c>
+        /// and <c>FlavorSchemaDriftTests</c> pins the two together, so making the schema agree with
+        /// this rule would be a <c>/schema-change</c>. Saying which of the two surfaces governs is the
+        /// honest fix, and it is why the sentence about the schema sits inside the rule rather than
+        /// beside it.
+        /// </para>
+        /// <para>
+        /// Emitted with no enumerator and no indent of its own: the election branch prefixes it with
+        /// its rule number and the ordinary branch with a two-space indent, so one wording serves both
+        /// and neither can be edited without the other. The election prompt is byte for byte what it
+        /// was before the paragraph was extracted, which the golden strings in
+        /// <c>FlavorPromptBuilderTests</c> hold it to.
+        /// </para>
+        /// </remarks>
+        private static void AppendRefsRule(StringBuilder sb)
+        {
+            sb.Append("Every article must include refs: name at least one party or district in the ");
+            sb.Append("prose by the id given in the lists above, and put that same id in refs. refs takes ");
+            sb.Append("at least one of eventId, districtId or partyId, and only ids from the lists above. ");
+            sb.Append("Write nothing you cannot point at; an article without refs is dropped. ");
+            sb.Append("The schema below lists refs among the optional properties; that is the schema's ");
+            sb.Append("reading and not the rule - the drop runs after schema validation, so an article ");
+            sb.Append("that satisfies the schema without refs is discarded all the same. ");
+            sb.Append("If that leaves no articles at all, the whole response is rejected, the previous ");
+            sb.Append("round's prose is kept and the round is asked for again.\n");
         }
 
         /// <summary>
