@@ -174,7 +174,6 @@ namespace Agora.Mod.UiBindings
         public string System = "Proportional";
         public bool ThemeLocked;
         public bool PauseOnMajorNews = true;
-        public bool ShowAllReports;
         public bool EffectsEnabled = true;
 
         /// <summary>
@@ -228,7 +227,6 @@ namespace Agora.Mod.UiBindings
             UiJson.Text(writer, "system", System);
             UiJson.Flag(writer, "themeLocked", ThemeLocked);
             UiJson.Flag(writer, "pauseOnMajorNews", PauseOnMajorNews);
-            UiJson.Flag(writer, "showAllReports", ShowAllReports);
             UiJson.Flag(writer, "effectsEnabled", EffectsEnabled);
             UiJson.Text(writer, "voteSharpness", VoteSharpness);
             UiJson.Text(writer, "newsInfluence", NewsInfluence);

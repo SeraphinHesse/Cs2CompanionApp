@@ -549,7 +549,7 @@
       "required": ["schemaVersion", "startYear", "theme", "system"],
       "$comment": "Per-save settings live here and nowhere else (non-negotiable #10). The only global settings are the master toggle and anything that must work before a save exists. The five level settings — voteSharpness, newsInfluence, brandDiscipline, powerIntensity, storyDifficulty — each carry a 'Default' member that deliberately maps to NO preset entry: it means 'whatever the tuning file's own value is', so retuning a shipped coefficient reaches every save that never chose otherwise.",
       "properties": {
-        "schemaVersion": { "type": "integer", "const": 6 },
+        "schemaVersion": { "type": "integer", "const": 7 },
         "startYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
         "theme": { "type": "string", "enum": ["Eu", "Na"] },
         "system": { "type": "string", "enum": ["Proportional", "FirstPastThePost"] },
@@ -562,7 +562,6 @@
         "effectsEnabled": { "type": "boolean" },
         "themeLocked": { "type": "boolean" },
         "pauseOnMajorNews": { "type": "boolean" },
-        "showAllReports": { "type": "boolean" },
 
         "voteSharpness": { "type": "string", "enum": ["Blurred", "Default", "Sharp"] },
         "newsInfluence": { "type": "string", "enum": ["Muted", "Default", "Loud"] },
@@ -586,7 +585,7 @@
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 8 },
+    "schemaVersion": { "type": "integer", "const": 9 },
     "saveGuid": {
       "type": "string",
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",

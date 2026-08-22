@@ -126,9 +126,9 @@ namespace Agora.Mod.Persistence
         /// the default sat at 3 while this was 4 — and a freshly constructed state consequently
         /// claimed a version it had never been. <c>SidecarMigrationTests</c> pins them together.
         /// </summary>
-        public const int CurrentStateVersion = 8;
+        public const int CurrentStateVersion = 9;
 
-        public const int CurrentSettingsVersion = 6;
+        public const int CurrentSettingsVersion = 7;
 
         /// <summary><c>timeline_progress.json</c> has not moved; it is still a list of fired ids.</summary>
         public const int CurrentTimelineProgressVersion = 1;
@@ -376,6 +376,58 @@ namespace Agora.Mod.Persistence
         {
             var settings = root["settings"] as JObject;
             if (settings != null) UpgradeSettingsObjectToV6(settings);
+        }
+
+        /// <summary>
+        /// Brings one settings object from v6 to v7: <c>showAllReports</c> is REMOVED.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The first step in this table that takes a property away rather than adding one. It raised
+        /// a modal for every article rather than only the major ones, and wave 7 retired the article
+        /// alert along with the feed that fed it — so its only reader is gone and the switch
+        /// persisted a value that changed no number. That is the defect W5 closed for
+        /// <c>PauseOnMajorNews</c>, and keeping the field would have kept it alive.
+        /// </para>
+        /// <para>
+        /// <b>Removal is safe here in a way it would not be for a field that carries meaning.</b>
+        /// Nothing reads it, so no upgraded save behaves differently; and a player who had turned it
+        /// on was asking for an interruption that no longer exists at all, rather than one this
+        /// change is silently declining to give them.
+        /// </para>
+        /// <para>
+        /// Note that <see cref="UpgradeSettingsObjectToV2"/> still ADDS <c>showAllReports</c>, and
+        /// must: a step reproduces what the file was written with at the version it was written for,
+        /// never what the current build wants. A v1 save therefore gains the property at v2 and loses
+        /// it again here, which is the chain being honest about its own history rather than
+        /// rewriting it.
+        /// </para>
+        /// <para>
+        /// Idempotent: removing an absent property is a no-op.
+        /// </para>
+        /// </remarks>
+        internal static void UpgradeSettingsObjectToV7(JObject settings)
+        {
+            if (settings == null) return;
+
+            settings.Remove("showAllReports");
+
+            // The LITERAL 7 — see UpgradeSettingsObjectToV4 for the failure that rule exists to stop.
+            settings[VersionProperty] = 7;
+        }
+
+        /// <summary>
+        /// State v8 to v9: carries the <c>showAllReports</c> removal into the nested settings block.
+        /// </summary>
+        /// <remarks>
+        /// The nested block is unreachable from <see cref="SettingsSteps"/>, so a settings change
+        /// needs a state step to carry it or the nested copy keeps the property forever. Waves 2, 5
+        /// and 7 have each had to learn this once.
+        /// </remarks>
+        private static void MigrateStateV8ToV9(JObject root)
+        {
+            var settings = root["settings"] as JObject;
+            if (settings != null) UpgradeSettingsObjectToV7(settings);
         }
 
         /// <summary>
@@ -817,7 +869,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(6, "added the story LLM wake to the nested settings block",
                 MigrateStateV6ToV7),
             new MigrationStep(7, "added pauseOnMajorStory to the nested settings block",
-                MigrateStateV7ToV8)
+                MigrateStateV7ToV8),
+            new MigrationStep(8, "removed showAllReports from the nested settings block",
+                MigrateStateV8ToV9)
         };
 
         private static readonly List<MigrationStep> SettingsSteps = new List<MigrationStep>
@@ -831,7 +885,9 @@ namespace Agora.Mod.Persistence
             new MigrationStep(4, "added the story LLM wake to the cadence",
                 root => UpgradeSettingsObjectToV5(root)),
             new MigrationStep(5, "added pauseOnMajorStory",
-                root => UpgradeSettingsObjectToV6(root))
+                root => UpgradeSettingsObjectToV6(root)),
+            new MigrationStep(6, "removed showAllReports, whose only reader retired with the feed",
+                root => UpgradeSettingsObjectToV7(root))
         };
 
         private static readonly List<MigrationStep> TimelineProgressSteps = new List<MigrationStep>();

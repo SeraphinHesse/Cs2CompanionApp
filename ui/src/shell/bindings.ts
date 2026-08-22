@@ -17,7 +17,7 @@ import { bindMap, bindTrigger, bindValue, call } from "cs2/api";
 
 export const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
-  themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+  themeLocked: false, pauseOnMajorNews: true, effectsEnabled: true,
   voteSharpness: "Default", newsInfluence: "Default", brandDiscipline: "Default",
   voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
   storiesEnabled: true, storiesPerCycle: 2, eventsPerStory: 3,
@@ -244,7 +244,7 @@ export const simMonth$ = bindValue<number>("agora.debug", "simDay", 0);
  * indistinguishable from a broken panel. This function only sends. It decides nothing — the returned
  * code is the engine's verdict (contract §4.6), and `""` means it took.
  *
- * Keys: `theme` ("Eu" | "Na"), `pauseOnMajorNews`, `showAllReports`, `effectsEnabled`
+ * Keys: `theme` ("Eu" | "Na"), `pauseOnMajorNews`, `effectsEnabled`
  * ("true" | "false"), `dismissFirstRun` (value ignored).
  */
 export function setSetting(key: string, value: string): Promise<Agora.CommandOutcomeName> {

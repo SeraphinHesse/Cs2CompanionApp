@@ -144,8 +144,10 @@ const ArticleModalInner = (): JSX.Element | null => {
   const open = enabled && !isFirstRun && current.id !== "";
 
   // Two orthogonal questions, and this is the second one. Whether the alert qualifies at all was
-  // decided in C# at emit time against `showAllReports`; whether it holds the clock is decided here,
-  // per alert. `major` is the engine's verdict and is never recomputed from `severity` — the
+  // decided in C# at emit time; whether it holds the clock is decided here, per alert. (Until v10
+  // the emit-time gate consulted `showAllReports`; that setting governed the article alert only, and
+  // both retired with the feed.) `major` is the engine's verdict and is never recomputed from
+  // `severity` — the
   // threshold lives in EngineTuning and a copy of it here would be a second definition of "major".
   // Advancing from a major alert to an ordinary one releases the barrier mid-queue, which is right.
   useSimulationHeldPaused(open && current.major && settings.pauseOnMajorNews);

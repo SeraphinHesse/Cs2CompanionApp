@@ -1434,9 +1434,6 @@ namespace Agora.Mod.Core
                         case "pauseOnMajorNews":
                             return SetFlag(value, v => _saveSettings.PauseOnMajorNews = v);
 
-                        case "showAllReports":
-                            return SetFlag(value, v => _saveSettings.ShowAllReports = v);
-
                         case "effectsEnabled":
                             return SetFlag(value, v =>
                             {

@@ -341,8 +341,15 @@ namespace Agora.Core.Tests
                 Assert.Equal(RegionTheme.Eu, state.Settings.Theme);
                 Assert.True(state.Settings.ThemeLocked);
                 Assert.False(state.Settings.PauseOnMajorNews);
-                Assert.True(state.Settings.ShowAllReports);
                 Assert.Equal(VoteSharpness.Sharp, state.Settings.VoteSharpness);
+
+                // The fixture's `showAllReports: true` is deliberately NOT asserted here: the field
+                // was removed at settings v7, so the upgraded object has nowhere to carry it. That
+                // the v6 -> v7 step actually strips the property is asserted at the JSON level, which
+                // is the only level it still exists at, by
+                // SidecarMigrationTests.Migrate_SettingsV6_RemovesShowAllReports_WhateverItHeld.
+                // The neighbours above are the real subject of this line: a removal step must remove
+                // one property and leave a legacy save's other choices alone.
             }
             finally
             {

@@ -202,7 +202,6 @@ namespace Agora.Core.Tests
             prior.Settings.Enabled = false;
             prior.Settings.EffectsEnabled = false;
             prior.Settings.PauseOnMajorNews = false;
-            prior.Settings.ShowAllReports = true;
             prior.Settings.StartYear = 1990;
 
             AgoraSettings after = PoliticalEngine
@@ -214,7 +213,6 @@ namespace Agora.Core.Tests
             Assert.False(after.Enabled);
             Assert.False(after.EffectsEnabled);
             Assert.False(after.PauseOnMajorNews);
-            Assert.True(after.ShowAllReports);
             Assert.Equal(1990, after.StartYear);
         }
 

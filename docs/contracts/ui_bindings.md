@@ -119,6 +119,13 @@ would break six live consumers to fix a word, and §7's rule exists precisely to
 
 **Two shapes changed outside the removals:**
 
+- **`SettingsPayload` LOSES `showAllReports`**, the first field this contract has ever removed. It
+  raised a modal for every article rather than only the major ones, and v10 retires the article alert
+  with the feed that fed it — so its only reader is gone and the switch persisted a value that
+  changed no number. That is the defect W5 closed for `PauseOnMajorNews`, and keeping the field would
+  have kept it alive under a second name. Sidecar settings 6 → 7 and state 8 → 9, both paths, with a
+  fixture. Removal is safe here in a way it would not be for a field carrying meaning: nothing reads
+  it, so no upgraded save behaves differently.
 - **`SettingsPayload` gains `pauseOnMajorStory`** (§4.1), default true, with a write key. Wave 6
   shipped the story card holding the clock on the engine's `major` verdict alone, with no way to stop
   it short of turning stories off entirely. It is a **new persisted field**: sidecar settings 5 → 6
@@ -286,7 +293,6 @@ the sidecar is how the two come to disagree.
 |---|---|---|
 | `theme` | `"Eu"` \| `"Na"` | Regenerates the party registry, factions, standings, polls, government and mandates at the save's start date. Rejected with `ThemeLocked` once an election has been held; `Busy` while a prose generation is in flight. |
 | `pauseOnMajorNews` | `"true"` \| `"false"` | Per-save (W5). |
-| `showAllReports` | `"true"` \| `"false"` | Per-save (W5). |
 | `effectsEnabled` | `"true"` \| `"false"` | The per-save effect kill switch. |
 | `voteSharpness` | `"Blurred"` \| `"Default"` \| `"Sharp"` | How decisively blocs convert preference into votes (`affinity.softmaxTemperature`). Enum **name**, case-sensitive; an all-digit value is `BadValue`. Takes effect at the next engine tick. |
 | `newsInfluence` | `"Muted"` \| `"Default"` \| `"Loud"` | How far a live event can move a bloc (`affinity.eventModifierWeight`). Same parsing rule. |
@@ -834,7 +840,7 @@ Summarised here so a C# publisher author does not have to read TypeScript:
 StateSummary        schemaVersion, date, termNumber, system, theme, nextElectionDate,
                     isCampaignSeason, weeksToElection, mayorPartyId
 SettingsPayload     schemaVersion, startYear, theme, system, themeLocked, pauseOnMajorNews,
-                    showAllReports, effectsEnabled, voteSharpness, newsInfluence,
+                    effectsEnabled, voteSharpness, newsInfluence,
                     brandDiscipline, voteSharpnessValue, newsInfluenceValue,
                     brandDisciplineValue, storiesEnabled, storiesPerCycle, eventsPerStory,
                     politicalPowerEnabled, powerIntensity, storyDifficulty,
@@ -958,7 +964,7 @@ const EMPTY_STATE_SUMMARY: Agora.StateSummary = {
 
 const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
-  themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+  themeLocked: false, pauseOnMajorNews: true, effectsEnabled: true,
   voteSharpness: "Default", newsInfluence: "Default", brandDiscipline: "Default",
   voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
   storiesEnabled: true, storiesPerCycle: 2, eventsPerStory: 3,

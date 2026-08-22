@@ -33,7 +33,6 @@ import styles from "./SettingsPanel.module.scss";
 type SettingKey =
   | "theme"
   | "pauseOnMajorNews"
-  | "showAllReports"
   | "voteSharpness"
   | "newsInfluence"
   | "brandDiscipline"
@@ -448,16 +447,6 @@ export const SettingsPanel = (): JSX.Element => {
           disabled={busy}
           onChange={function (next) {
             send("pauseOnMajorNews", next ? "true" : "false");
-          }}
-        />
-
-        <ToggleRow
-          label="Show every report as a popup"
-          hint="On, every report comes up as a card as well; those never stop the clock. Off, the press stays in the News tab."
-          value={shownFlag("showAllReports", settings.showAllReports)}
-          disabled={busy}
-          onChange={function (next) {
-            send("showAllReports", next ? "true" : "false");
           }}
         />
 

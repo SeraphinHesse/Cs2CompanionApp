@@ -74,7 +74,6 @@ namespace Agora.Mod.UiBindings
             payload.System = settings.System.ToString();
             payload.ThemeLocked = settings.ThemeLocked;
             payload.PauseOnMajorNews = settings.PauseOnMajorNews;
-            payload.ShowAllReports = settings.ShowAllReports;
             payload.EffectsEnabled = settings.EffectsEnabled;
 
             payload.VoteSharpness = settings.VoteSharpness.ToString();

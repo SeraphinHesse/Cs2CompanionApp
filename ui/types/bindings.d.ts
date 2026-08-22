@@ -3814,7 +3814,7 @@ declare namespace Agora {
    * after any accepted `setSetting`. Per-save only; never global config (non-negotiable #10).
    *
    * Write through `agora.state.setSetting(key, value)` — a CallBinding returning a
-   * `CommandOutcomeName`. Keys: `"theme"` ("Eu" | "Na"), `"pauseOnMajorNews"`, `"showAllReports"`,
+   * `CommandOutcomeName`. Keys: `"theme"` ("Eu" | "Na"), `"pauseOnMajorNews"`,
    * `"effectsEnabled"`, `"pauseOnMajorStory"` ("true" | "false"), `"storiesEnabled"`,
    * `"politicalPowerEnabled"` ("true" | "false"), `"storiesPerCycle"`, `"eventsPerStory"` (a count),
    * `"powerIntensity"`, `"storyDifficulty"` (a level name), and `"dismissFirstRun"`
@@ -3835,7 +3835,6 @@ declare namespace Agora {
      *  returns `"ThemeLocked"`. */
     themeLocked: boolean;
     pauseOnMajorNews: boolean;
-    showAllReports: boolean;
     effectsEnabled: boolean;
 
     /** How decisively blocs convert preference into votes. Writes `affinity.softmaxTemperature`. */

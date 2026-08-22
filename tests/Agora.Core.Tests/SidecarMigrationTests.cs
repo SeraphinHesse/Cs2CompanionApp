@@ -181,7 +181,14 @@ namespace Agora.Core.Tests
 
             Assert.False(Bool(settings, "themeLocked"));
             Assert.True(Bool(settings, "pauseOnMajorNews"));
-            Assert.False(Bool(settings, "showAllReports"));
+
+            // `showAllReports` is ABSENT, and its absence is the interesting half of this test. The
+            // v1 -> v2 step still ADDS it — a step reproduces what the file was written with at the
+            // version it was written for, never what the current build wants — and the v6 -> v7 step
+            // then takes it away again. So a v1 save gains the property and loses it inside one run
+            // of the chain, which is the chain being honest about its own history rather than
+            // rewriting it. Asserting the end state here is what proves the two steps compose.
+            Assert.Null(settings["showAllReports"]);
 
             // The nested block carries its own version, and the root chain is the only thing that
             // will ever reach it.
@@ -224,7 +231,6 @@ namespace Agora.Core.Tests
             Assert.Equal(expected.EffectsEnabled, actual.EffectsEnabled);
             Assert.Equal(expected.ThemeLocked, actual.ThemeLocked);
             Assert.Equal(expected.PauseOnMajorNews, actual.PauseOnMajorNews);
-            Assert.Equal(expected.ShowAllReports, actual.ShowAllReports);
         }
 
         /// <summary>
@@ -1421,7 +1427,12 @@ namespace Agora.Core.Tests
 
             Assert.False(Bool(root, "themeLocked"));
             Assert.True(Bool(root, "pauseOnMajorNews"));
-            Assert.False(Bool(root, "showAllReports"));
+
+            // Added at v2, removed at v7 — see the note on
+            // Migrate_StateV1_AddsSettingsFieldsWithTheDocumentedDefaults. The standalone path must
+            // reach the same end state as the nested one, which is the whole reason the settings
+            // helpers are shared between the two tables.
+            Assert.Null(root["showAllReports"]);
         }
 
         // --- 9. The round trip ------------------------------------------------------------------------
@@ -1451,7 +1462,6 @@ namespace Agora.Core.Tests
                 Assert.True(loaded.HasState);
                 Assert.Empty(loaded.Warnings);
                 Assert.True(loaded.Settings.PauseOnMajorNews);
-                Assert.False(loaded.Settings.ShowAllReports);
                 Assert.False(loaded.Settings.ThemeLocked);
                 Assert.Equal(PartyOverrides.None, loaded.State.Parties[0].PlayerOverrides);
 
@@ -1779,6 +1789,94 @@ namespace Agora.Core.Tests
             Assert.Equal(once, AgoraJson.Serialize(root));
         }
 
+        // --- 5h. v6 → v7 (settings) / v8 → v9 (state): showAllReports is REMOVED ------------------
+
+        /// <summary>
+        /// The first step in this table that takes a property away. A v6 settings file loses
+        /// <c>showAllReports</c> whatever it was set to, and a file that never had it is untouched.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The setting raised a modal for every article rather than only the major ones. Wave 7
+        /// retired the article alert along with the feed that fed it, so its only reader is gone and
+        /// the switch persisted a value that changed no number — the defect W5 closed for
+        /// <c>PauseOnMajorNews</c>. Keeping the field would have kept that defect alive.
+        /// </para>
+        /// <para>
+        /// <b>Both the <c>true</c> and <c>false</c> cases are asserted deliberately.</b> A step that
+        /// removed the property only when it held the default would leave exactly the saves whose
+        /// owner had touched the switch still carrying it — the population most likely to go looking
+        /// for the control afterwards.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Migrate_SettingsV6_RemovesShowAllReports_WhateverItHeld(bool held)
+        {
+            var settings = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 6,
+                ["startYear"] = 1990,
+                ["theme"] = "Eu",
+                ["system"] = "Proportional",
+                ["wakeCadence"] = "Yearly, Election, Manual, Story",
+                ["pauseOnMajorNews"] = true,
+                ["showAllReports"] = held,
+                ["pauseOnMajorStory"] = true
+            };
+
+            MigrationResult result = SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
+            Assert.Null(settings["showAllReports"]);
+
+            // Neighbouring settings are untouched: a removal step must remove one property, not tidy.
+            Assert.True((bool)settings["pauseOnMajorNews"]!);
+            Assert.True((bool)settings["pauseOnMajorStory"]!);
+
+            // Idempotent: removing an absent property is a no-op.
+            SidecarSchema.Migrate(settings, SidecarDocument.Settings);
+            Assert.Null(settings["showAllReports"]);
+        }
+
+        /// <summary>
+        /// The removal reaches the settings block <i>nested inside a state file</i>, which the
+        /// settings step table never sees.
+        /// </summary>
+        /// <remarks>
+        /// Waves 2, 5 and 7 have each had to learn that a settings change needs a state step to carry
+        /// it into the nested copy. This is the third time, and it is the case that would strand the
+        /// property on every save that has a state file — which is all of them.
+        /// </remarks>
+        [Fact]
+        public void Migrate_StateV8_RemovesShowAllReportsFromTheNestedSettingsBlock()
+        {
+            var root = new JObject
+            {
+                [SidecarSchema.VersionProperty] = 8,
+                ["saveGuid"] = "11112222-3333-4444-5555-666677778888",
+                ["date"] = "1994-03-01",
+                ["settings"] = new JObject
+                {
+                    [SidecarSchema.VersionProperty] = 6,
+                    ["startYear"] = 1990,
+                    ["theme"] = "Eu",
+                    ["system"] = "Proportional",
+                    ["showAllReports"] = true
+                }
+            };
+
+            MigrationResult result = SidecarSchema.Migrate(root, SidecarDocument.State);
+            var settings = (JObject)root["settings"]!;
+
+            Assert.True(result.IsLoadable);
+            Assert.Equal(SidecarSchema.CurrentStateVersion, (int)root[SidecarSchema.VersionProperty]!);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)settings[SidecarSchema.VersionProperty]!);
+            Assert.Null(settings["showAllReports"]);
+        }
+
         /// <summary>
         /// Every settings upgrade helper stamps the literal version it produces, never the current
         /// one.
@@ -1827,9 +1925,13 @@ namespace Agora.Core.Tests
             SidecarSchema.UpgradeSettingsObjectToV6(toV6);
             Assert.Equal(6, (int)toV6[SidecarSchema.VersionProperty]!);
 
+            var toV7 = new JObject();
+            SidecarSchema.UpgradeSettingsObjectToV7(toV7);
+            Assert.Equal(7, (int)toV7[SidecarSchema.VersionProperty]!);
+
             // The last helper in the chain is the one that must agree with the constant. If this
             // fails, a version was bumped without a helper to reach it.
-            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)toV6[SidecarSchema.VersionProperty]!);
+            Assert.Equal(SidecarSchema.CurrentSettingsVersion, (int)toV7[SidecarSchema.VersionProperty]!);
         }
 
         // --- Temp directories --------------------------------------------------------------------------

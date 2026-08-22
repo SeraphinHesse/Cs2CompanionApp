@@ -449,7 +449,9 @@ What that forces, concretely:
   `politicsmodplan.md` §7 in this wave, not assumed.**
 
   The real implementation risk: `PlayerMoney` is written by a Burst job in `BudgetApplySystem` every
-  1/128 of a day. A managed write from `GameSimulation` must be sequenced against it or one of the
+  **1/1024 of a day** (`kUpdatesPerDay = 1024`, verified in `refsrc` by wave 7d — an earlier draft of
+  this plan said 1/128, which was wrong by a factor of eight and had been promoted into
+  `politicsmodplan.md` §7 before anyone re-checked it). A managed write from `GameSimulation` must be sequenced against it or one of the
   two writes is lost. Comment the phase choice, as `src/Agora.Mod/CLAUDE.md` requires.
 
   **Fallback — `city-service-building-upkeep`** (`CityServiceBuildingBaseUpkeepCost`, 38). Already in
