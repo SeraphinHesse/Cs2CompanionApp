@@ -236,39 +236,70 @@ namespace Agora.Mod.Llm
         /// </remarks>
         public List<StoryBrief> Stories { get; set; } = new List<StoryBrief>();
 
-        /// <summary>The ordinary round's article count. A prompt instruction, not engine state.</summary>
+        /// <summary>
+        /// The ceiling on a round's articles, and what a <see cref="RosterCopy"/> carries.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// It used to be "the ordinary round's article count", and the four articles it bought were
+        /// general monthly coverage of the city. That coverage existed to fill the news feed, the feed
+        /// was retired in v10 of <c>docs/contracts/ui_bindings.md</c>, and both writers stopped
+        /// producing it — so on an ordinary month there is now nothing for this number to be spent on
+        /// and the round comes out articleless. It is a ceiling rather than a quota.
+        /// </para>
+        /// <para>
+        /// <b>It must not fall below <see cref="ElectionArticleCountEu"/>.</b> The canned pool is
+        /// handed a <see cref="RosterCopy"/> and therefore this number, so a smaller ceiling would cut
+        /// the coalition-outlook piece off an EU election round on the no-CLI path — the path where
+        /// the pool is the only prose the player has. The value stays at four for exactly that reason
+        /// and not because four is still an ordinary month's worth of anything.
+        /// </para>
+        /// </remarks>
         public const int DefaultArticleCount = 4;
 
         /// <summary>
-        /// An election round under NA rules: the ordinary count plus one each for the result, the
-        /// winner's reaction and the loser's reaction that <c>FlavorPromptBuilder</c> asks for on top.
+        /// An election round under NA rules: the result piece, one party's claim on the mandate, and
+        /// one party's challenge to the reading of the count.
         /// </summary>
         /// <remarks>
-        /// Like <see cref="ElectionArticleCountEu"/>, this exceeds the "3–5 articles per wake" figure
-        /// §11 M3 ratifies; §11 M3 is where the deviation is recorded.
+        /// <para>
+        /// <b>Derived from the pieces, not subtracted from the old total.</b> W5 ratified seven here
+        /// against four in an ordinary month, and that seven was the ordinary four <i>plus</i> one
+        /// slot per dedicated election piece — election coverage was added beside general coverage,
+        /// never measured from it. With general coverage gone the right number is what the dedicated
+        /// pieces alone need, which is the three <c>FlavorPromptBuilder.AppendElectionCoverage</c>
+        /// lists and <c>StaticPoolProvider.PlanRound</c> files.
+        /// </para>
+        /// <para>
+        /// Three is inside the "3–5 articles per wake" figure §11 M3 ratifies, so the deviation both
+        /// counts used to carry is closed rather than merely recorded.
+        /// </para>
         /// </remarks>
-        public const int ElectionArticleCountNa = DefaultArticleCount + 3;
+        public const int ElectionArticleCountNa = 3;
 
         /// <summary>
         /// An election round under EU rules: the NA set plus the coalition-outlook piece.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// A raised count is a prompt instruction to the model and nothing else — the canned pool is
-        /// handed <see cref="RosterCopy"/>, which carries <see cref="DefaultArticleCount"/>, so it is
-        /// never asked to fill eight slots out of template lists that hold three.
-        /// <c>FlavorPromptBuilder.AppendTask</c> clamps at twelve, so neither value is touched by it.
-        /// </para>
-        /// <para>
-        /// This is a deviation from the "3–5 articles per wake" figure §11 M3 ratifies, and §11 M3 is
-        /// where it is recorded — read the authority there, not just the rationale here.
-        /// </para>
+        /// Written as the NA set plus one, because that is what it is: the fourth piece exists only
+        /// where a government is negotiated rather than won outright, which is the same condition
+        /// both writers gate it on.
         /// </remarks>
         // StaticPoolProvider.BuildArticles clamps on this same constant rather than a literal, so the
         // pool can never be handed a count it caps back down.
         public const int ElectionArticleCountEu = ElectionArticleCountNa + 1;
 
-        /// <summary>How many articles to ask for. A prompt instruction, not engine state.</summary>
+        /// <summary>
+        /// The ceiling on this round's articles. Read by the canned pool, which files the pieces the
+        /// round's occasion calls for and no more.
+        /// </summary>
+        /// <remarks>
+        /// <b>Not read by <c>FlavorPromptBuilder</c>.</b> The prompt derives its count from the round's
+        /// occasion through <see cref="ElectionArticleCount"/> — the same constant the caller sets here
+        /// — so the two writers cannot be asked for different rounds by a caller that sets one and
+        /// forgets the other. It is still per-request rather than ambient: see
+        /// <see cref="ElectionArticleCount"/>.
+        /// </remarks>
         public int ArticleCount { get; set; } = DefaultArticleCount;
 
         /// <summary>
@@ -285,11 +316,14 @@ namespace Agora.Mod.Llm
         /// <remarks>
         /// <para>
         /// The pool's roster answers "who exists", not "what was asked for this round". A CLI request
-        /// is the only thing that ever carries a raised <see cref="ArticleCount"/>, and the pool must
-        /// not inherit it: its templates are a fixed, small set, so an eight-article round exhausts
-        /// <c>UniqueLine</c>'s bounded retry and files the same body twice. The roster also outlives
-        /// the request — it is only rebuilt at the next month boundary, and the dashboard polls the
-        /// pool throughout that window — so an inherited count would not be a one-round mistake.
+        /// is the only thing that ever carries a per-round <see cref="ArticleCount"/>, and the pool
+        /// must not inherit it: its templates are a fixed, small set, so a count past what they hold
+        /// exhausts <c>UniqueLine</c>'s bounded retry and files the same body twice. The roster also
+        /// outlives the request — it is only rebuilt at the next month boundary, and the dashboard
+        /// polls the pool throughout that window — so an inherited count would not be a one-round
+        /// mistake. What the roster carries instead is <see cref="DefaultArticleCount"/>, which is
+        /// held at or above <see cref="ElectionArticleCountEu"/> precisely so that the pool can still
+        /// file a whole election round on the path where it is the only writer.
         /// </para>
         /// <para>
         /// A copy rather than the request itself for a second reason: the pool writes

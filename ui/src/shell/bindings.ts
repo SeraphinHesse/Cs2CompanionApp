@@ -1,4 +1,4 @@
-import { bindValue, call } from "cs2/api";
+import { bindMap, bindTrigger, bindValue, call } from "cs2/api";
 
 /**
  * Every binding the shell reads, declared once at module scope. A `bindValue` call in a render body
@@ -17,11 +17,27 @@ import { bindValue, call } from "cs2/api";
 
 export const EMPTY_SETTINGS: Agora.SettingsPayload = {
   schemaVersion: 0, startYear: 1990, theme: "Eu", system: "Proportional",
-  themeLocked: false, pauseOnMajorNews: true, showAllReports: false, effectsEnabled: true,
+  themeLocked: false, pauseOnMajorNews: true, effectsEnabled: true,
   voteSharpness: "Default", newsInfluence: "Default", brandDiscipline: "Default",
   voteSharpnessValue: 0, newsInfluenceValue: 0, brandDisciplineValue: 0,
   storiesEnabled: true, storiesPerCycle: 2, eventsPerStory: 3,
   politicalPowerEnabled: true, powerIntensity: "Default", storyDifficulty: "Default",
+  pauseOnMajorStory: true,
+};
+
+/**
+ * The guard an alert card substitutes for whatever `useMapValue` hands back — map bindings take no
+ * fallback argument, so this covers the frame before the getter has run and any id the map does not
+ * hold (contract §6).
+ */
+export const EMPTY_NEWS_ARTICLE: Agora.NewsArticle = {
+  id: "", date: "", headline: "", body: "", tone: "", outletId: "", outletName: "",
+  partyId: "", districtId: "", eventId: "",
+};
+
+export const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {
+  lastFlavorDate: "", lastAttemptDate: "", isStale: false, providerAvailable: false,
+  pendingWake: false, lastError: "", articleCount: 0,
 };
 
 /**
@@ -33,7 +49,7 @@ export const EMPTY_SETTINGS: Agora.SettingsPayload = {
  * barrier.
  */
 export const EMPTY_NEWS_ALERT: Agora.NewsAlert = {
-  id: "", kind: "Article", date: "", headline: "", summary: "", outletName: "",
+  id: "", kind: "Event", date: "", headline: "", summary: "", outletName: "",
   partyId: "", districtId: "", eventId: "", severity: 0, major: false, hasArticle: false,
 };
 
@@ -110,6 +126,11 @@ export const isFirstRun$ = bindValue<boolean>("agora.state", "isFirstRun", false
  */
 export const roster$ = bindValue<Agora.PartyBrief[]>("agora.parties", "roster", []);
 
+// -- agora.districts (§4.4, shared lookup table) -------------------------------------------------
+
+/** Read only to turn a districtId into a district name. See `./lookup`. */
+export const districts$ = bindValue<Agora.DistrictBrief[]>("agora.districts", "list", []);
+
 // -- agora.news (§4.5, the popup lane) -----------------------------------------------------------
 
 /**
@@ -117,13 +138,45 @@ export const roster$ = bindValue<Agora.PartyBrief[]>("agora.parties", "roster", 
  * player answers them in. Do not sort it, and do not reverse it: the queue's order is the engine's,
  * and reordering a queue in the view changes which card the player is shown first.
  *
- * Read by the shell rather than by the News panel because the modal is chrome: it has to appear with
- * the dashboard closed, over whatever the player was doing.
+ * Read by the shell because the modal is chrome: it has to appear with the dashboard closed, over
+ * whatever the player was doing.
  *
- * Each entry points at a feed row that already exists, so everything the modal shows can be found
- * again in the News tab afterwards.
+ * **Since v10 this queue is elections, coalitions and party lifecycle** — the four things that
+ * happen TO the player and that nothing else in the mod announces. It no longer carries article
+ * alerts (there is no general monthly prose to interrupt over) and it never carried stories, which
+ * have their own lane. An entry's `id` used to be a feed row's id; it is now simply the alert's own,
+ * and `agora.news.article` still answers it when `hasArticle` is true.
  */
 export const alerts$ = bindValue<Agora.NewsAlert[]>("agora.news", "alerts", []);
+
+// The four below moved here from ui/src/panels/News/bindings.ts in the wave-7 spine, because that
+// panel is deleted in this wave and each of them has a consumer that outlives it: the alert card
+// still fetches a body, and the mandate tracker, the flavor status line and the manual wake control
+// all moved into the Stories panel. The BINDING NAMES did not move and must not — renaming a live
+// binding in place is what contract §7 forbids, which is why a group named for a retired panel is
+// the correct outcome rather than an oversight.
+
+/** Sorted by status rank, then deadlineDate, then id — so the tracker opens on what is live. */
+export const mandates$ = bindValue<Agora.MandateRow[]>("agora.news", "mandates", []);
+
+/** LLM health. Republished on every attempt, success or failure. */
+export const flavorStatus$ = bindValue<Agora.FlavorStatus>(
+  "agora.news", "flavorStatus", EMPTY_FLAVOR_STATUS,
+);
+
+/**
+ * An alert card's body, fetched per id and only when `hasArticle` is true. Since v10 this serves
+ * elections, coalitions and party lifecycle and nothing else — the feed it was built for is gone.
+ * The map answers an id it does not know with `EMPTY_NEWS_ARTICLE` rather than throwing, so a fetch
+ * for an alert the writer produced no prose for renders blank instead of failing loudly.
+ */
+export const article$ = bindMap<string, Agora.NewsArticle>("agora.news", "article");
+
+/**
+ * The manual LLM wake. It REQUESTS; the engine decides. A failed wake keeps the last good flavor by
+ * design (non-negotiable 7), so a caller must not assume anything changed as a result.
+ */
+export const wakeFlavor = bindTrigger("agora.news", "wakeFlavor");
 
 // -- agora.stories (§4.7) ------------------------------------------------------------------------
 //
@@ -191,7 +244,7 @@ export const simMonth$ = bindValue<number>("agora.debug", "simDay", 0);
  * indistinguishable from a broken panel. This function only sends. It decides nothing — the returned
  * code is the engine's verdict (contract §4.6), and `""` means it took.
  *
- * Keys: `theme` ("Eu" | "Na"), `pauseOnMajorNews`, `showAllReports`, `effectsEnabled`
+ * Keys: `theme` ("Eu" | "Na"), `pauseOnMajorNews`, `effectsEnabled`
  * ("true" | "false"), `dismissFirstRun` (value ignored).
  */
 export function setSetting(key: string, value: string): Promise<Agora.CommandOutcomeName> {

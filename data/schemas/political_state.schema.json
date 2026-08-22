@@ -390,38 +390,212 @@
       }
     },
 
+    "storySlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId"],
+      "$comment": "One event inside a story, plus the player's response and the verdict on it.",
+      "properties": {
+        "eventId": { "$ref": "#/$defs/id" },
+        "role": { "type": "string", "enum": ["Minor", "Major"] },
+        "response": {
+          "type": "string",
+          "enum": ["Unaddressed", "Ignore", "Goal", "PowerOverride", "Manual"],
+          "$comment": "'Unaddressed' is silence, 'Ignore' is a decision. They score alike and read completely differently."
+        },
+        "playerText": { "type": "string" },
+        "baselineMetric": {
+          "type": ["number", "null"],
+          "$comment": "The check's metric as read at the story's open. Null means it was unreadable then, which makes a relative check unmeasurable rather than failed."
+        },
+        "slotOutcome": {
+          "type": "string",
+          "enum": ["Pending", "Met", "NotMet", "Unmeasurable"],
+          "$comment": "'Unmeasurable' means the engine could not read the city, and nothing else."
+        },
+        "manualDeclared": { "type": "boolean" }
+      }
+    },
+
+    "metricReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metricId"],
+      "$comment": "Evidence, not state. Identified by metricId AND districtId together — matching on the metric alone would let one district's reading answer for another's.",
+      "properties": {
+        "metricId": { "$ref": "#/$defs/id" },
+        "districtId": { "type": "string" },
+        "value": { "type": ["number", "null"] }
+      }
+    },
+
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "openedDate": { "$ref": "#/$defs/simDate" },
+        "resolvesDate": { "$ref": "#/$defs/simDate" },
+        "isMandatory": { "type": "boolean" },
+        "slots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/storySlot" },
+          "$comment": "Sorted Major first, then by eventId ordinal."
+        },
+        "outcome": { "type": "string", "enum": ["Pending", "Success", "Failure", "Abandoned"] },
+        "resolveEarlyRequested": { "type": "boolean" },
+        "resolutionEvidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/metricReading" },
+          "$comment": "Sorted by metricId ordinal. Recorded rather than re-measured, which is what keeps an early resolve deterministic across a replay."
+        },
+        "headlineFallback": { "type": "string" },
+        "flavorKey": { "type": "string" },
+        "resolutionFlavorKey": { "type": "string" },
+        "resolvedMonth": {
+          "type": "integer",
+          "$comment": "SimDate.TotalMonths. -1 while pending."
+        }
+      }
+    },
+
+    "eventPoolEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/id" },
+        "firstTriggeredDate": { "$ref": "#/$defs/simDate" },
+        "missStreak": { "type": "integer", "minimum": 0 },
+        "lastDraftedMonth": {
+          "type": "integer",
+          "$comment": "SimDate.TotalMonths. -1 means never told. This is the re-use cooldown; it deliberately does not depend on archive membership, which would empty a finite catalog permanently."
+        }
+      }
+    },
+
+    "powerLedgerEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["month", "sequence"],
+      "properties": {
+        "month": { "type": "integer" },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": ["Accrual", "SuccessAward", "FailurePenalty", "OverrideSpend", "ManualAward"],
+          "$comment": "'ManualAward' is its own reason rather than a SuccessAward because the minor-rate cap on a self-declared success has to be auditable here."
+        },
+        "delta": { "type": "integer", "$comment": "Signed. Negative for a spend or a penalty." },
+        "storyId": { "type": "string" },
+        "eventId": { "type": "string" }
+      }
+    },
+
+    "politicalPowerState": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "The political-power currency. Never null in a written state.",
+      "properties": {
+        "balance": { "type": "integer", "$comment": "Signed: debt is a state the player can be in." },
+        "lifetimeEarned": { "type": "integer", "minimum": 0 },
+        "lifetimeSpent": { "type": "integer", "minimum": 0 },
+        "lastAccrualMonth": {
+          "type": "integer",
+          "$comment": "SimDate.TotalMonths. -1 means never. The accrual's idempotence guard — without it, save-scumming a month boundary farms power."
+        },
+        "ledger": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/powerLedgerEntry" },
+          "$comment": "Newest last, sorted by (month, sequence), bounded by power.ledgerRetention."
+        }
+      }
+    },
+
+    "playerCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decidedMonth", "sequence"],
+      "$comment": "One dated, ordered player decision. This log IS engine state (the amendment to non-negotiable #3): it is persisted here, it has a total order, and it is replayed rather than re-solicited.",
+      "properties": {
+        "storyId": { "type": "string" },
+        "eventId": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["SetResponse", "DeclareManualOutcome", "ResolveNow", "SpendPowerOverride"]
+        },
+        "response": {
+          "type": "string",
+          "enum": ["Unaddressed", "Ignore", "Goal", "PowerOverride", "Manual"]
+        },
+        "freeText": { "type": "string", "$comment": "The player's own words. Never parsed for a number." },
+        "declaredMet": {
+          "type": "boolean",
+          "$comment": "Meaningful on DeclareManualOutcome only. Without it the log cannot tell a declared success from a declared failure, and a replay would score a different award from the one the player earned."
+        },
+        "decidedMonth": { "type": "integer", "$comment": "SimDate.TotalMonths." },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "Ordinal within the month. Never arrival order — arrival order is wall-clock, which is not engine state."
+        }
+      }
+    },
+
     "settings": {
       "type": "object",
       "additionalProperties": false,
       "required": ["schemaVersion", "startYear", "theme", "system"],
-      "$comment": "Per-save settings live here and nowhere else (non-negotiable #10). The only global settings are the master toggle and anything that must work before a save exists.",
+      "$comment": "Per-save settings live here and nowhere else (non-negotiable #10). The only global settings are the master toggle and anything that must work before a save exists. The five level settings — voteSharpness, newsInfluence, brandDiscipline, powerIntensity, storyDifficulty — each carry a 'Default' member that deliberately maps to NO preset entry: it means 'whatever the tuning file's own value is', so retuning a shipped coefficient reaches every save that never chose otherwise.",
       "properties": {
-        "schemaVersion": { "type": "integer", "const": 2 },
+        "schemaVersion": { "type": "integer", "const": 7 },
         "startYear": { "type": "integer", "minimum": 1900, "maximum": 2200 },
         "theme": { "type": "string", "enum": ["Eu", "Na"] },
         "system": { "type": "string", "enum": ["Proportional", "FirstPastThePost"] },
         "wakeCadence": {
           "type": "string",
-          "$comment": "Flags enum serialized as a comma-separated member list, e.g. 'Yearly, Election, Manual, Story'."
+          "$comment": "Flags enum serialized as a comma-separated member list, e.g. 'Yearly, Election, Manual, Story'. The all-bits combination serializes as its own member name, 'Default'."
         },
         "snapshotRetention": { "type": "integer", "minimum": 1 },
         "enabled": { "type": "boolean" },
         "effectsEnabled": { "type": "boolean" },
         "themeLocked": { "type": "boolean" },
         "pauseOnMajorNews": { "type": "boolean" },
-        "showAllReports": { "type": "boolean" }
+
+        "voteSharpness": { "type": "string", "enum": ["Blurred", "Default", "Sharp"] },
+        "newsInfluence": { "type": "string", "enum": ["Muted", "Default", "Loud"] },
+        "brandDiscipline": { "type": "string", "enum": ["Loose", "Default", "Locked"] },
+
+        "storiesEnabled": { "type": "boolean" },
+        "storiesPerCycle": {
+          "type": "integer",
+          "$comment": "Wins over stories.storiesPerCycle when greater than zero; the tuning key is the fallback."
+        },
+        "eventsPerStory": { "type": "integer", "$comment": "Same rule as storiesPerCycle." },
+        "politicalPowerEnabled": { "type": "boolean" },
+        "powerIntensity": { "type": "string", "enum": ["Lenient", "Default", "Harsh"] },
+        "storyDifficulty": { "type": "string", "enum": ["Forgiving", "Default", "Demanding"] },
+        "pauseOnMajorStory": {
+          "type": "boolean",
+          "$comment": "Whether a major STORY card holds the clock. Separate from pauseOnMajorNews, whose player-facing hint enumerates news categories only — repointing that control would silently redefine a choice existing saves already made about something else."
+        }
       }
     }
   },
 
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 3 },
+    "schemaVersion": { "type": "integer", "const": 9 },
     "saveGuid": {
       "type": "string",
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
       "$comment": "Agora owns this (plan §5). Written into the save via the serialization hooks, never derived from a filename and never regenerated at load — it is the first argument to every seed derivation."
     },
     "date": { "$ref": "#/$defs/simDate" },
+    "lastCompletedTickMonth": {
+      "type": "integer",
+      "$comment": "The last month whose political tick ran to completion, as SimDate.TotalMonths; -1 means none has. Persisted rather than session-local, because a mid-month save, quit and reload never produces a replay and the old session-local guard therefore missed it — every reload re-ran the month it had already advanced through."
+    },
     "settings": { "$ref": "#/$defs/settings" },
     "parties": { "type": "array", "items": { "$ref": "#/$defs/party" }, "$comment": "Sorted by id." },
     "factions": { "type": "array", "items": { "$ref": "#/$defs/faction" }, "$comment": "Sorted by id." },
@@ -441,6 +615,36 @@
     "nextElectionDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
     "isCampaignSeason": { "type": "boolean" },
     "mayorPartyId": { "type": ["string", "null"] },
-    "lastFlavorDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] }
+    "lastFlavorDate": { "oneOf": [{ "$ref": "#/$defs/simDate" }, { "type": "null" }] },
+
+    "liveStories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/story" },
+      "$comment": "Sorted by id ordinal. Story events deliberately do NOT enter activeEvents: two stories of three events would sit at catalog.maxConcurrentEvents and start refusing timeline events, and the affinity event term saturates its clamp at that volume."
+    },
+    "storyArchive": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/story" },
+      "$comment": "Sorted by (resolvedMonth descending, id ordinal), bounded by stories.archiveRetention. Nothing may depend on that bound for correctness — the re-use cooldown deliberately does not."
+    },
+    "eventPool": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/eventPoolEntry" },
+      "$comment": "Triggered events awaiting a draw, sorted by eventId ordinal."
+    },
+    "power": { "$ref": "#/$defs/politicalPowerState" },
+    "playerCommands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/playerCommand" },
+      "$comment": "Sorted by (decidedMonth, sequence, eventId ordinal)."
+    },
+    "lastStoryDraftMonth": {
+      "type": "integer",
+      "$comment": "SimDate.TotalMonths of the last draft phase; -1 means never. The draft phase's own idempotence guard."
+    },
+    "lastStoryResolveMonth": {
+      "type": "integer",
+      "$comment": "SimDate.TotalMonths of the last resolution phase; -1 means never."
+    }
   }
 }

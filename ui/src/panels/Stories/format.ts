@@ -9,44 +9,19 @@
  * of. What may never be copied is a rule that decides whether a write took — `isAccepted` and
  * `writeMessage` are imported from `ui/src/shell/bindings.ts` and are deliberately absent here.
  *
- * `toLocaleString` is avoided for the same reason the News panel avoids it: Gameface ships a trimmed
- * JS runtime and locale data is not guaranteed to be present.
+ * **`cx`, `formatSimDate` and `splitParagraphs` are re-exported from `ui/src/shell/format.ts`, not
+ * defined here.** This panel wrote its own copies in wave 6, independently of the identical ones the
+ * News panel had held since M4; wave 7's spine collapsed both onto one definition while moving that
+ * module out of a panel that is being deleted. They stay re-exported rather than re-pointed at every
+ * call site so this panel's imports read the same as they did.
+ *
+ * `toLocaleString` is avoided for the reason given there: Gameface ships a trimmed JS runtime and
+ * locale data is not guaranteed to be present.
  */
 
-/** Class-name joiner. Hand-rolled so the panel pulls in no runtime dependency. */
-export function cx(...parts: (string | false | null | undefined)[]): string {
-  const out: string[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (part) {
-      out.push(part);
-    }
-  }
-  return out.join(" ");
-}
+export { cx, formatSimDate, splitParagraphs } from "../../shell/format";
 
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/**
- * "YYYY-MM-DD" -> "Mar 1994". The wire format is engine-owned (contract §2), so splitting it is
- * safe; an absent date is "" (never null) and renders as an em dash.
- */
-export function formatSimDate(date: string): string {
-  if (!date) {
-    return "—";
-  }
-  const parts = date.split("-");
-  if (parts.length < 2) {
-    return date;
-  }
-  const monthIndex = parseInt(parts[1], 10) - 1;
-  if (isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) {
-    return date;
-  }
-  return MONTHS[monthIndex] + " " + parts[0];
-}
+import { formatSimDate } from "../../shell/format";
 
 /** A wire date as a whole number of months, or null when it is absent or unreadable. */
 function totalMonths(date: string): number | null {
@@ -195,25 +170,6 @@ const TIER_NOTE: { [tier: string]: string } = {
 
 export function tierNote(tier: Agora.StoryTierName): string {
   return TIER_NOTE[tier] || "";
-}
-
-/**
- * Split prose into display paragraphs. Layout, not parsing: the text is never inspected for meaning
- * and no number is ever read out of it (non-negotiable 1).
- */
-export function splitParagraphs(body: string): string[] {
-  if (!body) {
-    return [];
-  }
-  const rawParts = body.split(/\n+/);
-  const out: string[] = [];
-  for (let i = 0; i < rawParts.length; i++) {
-    const trimmed = rawParts[i].trim();
-    if (trimmed) {
-      out.push(trimmed);
-    }
-  }
-  return out;
 }
 
 /** How many of a story's slots the player has not answered at all. Counted, never inferred. */

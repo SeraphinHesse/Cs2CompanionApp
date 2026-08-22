@@ -174,7 +174,6 @@ namespace Agora.Mod.UiBindings
         public string System = "Proportional";
         public bool ThemeLocked;
         public bool PauseOnMajorNews = true;
-        public bool ShowAllReports;
         public bool EffectsEnabled = true;
 
         /// <summary>
@@ -212,6 +211,13 @@ namespace Agora.Mod.UiBindings
         public string PowerIntensity = "Default";
         public string StoryDifficulty = "Default";
 
+        /// <summary>
+        /// Whether a major story card holds the clock. New in wave 7; see
+        /// <c>AgoraSettings.PauseOnMajorStory</c> for why it is not
+        /// <see cref="PauseOnMajorNews"/> under another name.
+        /// </summary>
+        public bool PauseOnMajorStory = true;
+
         public void Write(IJsonWriter writer)
         {
             writer.TypeBegin("agora.SettingsPayload");
@@ -221,7 +227,6 @@ namespace Agora.Mod.UiBindings
             UiJson.Text(writer, "system", System);
             UiJson.Flag(writer, "themeLocked", ThemeLocked);
             UiJson.Flag(writer, "pauseOnMajorNews", PauseOnMajorNews);
-            UiJson.Flag(writer, "showAllReports", ShowAllReports);
             UiJson.Flag(writer, "effectsEnabled", EffectsEnabled);
             UiJson.Text(writer, "voteSharpness", VoteSharpness);
             UiJson.Text(writer, "newsInfluence", NewsInfluence);
@@ -235,6 +240,7 @@ namespace Agora.Mod.UiBindings
             UiJson.Flag(writer, "politicalPowerEnabled", PoliticalPowerEnabled);
             UiJson.Text(writer, "powerIntensity", PowerIntensity);
             UiJson.Text(writer, "storyDifficulty", StoryDifficulty);
+            UiJson.Flag(writer, "pauseOnMajorStory", PauseOnMajorStory);
             writer.TypeEnd();
         }
     }
@@ -396,7 +402,7 @@ namespace Agora.Mod.UiBindings
     /// <remarks>
     /// A map binding rather than a field on <see cref="PartyBriefPayload"/>: the roster is pushed to
     /// every panel on every monthly tick, and twelve issue positions plus polling per party is not
-    /// something the seat chart or the news feed needs to carry.
+    /// something the seat chart or an alert card needs to carry.
     /// <para>
     /// Deliberately absent, because the panel resolves them through the roster (contract §4.2):
     /// <c>coreGrievance</c>, <c>isIncumbent</c>, <c>isInGovernment</c>. <see cref="Name"/>,
@@ -1075,53 +1081,17 @@ namespace Agora.Mod.UiBindings
     // ---------------------------------------------------------------------------- agora.news
 
     /// <summary>
-    /// One feed item. Prose bodies deliberately do not ride here — the body is fetched from
-    /// <c>agora.news.article</c> only when the item is opened.
-    /// </summary>
-    public sealed class NewsHeadlinePayload : IJsonWritable
-    {
-        public string Id = "";
-        public Agora.Core.Contracts.SimDate? Date;
-        public string Kind = "Article";
-        public string Headline = "";
-        public string Summary = "";
-        public string OutletId = "";
-        public string OutletName = "";
-        public int Severity;
-        public string PartyId = "";
-        public string DistrictId = "";
-        public string EventId = "";
-        public bool HasArticle;
-
-        public void Write(IJsonWriter writer)
-        {
-            writer.TypeBegin("agora.NewsHeadline");
-            UiJson.Id(writer, "id", Id);
-            UiJson.Date(writer, "date", Date);
-            UiJson.Text(writer, "kind", Kind);
-            UiJson.Text(writer, "headline", Headline);
-            UiJson.Text(writer, "summary", Summary);
-            UiJson.Id(writer, "outletId", OutletId);
-            UiJson.Text(writer, "outletName", OutletName);
-            UiJson.Number(writer, "severity", Severity);
-            UiJson.Id(writer, "partyId", PartyId);
-            UiJson.Id(writer, "districtId", DistrictId);
-            UiJson.Id(writer, "eventId", EventId);
-            UiJson.Flag(writer, "hasArticle", HasArticle);
-            writer.TypeEnd();
-        }
-    }
-
-    /// <summary>
-    /// One queued interruption: a pointer at a feed row that already exists, plus enough to render a
+    /// One queued interruption — an election, a government forming or falling, a party entering or
+    /// leaving the field, or an event that cleared the severity gate — carrying enough to render a
     /// masthead card without a second round trip.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Sibling of <see cref="NewsHeadlinePayload"/> and kept next to it deliberately — the two are
-    /// read side by side, and the field order below mirrors it so a drift between them is visible
-    /// without scrolling. What it adds is <c>major</c>; what it drops is <c>outletId</c>, which no
-    /// card renders.
+    /// The body is not here and never was: a card with <c>hasArticle</c> set fetches it from
+    /// <c>agora.news.article</c> under this payload's own <c>id</c>, when the card is opened. Branch
+    /// on <c>hasArticle</c>, never on <c>kind</c> — the writer covers four kinds rather than every
+    /// item, so the flag is the only honest answer to "is there a body"
+    /// (<c>docs/contracts/ui_bindings.md</c> §4.5).
     /// </para>
     /// <para>
     /// <b><c>major</c> is published rather than recomputed in TypeScript from <c>severity</c>.</b>
@@ -1135,7 +1105,14 @@ namespace Agora.Mod.UiBindings
     public sealed class NewsAlertPayload : IJsonWritable
     {
         public string Id = "";
-        public string Kind = "Article";
+
+        /// <summary>
+        /// <c>"Event"</c>, <c>"Election"</c>, <c>"Coalition"</c> or <c>"Party"</c>. The default is a
+        /// kind that still exists: <c>"Article"</c> was the initialiser until v10 retired the article
+        /// alert with the feed, and a payload defaulting to a struck member of the union is a card
+        /// labelled with a category the dashboard has no map entry for.
+        /// </summary>
+        public string Kind = "Event";
         public Agora.Core.Contracts.SimDate? Date;
         public string Headline = "";
         public string Summary = "";
@@ -1145,6 +1122,17 @@ namespace Agora.Mod.UiBindings
         public string EventId = "";
         public int Severity;
         public bool Major;
+
+        /// <summary>
+        /// Whether <c>agora.news.article</c> holds a body for this card's <c>id</c>.
+        /// </summary>
+        /// <remarks>
+        /// Computed in <c>AgoraUiProjection.BuildAlerts</c> from
+        /// <c>ElectionCoverage.ResolveArticleId</c> — the same resolver the fetch goes through — and
+        /// deliberately not copied off <c>NewsAlert</c>, which carries no such field. A flag set when
+        /// the card is raised is a flag decided before the prose that answers it can have arrived,
+        /// and a stale one here is a blank masthead with nothing logged.
+        /// </remarks>
         public bool HasArticle;
 
         public void Write(IJsonWriter writer)
@@ -1193,43 +1181,6 @@ namespace Agora.Mod.UiBindings
             UiJson.Id(writer, "partyId", PartyId);
             UiJson.Id(writer, "districtId", DistrictId);
             UiJson.Id(writer, "eventId", EventId);
-            writer.TypeEnd();
-        }
-    }
-
-    /// <summary>One live timeline event.</summary>
-    public sealed class TimelineEventBriefPayload : IJsonWritable
-    {
-        public string Id = "";
-        public Agora.Core.Contracts.SimDate? Date;
-        public string Title = "";
-        public string Region = "Global";
-        public string Origin = "Catalog";
-        public int Severity;
-        public int DurationMonths;
-        public Agora.Core.Contracts.SimDate? FiredDate;
-        public Agora.Core.Contracts.SimDate? ExpiresDate;
-        public string ArchetypeId = "";
-        public string LocalAngle = "";
-        public List<string> Tags = new List<string>();
-        public List<string> DistrictIds = new List<string>();
-
-        public void Write(IJsonWriter writer)
-        {
-            writer.TypeBegin("agora.TimelineEventBrief");
-            UiJson.Id(writer, "id", Id);
-            UiJson.Date(writer, "date", Date);
-            UiJson.Text(writer, "title", Title);
-            UiJson.Text(writer, "region", Region);
-            UiJson.Text(writer, "origin", Origin);
-            UiJson.Number(writer, "severity", Severity);
-            UiJson.Number(writer, "durationMonths", DurationMonths);
-            UiJson.Date(writer, "firedDate", FiredDate);
-            UiJson.Date(writer, "expiresDate", ExpiresDate);
-            UiJson.Id(writer, "archetypeId", ArchetypeId);
-            UiJson.Text(writer, "localAngle", LocalAngle);
-            UiJson.Ids(writer, "tags", Tags);
-            UiJson.Ids(writer, "districtIds", DistrictIds);
             writer.TypeEnd();
         }
     }
@@ -1419,7 +1370,8 @@ namespace Agora.Mod.UiBindings
     /// The bodies are deliberately absent. A story's two articles run to 1260 characters each and
     /// exist in up to two voices, so shipping them on the list binding would push the largest thing
     /// on this bridge across it every republish to render one of them. Fetch them per story from
-    /// <c>agora.stories.article</c>, exactly as the news feed fetches an article body.
+    /// <c>agora.stories.article</c>, exactly as an alert card fetches its body from
+    /// <c>agora.news.article</c>.
     /// </remarks>
     public sealed class StoryPayload : IJsonWritable
     {

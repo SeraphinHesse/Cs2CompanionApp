@@ -6,16 +6,21 @@ using Colossal.UI.Binding;
 namespace Agora.Mod.UiBindings
 {
     /// <summary>
-    /// Publishes <c>agora.news</c>: the feed, article bodies, live timeline events, the mandate
-    /// tracker, the flavor provider's health line and the alert queue — plus two inbound bindings,
-    /// the manual LLM wake and the alert ack (<c>docs/contracts/ui_bindings.md</c> §4.5).
+    /// Publishes <c>agora.news</c>: the mandate tracker, article bodies, the flavor provider's health
+    /// line and the political-event alert queue — plus two inbound bindings, the manual LLM wake and
+    /// the alert ack (<c>docs/contracts/ui_bindings.md</c> §4.5).
     /// </summary>
+    /// <remarks>
+    /// <b>The group is named for a panel that no longer exists, and stays that way.</b> Version 10
+    /// retired <c>feed</c> and <c>events</c> with <c>ui/src/panels/News/**</c>, leaving the six
+    /// bindings below; renaming them to <c>agora.stories.*</c> would break every live consumer to fix
+    /// a word, which is exactly the trade §7 rule 2 forbids. Their renderers moved into the Stories
+    /// panel; their binding names did not move.
+    /// </remarks>
     public sealed partial class AgoraNewsUISystem : AgoraUISystemBase
     {
         private const string Group = "agora.news";
 
-        private ValueBinding<List<NewsHeadlinePayload>> _feed;
-        private ValueBinding<List<TimelineEventBriefPayload>> _events;
         private ValueBinding<List<MandateRowPayload>> _mandates;
         private ValueBinding<FlavorStatusPayload> _flavorStatus;
         private ValueBinding<List<NewsAlertPayload>> _alerts;
@@ -24,13 +29,6 @@ namespace Agora.Mod.UiBindings
 
         protected override void CreateBindings()
         {
-            AddBinding(_feed = new ValueBinding<List<NewsHeadlinePayload>>(
-                Group, "feed", new List<NewsHeadlinePayload>(), ListOf<NewsHeadlinePayload>()));
-
-            AddBinding(_events = new ValueBinding<List<TimelineEventBriefPayload>>(
-                Group, "events", new List<TimelineEventBriefPayload>(),
-                ListOf<TimelineEventBriefPayload>()));
-
             AddBinding(_mandates = new ValueBinding<List<MandateRowPayload>>(
                 Group, "mandates", new List<MandateRowPayload>(), ListOf<MandateRowPayload>()));
 
@@ -42,13 +40,14 @@ namespace Agora.Mod.UiBindings
             AddBinding(_alerts = new ValueBinding<List<NewsAlertPayload>>(
                 Group, "alerts", new List<NewsAlertPayload>(), ListOf<NewsAlertPayload>()));
 
-            // Bodies are fetched per item, on open. Forty feed rows each carrying a 120-word body
-            // would be the largest thing crossing this bridge, every month, to render one of them.
+            // Bodies are fetched per card, on open, and only when the alert says it has one. The feed
+            // that was this map's other reader is gone; the alert cards are not, and an election,
+            // coalition or party card with no map behind it is a blank masthead with nothing logged.
             AddBinding(_article = new GetterMapBinding<string, NewsArticlePayload>(
                 Group, "article", GetArticle));
 
             // The contract's only trigger. It *requests*; the engine decides whether a wake is
-            // permitted, and a refused or failed one keeps the last good prose (#7). A trigger is
+            // permitted, and a refused or failed one keeps the last good flavor (#7). A trigger is
             // enough precisely because a refused wake and a successful one that produced nothing look
             // identical to the player.
             AddBinding(new TriggerBinding(Group, "wakeFlavor", OnWakeFlavor));
@@ -79,10 +78,6 @@ namespace Agora.Mod.UiBindings
         {
             var state = AgoraRuntime.State;
 
-            // The runtime's own start date, not a second derivation of it: the alert path and the feed
-            // must agree about which parties the opening roster was minted with.
-            _feed.Update(AgoraUiProjection.BuildFeed(state, AgoraRuntime.Prose, AgoraRuntime.StartDate));
-            _events.Update(AgoraUiProjection.BuildEvents(state));
             _mandates.Update(AgoraUiProjection.BuildMandates(state));
             _flavorStatus.Update(AgoraUiProjection.BuildFlavorStatus(state));
 

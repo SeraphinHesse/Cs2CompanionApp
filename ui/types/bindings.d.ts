@@ -3725,28 +3725,21 @@ declare namespace Agora {
   type EventOriginName = "Catalog" | "Procedural" | "Political";
 
   /**
-   * What produced a feed item. Drives the icon, not the layout.
+   * What produced an alert.
    *
-   * **`"Mandate"` is declared but no publisher emits it.** `AgoraUiProjection.BuildFeed` produces
-   * exactly `Article`, `Event`, `Election`, `Coalition` and `Party` — mandates are surfaced by the
-   * News tab's tracker off `agora.news.mandates`, never as a feed row. The member is retained
-   * because removing it is a shape change and would have to go through `/schema-change`; a union
-   * member no publisher emits is harmless (unlike a required field no publisher fills, which is the
-   * defect W4 shipped once and had to fix). **Do not write a `"Mandate"` branch and expect to reach
-   * it.** Recorded by the contract-drift audit, 2026-08-09.
-   */
-  type NewsKindName = "Article" | "Event" | "Election" | "Coalition" | "Mandate" | "Party";
-
-  /**
-   * What produced an alert. A SUBSET of `NewsKindName` — `"Mandate"` is absent because a mandate
-   * being issued or resolved is a state change the tracker already shows, not an interruption.
-   * (Note the feed does not emit `"Mandate"` either, so this is a narrowing of the declared union
-   * rather than of anything actually published — see above.)
+   * **`NewsKindName` retired in v10** with `NewsHeadline` and the feed it typed. It carried a
+   * `"Mandate"` member no publisher ever emitted, kept only because removing it was a shape change;
+   * the whole union went with the feed, so the question is now moot.
    *
-   * Kept as its own union rather than reusing `NewsKindName` so the narrower set is checked: a
-   * modal switching on `NewsKindName` would need a `"Mandate"` branch that can never be reached.
+   * **`"Article"` retired in v10 too.** The article alert existed to interrupt over general monthly
+   * prose, and there is no longer any: the feed it filled is gone. Nothing emits this kind and no
+   * consumer may branch on it — it is listed here only so a save-era payload carrying the old string
+   * still type-checks against this union rather than widening it to `string`.
+   *
+   * What remains is the four things that happen TO the player and that nothing else in the mod
+   * announces. `"Event"` is a timeline event above the severity gate.
    */
-  type NewsAlertKindName = "Article" | "Event" | "Election" | "Coalition" | "Party";
+  type NewsAlertKindName = "Event" | "Election" | "Coalition" | "Party" | "Article";
 
   /**
    * Engine-authored failure code for the flavor provider. NEVER LLM output and never a raw
@@ -3821,8 +3814,11 @@ declare namespace Agora {
    * after any accepted `setSetting`. Per-save only; never global config (non-negotiable #10).
    *
    * Write through `agora.state.setSetting(key, value)` — a CallBinding returning a
-   * `CommandOutcomeName`. Keys: `"theme"` ("Eu" | "Na"), `"pauseOnMajorNews"`, `"showAllReports"`,
-   * `"effectsEnabled"` ("true" | "false"), and `"dismissFirstRun"` (value ignored). The call
+   * `CommandOutcomeName`. Keys: `"theme"` ("Eu" | "Na"), `"pauseOnMajorNews"`,
+   * `"effectsEnabled"`, `"pauseOnMajorStory"` ("true" | "false"), `"storiesEnabled"`,
+   * `"politicalPowerEnabled"` ("true" | "false"), `"storiesPerCycle"`, `"eventsPerStory"` (a count),
+   * `"powerIntensity"`, `"storyDifficulty"` (a level name), and `"dismissFirstRun"`
+   * (value ignored). The call
    * REQUESTS; the engine validates and decides. A panel must render the returned code and must
    * never compute a rejection of its own.
    *
@@ -3839,7 +3835,6 @@ declare namespace Agora {
      *  returns `"ThemeLocked"`. */
     themeLocked: boolean;
     pauseOnMajorNews: boolean;
-    showAllReports: boolean;
     effectsEnabled: boolean;
 
     /** How decisively blocs convert preference into votes. Writes `affinity.softmaxTemperature`. */
@@ -3878,17 +3873,31 @@ declare namespace Agora {
     politicalPowerEnabled: boolean;
 
     /**
-     * **READ-ONLY in this build, and rendering a control for either is a defect.**
+     * How punishing the power economy is, and how hard story goals are to meet. Writable keys
+     * `"powerIntensity"` and `"storyDifficulty"`, new in wave 7.
      *
-     * Both are persisted in the sidecar and published here, and both drive nothing:
-     * `TuningPresets.Apply` reads VoteSharpness, NewsInfluence and BrandDiscipline and no fourth or
-     * fifth level, so the presets behind these two do not exist yet. There is deliberately no
-     * `setSetting` key for either — a write would answer `UnknownKey` — because a switch that
-     * persists a value and changes no number is the exact defect `PauseOnMajorNews` and
-     * `ShowAllReports` were before W5. Wave 7b builds the preset tables and the write keys together.
+     * Both were published read-only in wave 6 on purpose: `TuningPresets.Apply` read three levels
+     * and no fourth or fifth, so a control would have persisted a value and changed no number — the
+     * defect `PauseOnMajorNews` and `ShowAllReports` were before W5. Wave 7 opens the write key and
+     * lands the preset tables behind it in the same wave, so the setting and its effect reach a
+     * player together.
+     *
+     * `"Default"` is not a value but an instruction to leave the tuning file alone, so a retune
+     * reaches every save that never chose otherwise.
      */
     powerIntensity: PowerIntensityName;
     storyDifficulty: StoryDifficultyName;
+
+    /**
+     * Whether a major *story* card holds the clock. Writable key `"pauseOnMajorStory"`, default
+     * true.
+     *
+     * **Not `pauseOnMajorNews` under another name, and the two must never be conflated by a panel.**
+     * That control's hint enumerates elections, governments, party lifecycle and serious events —
+     * all news — so neither of its positions is an answer about stories. This decides only whether
+     * the clock stops; the card appears either way and is always dismissable.
+     */
+    pauseOnMajorStory: boolean;
   }
 
   type PowerIntensityName = "Lenient" | "Default" | "Harsh";
@@ -4461,45 +4470,23 @@ declare namespace Agora {
 
   // -- agora.news ------------------------------------------------------------------------------
 
-  /**
-   * `agora.news.feed` — sorted by `date` DESCENDING, then `id` ascending. Capped at 40 items
-   * (AGORA_NEWS_FEED_MAX). Empty value: [].
-   *
-   * Prose bodies deliberately do NOT ride here. When `hasArticle` is true, fetch the body from
-   * `agora.news.article` keyed by `id`, and only when the item is opened.
-   *
-   * `headline`, `summary` and `outletName` are FLAVOR.
-   */
-  interface NewsHeadline {
-    id: IdString;
-    date: SimDateString;
-    kind: NewsKindName;
-    headline: string;
-    /** One line. The full body is in NewsArticle. */
-    summary: string;
-    outletId: IdString;
-    outletName: string;
-    /** 1-5 for event-derived items, 0 otherwise. */
-    severity: number;
-    /** "" when not about one party. */
-    partyId: IdString;
-    /** "" when city-wide. */
-    districtId: IdString;
-    /** "" when not tied to a timeline event. */
-    eventId: IdString;
-    hasArticle: boolean;
-  }
+  // `NewsHeadline` retired in contract v10 with `agora.news.feed`. The story system replaced what
+  // the feed was for: prose a player can act on rather than a record of what already happened.
+
 
   /**
    * `agora.news.alerts` — the unanswered interruptions, OLDEST FIRST. Not sorted by date and not
    * sorted at all: this is the order they happened in, which is the order the player answers them
    * in. Do not re-sort it. Bounded by the engine; empty value: [].
    *
-   * Each entry POINTS AT A FEED ROW that already exists — `id` is that row's id, so anything the
-   * modal shows can be found again in the News tab. When `hasArticle` is true the body may be
-   * fetched from `agora.news.article` keyed by the same `id`; when it is false there is no body and
-   * the map binding would answer with EMPTY_NEWS_ARTICLE rather than throwing, which renders as a
-   * blank masthead. Branch on `hasArticle`, never on `kind`.
+   * **Since v10 there is no feed to point at.** An entry's `id` used to be a feed row's id; it is
+   * now simply the alert's own, and there is nowhere else to find the item afterwards — the card IS
+   * the surface. When `hasArticle` is true the body may be fetched from `agora.news.article` keyed
+   * by that same `id`; when it is false there is no body and the map would answer with
+   * `EMPTY_NEWS_ARTICLE` rather than throwing, which renders as a blank masthead. **Branch on
+   * `hasArticle`, never on `kind`** — that has been the rule since W5 and it matters more now, since
+   * the article writer covers only some kinds and `hasArticle` is the only honest answer to "is
+   * there a body".
    *
    * Dismiss through `agora.news.ackAlert(id)`, or `ackAlert("*")` for all of them.
    *
@@ -4563,34 +4550,10 @@ declare namespace Agora {
     eventId: IdString;
   }
 
-  /**
-   * `agora.news.events` — active timeline events, sorted by `firedDate` DESCENDING then `id`
-   * ascending. Capped at 25 (AGORA_EVENTS_MAX). Empty value: [].
-   *
-   * `title` is catalog-authored; `localAngle` is FLAVOR and may be "" when the LLM has not run.
-   */
-  interface TimelineEventBrief {
-    id: IdString;
-    /** The event's catalog date. */
-    date: SimDateString;
-    title: string;
-    region: EventRegionName;
-    origin: EventOriginName;
-    /** 1-5. */
-    severity: number;
-    durationMonths: number;
-    /** "" if not yet fired. */
-    firedDate: SimDateString;
-    /** "" if it does not expire. */
-    expiresDate: SimDateString;
-    archetypeId: IdString;
-    /** FLAVOR. "" when the flavor layer has not produced one. */
-    localAngle: string;
-    /** Sorted ordinal ascending. */
-    tags: string[];
-    /** Districts this event's effects landed on. Empty means city-wide. Sorted ascending. */
-    districtIds: IdString[];
-  }
+  // `TimelineEventBrief` retired in contract v10 with `agora.news.events`. Timeline events still
+  // fire; the ~75% wave 3 promoted or adapted now reach the player as story events, and the boring
+  // quarter is boring by the owner's own ruling.
+
 
   /**
    * `agora.news.mandates` — the mandate tracker. Sorted by STATUS RANK ascending (Active 0,

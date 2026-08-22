@@ -1,18 +1,17 @@
-import styles from "./NewsPanel.module.scss";
-import { Lookups } from "./lookup";
-import {
-  clamp01,
-  cx,
-  formatMonthsRemaining,
-  formatNumber,
-  formatPercent,
-  formatSimDate,
-  humanizeEnum,
-} from "./format";
+import { Lookups } from "../../shell/lookup";
+import { clamp01, formatMonthsRemaining, formatNumber, formatPercent, humanizeEnum }
+  from "../../shell/format";
+import { cx, formatSimDate } from "./format";
+import styles from "./StoriesPanel.module.scss";
 
 /**
  * The mandate tracker: every mandate, its progress against the metric it is judged on, and its
  * deadline.
+ *
+ * **Moved here from the News panel in wave 7, port rather than rewrite.** The panel it lived in is
+ * deleted; the tracker is not, because a mandate is a promise the player is still being scored on.
+ * Only the class hooks changed, onto this directory's one stylesheet — the markup and every rule
+ * below are the ones that shipped in M4.
  *
  * The list arrives sorted by STATUS RANK ascending (Active, Pending, PartiallyFulfilled,
  * Fulfilled, Defied, Abandoned), then deadlineDate ascending, then id — so it already opens on
@@ -52,18 +51,15 @@ const STATUS_CLASS: { [status: string]: string } = {
 export const MandateTracker = ({ mandates, lookups }: MandateTrackerProps) => {
   if (mandates.length === 0) {
     return (
-      <div className={styles.empty}>
-        <div className={styles.emptyTitle}>No mandates</div>
-        <div className={styles.emptyText}>
-          A government issues mandates when it forms. Each one names a metric, a target and a
-          deadline it will be judged against.
-        </div>
+      <div className={styles.bodyNote}>
+        A government issues mandates when it forms. Each one names a metric, a target and a deadline
+        it will be judged against.
       </div>
     );
   }
 
   return (
-    <div className={styles.list}>
+    <div className={styles.mandateList}>
       {mandates.map((mandate) => (
         <MandateItem key={mandate.id} mandate={mandate} lookups={lookups} />
       ))}
@@ -99,7 +95,9 @@ const MandateItem = ({ mandate, lookups }: MandateItemProps) => {
           <span className={styles.metaKind}>{humanizeEnum(mandate.issue)}</span>
           {partyLabel ? <span className={styles.chip}>{partyLabel}</span> : null}
           <span className={styles.chip}>{lookups.districtLabel(mandate.districtId)}</span>
-          {stalled ? <span className={styles.heldChip}>Measurement paused</span> : null}
+          {/* The panel's one held colour — the same chip an unmeasurable slot wears, and never the
+              failure colour. */}
+          {stalled ? <span className={styles.chipHeld}>Measurement paused</span> : null}
         </div>
 
         {/* Flavor text of unpredictable length: clamped to two lines, long tokens broken. */}
@@ -107,7 +105,7 @@ const MandateItem = ({ mandate, lookups }: MandateItemProps) => {
 
         <div className={styles.metricRow}>
           <span className={styles.metricName}>{humanizeEnum(mandate.metric)}</span>
-          <span className={styles.chipDim}>{humanizeEnum(mandate.direction)}</span>
+          <span className={styles.chipQuiet}>{humanizeEnum(mandate.direction)}</span>
         </div>
 
         {/*

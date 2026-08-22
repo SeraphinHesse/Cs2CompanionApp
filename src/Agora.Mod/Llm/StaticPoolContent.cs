@@ -157,105 +157,30 @@ namespace Agora.Mod.Llm
         //
         // 1. Lead with what happened, to whom, and why it matters. The concrete thing goes in the
         //    first sentence, not the last.
-        // 2. Name a subject - the party or the district the article refs. Every city and election
-        //    template carries {party}; every district template carries {district}; the generic pool
-        //    carries neither and is only reached when a substituted line cannot fit its cap.
+        // 2. Name a subject - the party the article refs. Every election template carries {party};
+        //    the generic pool carries no placeholder at all and is only reached when a substituted
+        //    line cannot fit its cap.
         // 3. No unattributed sourcing. Not "residents say", "officials say", "critics say", "sources
-        //    say", "some argue", "many feel", nor any variant. Attribute to the named party or
-        //    district, or do not attribute at all. StaticPoolPressTests asserts this over the arrays
-        //    themselves, so a template added in breach of it fails the build rather than the reader.
+        //    say", "some argue", "many feel", nor any variant. Attribute to the named party, or do
+        //    not attribute at all. StaticPoolPressTests asserts this over the arrays themselves, so a
+        //    template added in breach of it fails the build rather than the reader.
         // 4. Never a figure - no vote share, no seat count, no percentage, no budget number. These
         //    are not LLM output, so non-negotiable #1 does not bite, but the dashboard carries the
         //    figures and the prose does not. Qualitative bands only.
         //
+        // THE GENERAL POOLS ARE GONE. CityHeadlines, CityBodies, DistrictHeadlines and DistrictBodies
+        // wrote the ordinary month for the news feed; v10 of docs/contracts/ui_bindings.md retired the
+        // feed, so both writers stopped producing that coverage and the four arrays went with it. The
+        // {mood} placeholder went too - it appeared in the city pool alone. Do not restore one without
+        // a surface that renders what it writes.
+        //
         // Lengths are bounded by FlavorCacheMigration.HeadlineMaxLength / BodyMaxLength AFTER
-        // substitution. Party names are drawn from the pools above, so their worst case is
-        // computable and pinned by a test; district names are the player's and are not, so
-        // StaticPoolProvider drops the placeholder rather than cutting a name in half.
+        // substitution. Party names are drawn from the pools above, so their worst case is computable
+        // and pinned by a test.
 
         /// <summary>
-        /// City-wide headlines. Every one names <c>{party}</c>, because the article carries that
-        /// party's id in <c>refs</c> and a reference the prose never makes is one the reader cannot
-        /// check. <c>{mood}</c> is a qualitative word - never a figure.
-        /// </summary>
-        public static readonly string[] CityHeadlines =
-        {
-            "{party} takes its case to the ward halls",
-            "{party} tables the motion the chamber kept deferring",
-            "Council rises without a vote; {party} calls the delay the story",
-            "{party} puts its plan on the table before a city that is {mood}",
-            "The chamber splits over {party}'s motion and adjourns",
-            "{party} spends the week on the doorstep of a city that is {mood}",
-            "{party} loses in committee and takes the argument to the floor",
-            "Wet Thursday on the doorstep, and {party} keeps knocking"
-        };
-
-        public static readonly string[] CityBodies =
-        {
-            "{party} spent the week putting its plan in front of anyone who would sit still for it: " +
-            "two ward halls, a committee room and a draughty church hall off the ring road. The " +
-            "chamber has heard the argument before. What has changed is the temper of the city " +
-            "outside it, which is {mood}, and which is not the same thing as settled.",
-
-            "The motion {party} tabled did not reach a vote, which is its own kind of answer. It goes " +
-            "back to committee next month, by which time the pavement it is about will have had " +
-            "another winter. The mood in the city is {mood}, and the chamber knows it.",
-
-            "{party} came to the chamber with a plan and left with a date for another meeting. That " +
-            "is not nothing - a date is a commitment of sorts - but it is a long way from the thing " +
-            "itself, and a city that is {mood} has grown used to the difference.",
-
-            "There is a version of this city in the council minutes and a version of it on the number " +
-            "seven bus. {party} spent the week on the bus. What it brought back is an argument about " +
-            "the basics, and a city that is {mood} about how long the basics take.",
-
-            "{party} has been making the same case since the spring, and this week it made it again " +
-            "to a half-full committee room. Nobody in the chamber disputes the direction. The dispute " +
-            "is about the pace, and the city waiting on it is {mood}.",
-
-            "The plan {party} published this week is short, which is unusual, and specific, which is " +
-            "more unusual still. It commits the council to a date. Whether the date survives contact " +
-            "with the budget is next year's story; a city that is {mood} will remember either way."
-        };
-
-        /// <summary>District-level headlines. <c>{district}</c> is the player's own district name.</summary>
-        public static readonly string[] DistrictHeadlines =
-        {
-            "{district} gets its meeting, and a date for the next one",
-            "The bus route through {district} is the argument again",
-            "{district} waited a year for a decision and got a review",
-            "Council defers the {district} scheme to the spring",
-            "What {district} asked for, and what the budget line says",
-            "{district} takes its complaint to the committee in person",
-            "The long complaint from {district} reaches the chamber"
-        };
-
-        public static readonly string[] DistrictBodies =
-        {
-            "The scheme for {district} went back to committee this week, a year after it first " +
-            "arrived there. The council has a date for the next meeting. The neighbourhood has the " +
-            "same pavement it had last spring, and a growing sense that the two facts are related.",
-
-            "Walk {district} on a weekday morning and the argument makes itself: the crossing, the " +
-            "bins, the bus that comes when it feels like it. None of it is complicated. That is " +
-            "precisely what makes the delay so hard to explain from a committee room.",
-
-            "{district} is not the loudest part of the city, which may be why it has waited longest. " +
-            "Its case went to the chamber this week in person rather than on paper, and the patience " +
-            "it was made with is thinner this year than last.",
-
-            "The council put a line in the budget for {district} and then put the scheme behind a " +
-            "review. Both things are on the record. Which one arrives first is the whole question, " +
-            "and the neighbourhood has been here before.",
-
-            "A committee room off the market square, a folder of photographs, and the case for " +
-            "{district} made in the time the chair allowed. It was heard politely. Being heard " +
-            "politely is what the neighbourhood has had for a year."
-        };
-
-        /// <summary>
-        /// The last resort, for when a substituted line cannot fit its cap - a district name long
-        /// enough to push every <c>{district}</c> template past
+        /// The last resort, for when a substituted line cannot fit its cap - a party name long enough
+        /// to push every <c>{party}</c> template past
         /// <c>FlavorCacheMigration.HeadlineMaxLength</c>. Deliberately placeholder-free: a clean
         /// generic headline beats a specific one cut mid-word, which is the same call
         /// <c>FlavorCacheMigration</c> makes when it prunes an over-long cached article rather than

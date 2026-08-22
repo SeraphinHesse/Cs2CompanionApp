@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { bindValue, useValue } from "cs2/api";
+import { Scrollable } from "cs2/ui";
 
 import { buildHemicycle } from "./hemicycle";
 import styles from "./SeatsPanel.module.scss";
@@ -22,6 +23,18 @@ import styles from "./SeatsPanel.module.scss";
  *
  * Gameface has no CSS grid. Every layout in this file is flex, plus absolute positioning for the
  * seat dots.
+ *
+ * The panel's height is not its own to decide. Alone of the four it had no ceiling and no scroll
+ * region, so it simply drew whatever the election returned: at nine parties and a full unseated
+ * legend it wants ~539rem, and with the settings drawer open the column has ~412rem to give it. The
+ * ~127rem that did not fit was the mayor line and the unseated legend, and with nothing scrolling
+ * it was not merely below the fold but unreachable.
+ *
+ * Not the chamber, though. `buildHemicycle` lays the seats into a fixed-width box whose height is
+ * ~156rem at any seat count, so a large council is not what overflows this panel — the party rows
+ * and the wrapping legend are. Everything below the header is therefore inside one `Scrollable`,
+ * and the ceiling comes from the shell's column budget (see `.panelSlot` in Shell.module.scss)
+ * rather than from a figure written here.
  */
 
 // -- empty / loading values (contract §6 — copied literally) -------------------------------------
@@ -315,152 +328,161 @@ export const SeatsPanel = () => {
         </span>
       </div>
 
-      <div
-        className={styles.chart}
-        style={{ width: layout.width + "rem", height: layout.height + "rem" }}
-      >
-        {dots.map(function (dot) {
-          return (
-            <div
-              key={dot.key}
-              className={styles.seat}
-              style={{
-                left: dot.left + "rem",
-                top: dot.top + "rem",
-                width: layout.dot + "rem",
-                height: layout.dot + "rem",
-                borderRadius: layout.dot + "rem",
-                backgroundColor: dot.color,
-              }}
-            />
-          );
-        })}
-      </div>
-
       {/*
-        One bar across every seat, government side first, with a tick on the majority line. This is
-        the "can they pass anything" read. Widths come straight from the published seatShare; the
-        panel does not add seats up.
+        Everything except the header scrolls. Nothing is pinned below the scroll region on purpose:
+        an element outside it at the panel's bottom is the one thing a column budget cannot rescue,
+        because it does not scroll up into view when the panel is squeezed.
       */}
-      <div className={styles.bar}>
-        {blocs.seated.map(function (row) {
-          return (
-            <div
-              key={row.partyId}
-              className={row.inGovernment ? styles.barSegment : styles.barSegmentOpposition}
-              style={{ width: clamp01(row.seatShare) * 100 + "%", backgroundColor: row.color }}
-            />
-          );
-        })}
-        <div className={styles.barTick} />
-      </div>
+      <Scrollable vertical className={styles.scroll}>
+        <div className={styles.body}>
+          <div
+            className={styles.chart}
+            style={{ width: layout.width + "rem", height: layout.height + "rem" }}
+          >
+            {dots.map(function (dot) {
+              return (
+                <div
+                  key={dot.key}
+                  className={styles.seat}
+                  style={{
+                    left: dot.left + "rem",
+                    top: dot.top + "rem",
+                    width: layout.dot + "rem",
+                    height: layout.dot + "rem",
+                    borderRadius: layout.dot + "rem",
+                    backgroundColor: dot.color,
+                  }}
+                />
+              );
+            })}
+          </div>
 
-      <div className={styles.barCaption}>
-        <span className={styles.barCaptionLeft}>
-          {government
-            ? governmentLabel(government.status) +
-              (total > 0 ? " · " + government.seats + " of " + total : "")
-            : "No government formed"}
-        </span>
-        {government ? (
-          <span className={government.hasMajority ? styles.majorityYes : styles.majorityNo}>
-            {government.hasMajority ? "Majority" : "No majority"}
-          </span>
-        ) : null}
-      </div>
+          {/*
+            One bar across every seat, government side first, with a tick on the majority line. This
+            is the "can they pass anything" read. Widths come straight from the published seatShare;
+            the panel does not add seats up.
+          */}
+          <div className={styles.bar}>
+            {blocs.seated.map(function (row) {
+              return (
+                <div
+                  key={row.partyId}
+                  className={row.inGovernment ? styles.barSegment : styles.barSegmentOpposition}
+                  style={{ width: clamp01(row.seatShare) * 100 + "%", backgroundColor: row.color }}
+                />
+              );
+            })}
+            <div className={styles.barTick} />
+          </div>
 
-      <div className={styles.blocs}>
-        <div className={styles.bloc}>
-          <div className={styles.blocHead}>
-            {/* The status qualifier is carried once, in the caption above — not repeated here. */}
-            <span className={styles.blocLabel}>Government</span>
-            <span className={styles.blocMeta}>
-              {government ? pct(government.seatShare) : "—"}
+          <div className={styles.barCaption}>
+            <span className={styles.barCaptionLeft}>
+              {government
+                ? governmentLabel(government.status) +
+                  (total > 0 ? " · " + government.seats + " of " + total : "")
+                : "No government formed"}
             </span>
-          </div>
-          <div className={styles.chips}>
-            {blocs.government.length === 0 ? (
-              <span className={styles.chipEmpty}>None</span>
-            ) : (
-              <>
-                <ChipHeader />
-                {blocs.government.map(function (row) {
-                  return <PartyChip key={row.partyId} row={row} />;
-                })}
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className={styles.blocDivider} />
-
-        <div className={styles.bloc}>
-          <div className={styles.blocHead}>
-            <span className={styles.blocLabel}>Opposition</span>
-            <span className={styles.blocMeta}>{blocs.opposition.length + " parties"}</span>
-          </div>
-          <div className={styles.chips}>
-            {blocs.opposition.length === 0 ? (
-              <span className={styles.chipEmpty}>None</span>
-            ) : (
-              <>
-                <ChipHeader />
-                {blocs.opposition.map(function (row) {
-                  return <PartyChip key={row.partyId} row={row} />;
-                })}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {government ? (
-        <div className={styles.meters}>
-          <div className={styles.metersHead}>
-            <span className={styles.metersTitle}>Government health</span>
-            <span className={styles.metersHint}>{METER_HINT}</span>
-          </div>
-          <Meter label="Stability" value={government.stability} />
-          <Meter label="Cohesion" value={government.cohesion} />
-        </div>
-      ) : null}
-
-      {/*
-        The mayor is gated on the payload, not on the theme: under a pure list system the engine
-        publishes null here and the block disappears on its own, which keeps one code path for both
-        electoral systems as the contract asks.
-      */}
-      {mayor ? (
-        <div className={styles.mayor}>
-          <span className={styles.mayorTag}>Mayor</span>
-          <div className={styles.swatchLarge} style={{ backgroundColor: mayorColor }} />
-          <div className={styles.mayorText}>
-            <span className={styles.mayorName}>{mayor.name || mayorPartyLabel}</span>
-            <span className={styles.mayorMeta}>
-              {mayorPartyLabel} {"·"} since {formatMonth(mayor.sinceDate)} {"·"} won by{" "}
-              {points(mayor.margin)}
-            </span>
-          </div>
-        </div>
-      ) : null}
-
-      {blocs.unseated.length > 0 ? (
-        <div className={styles.footer}>
-          <span className={styles.footerLabel}>No seats</span>
-          {blocs.unseated.map(function (row) {
-            return (
-              <span key={row.partyId} className={styles.footerItem}>
-                <span className={styles.footerSwatch} style={{ backgroundColor: row.color }} />
-                {row.label} {pct(row.voteShare)} of the vote
-                {row.passedThreshold ? "" : "*"}
+            {government ? (
+              <span className={government.hasMajority ? styles.majorityYes : styles.majorityNo}>
+                {government.hasMajority ? "Majority" : "No majority"}
               </span>
-            );
-          })}
-          {blocs.unseated.some(function (row) { return !row.passedThreshold; }) ? (
-            <span className={styles.footerNote}>* below the threshold</span>
+            ) : null}
+          </div>
+
+          <div className={styles.blocs}>
+            <div className={styles.bloc}>
+              <div className={styles.blocHead}>
+                {/* The status qualifier is carried once, in the caption above — not repeated here. */}
+                <span className={styles.blocLabel}>Government</span>
+                <span className={styles.blocMeta}>
+                  {government ? pct(government.seatShare) : "—"}
+                </span>
+              </div>
+              <div className={styles.chips}>
+                {blocs.government.length === 0 ? (
+                  <span className={styles.chipEmpty}>None</span>
+                ) : (
+                  <>
+                    <ChipHeader />
+                    {blocs.government.map(function (row) {
+                      return <PartyChip key={row.partyId} row={row} />;
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.blocDivider} />
+
+            <div className={styles.bloc}>
+              <div className={styles.blocHead}>
+                <span className={styles.blocLabel}>Opposition</span>
+                <span className={styles.blocMeta}>{blocs.opposition.length + " parties"}</span>
+              </div>
+              <div className={styles.chips}>
+                {blocs.opposition.length === 0 ? (
+                  <span className={styles.chipEmpty}>None</span>
+                ) : (
+                  <>
+                    <ChipHeader />
+                    {blocs.opposition.map(function (row) {
+                      return <PartyChip key={row.partyId} row={row} />;
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {government ? (
+            <div className={styles.meters}>
+              <div className={styles.metersHead}>
+                <span className={styles.metersTitle}>Government health</span>
+                <span className={styles.metersHint}>{METER_HINT}</span>
+              </div>
+              <Meter label="Stability" value={government.stability} />
+              <Meter label="Cohesion" value={government.cohesion} />
+            </div>
+          ) : null}
+
+          {/*
+            The mayor is gated on the payload, not on the theme: under a pure list system the engine
+            publishes null here and the block disappears on its own, which keeps one code path for
+            both electoral systems as the contract asks.
+          */}
+          {mayor ? (
+            <div className={styles.mayor}>
+              <span className={styles.mayorTag}>Mayor</span>
+              <div className={styles.swatchLarge} style={{ backgroundColor: mayorColor }} />
+              <div className={styles.mayorText}>
+                <span className={styles.mayorName}>{mayor.name || mayorPartyLabel}</span>
+                <span className={styles.mayorMeta}>
+                  {mayorPartyLabel} {"·"} since {formatMonth(mayor.sinceDate)} {"·"} won by{" "}
+                  {points(mayor.margin)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {blocs.unseated.length > 0 ? (
+            <div className={styles.footer}>
+              <span className={styles.footerLabel}>No seats</span>
+              {blocs.unseated.map(function (row) {
+                return (
+                  <span key={row.partyId} className={styles.footerItem}>
+                    <span className={styles.footerSwatch} style={{ backgroundColor: row.color }} />
+                    {row.label} {pct(row.voteShare)} of the vote
+                    {row.passedThreshold ? "" : "*"}
+                  </span>
+                );
+              })}
+              {blocs.unseated.some(function (row) { return !row.passedThreshold; }) ? (
+                <span className={styles.footerNote}>* below the threshold</span>
+              ) : null}
+            </div>
           ) : null}
         </div>
-      ) : null}
+      </Scrollable>
     </div>
   );
 };

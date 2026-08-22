@@ -109,14 +109,142 @@ namespace Agora.Core.Tests
         }
 
         // ---- the article instruction ------------------------------------------------------------
+        //
+        // GENERAL MONTHLY COVERAGE IS GONE (wave 7). The articles it asked for existed to fill the
+        // news feed, which v10 of docs/contracts/ui_bindings.md retired, so the instruction is now
+        // emitted on an election round alone and every test of it is written against one. The
+        // ordinary round's half of that decision is the test immediately below: it must say there are
+        // no articles rather than say nothing, because a model left to infer writes the coverage it
+        // has always written.
 
         [Fact]
-        public void EveryRound_DemandsRefsAndBansAttributionToNobody()
+        public void OrdinaryRound_AsksForNoArticlesAndSaysSoOutright()
+        {
+            string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
+
+            Assert.Contains("- no articles this round.", prompt);
+
+            // The instructions that only make sense to a round writing articles are gone with the
+            // round. The refs rule is deliberately NOT among them — see the test below.
+            Assert.DoesNotContain("articles from local outlets", prompt);
+            Assert.DoesNotContain("Vary the outlets and the tones", prompt);
+            Assert.DoesNotContain("Headlines are at most", prompt);
+        }
+
+        [Theory]
+        [InlineData(FlavorWakeReason.Yearly)]
+        [InlineData(FlavorWakeReason.Manual)]
+        [InlineData(FlavorWakeReason.StoryDraft)]
+        [InlineData(FlavorWakeReason.Election)]
+        public void EveryRound_SaysWhatARefselessArticleCostsTheWholeRound(FlavorWakeReason reason)
+        {
+            // THE HALF OF THE EMPTIED-ROUND HAZARD A PROHIBITION ALONE OPENS. A round that asks for no
+            // articles still ships the embedded schema, which permits an articles array with refs
+            // optional — so "write none" on its own leaves the model a legal shape to fill and no
+            // statement of the price. One refless article is ArticlesReceived 1 against
+            // Document.Articles.Count 0, which is ArticlesAllDiscarded: ClaudeCliProvider burns every
+            // retry on it and FlavorCache refuses to load the file. Most months are not election
+            // months, so a rule living on the election branch alone would move "the flavor keeps
+            // reporting stale" from a rare month into the common one.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = reason;
+
+            string prompt = FlavorPromptBuilder.Build(request);
+
+            // The requirement, in the wording both branches emit.
+            Assert.Contains("Every article must include refs", prompt);
+            Assert.Contains("name at least one party or district in the prose by the id given in the " +
+                            "lists above, and put that same id in refs", prompt);
+            Assert.Contains("an article without refs is dropped", prompt);
+
+            // The round-level consequence, which is the part a per-article drop understates.
+            Assert.Contains("If that leaves no articles at all, the whole response is rejected, the " +
+                            "previous round's prose is kept and the round is asked for again.", prompt);
+
+            // And the sentence that stops the schema being read as the governing surface, since the
+            // schema is what makes a stray article plausible in the first place.
+            Assert.Contains("The schema below lists refs among the optional properties", prompt);
+            Assert.Contains("the drop runs after schema validation", prompt);
+        }
+
+        [Fact]
+        public void OrdinaryRound_TiesTheRefsRuleToTheArticleItToldTheModelNotToWrite()
+        {
+            // The join between the two: the rule has to arrive as the price of the thing just
+            // prohibited, not as a free-floating paragraph a model can read as belonging to a round
+            // it was not asked for. Asserted in order, because a prompt that stated the price before
+            // the prohibition would satisfy the Contains pair above and read as two unrelated
+            // instructions.
+            string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
+
+            int prohibition = prompt.IndexOf("- no articles this round.", System.StringComparison.Ordinal);
+            int price = prompt.IndexOf("If you write one regardless", System.StringComparison.Ordinal);
+            int rule = prompt.IndexOf("Every article must include refs", System.StringComparison.Ordinal);
+
+            Assert.True(prohibition >= 0, "the round must say it wants no articles");
+            Assert.True(price > prohibition, "the price must follow the prohibition it is the price of");
+            Assert.True(rule > price, "the rule itself must follow the sentence introducing it");
+        }
+
+        [Fact]
+        public void ElectionRound_AsksForExactlyTheCountItsPiecesNeed()
+        {
+            // Derived, not carried over. The old seven and eight were the ordinary month's four plus
+            // the dedicated pieces; with general coverage gone the number is what the pieces alone
+            // need, and the prompt reads it from the same constant the caller sets.
+            foreach (RegionTheme theme in new[] { RegionTheme.Eu, RegionTheme.Na })
+            {
+                var request = Request(districts: 6, districtIdLength: 12);
+                request.Reason = FlavorWakeReason.Election;
+                request.Theme = theme;
+
+                // Deliberately disagreeing with the occasion: the count is a property of the round,
+                // so a caller that sets this wrongly must not be able to shorten the coverage.
+                request.ArticleCount = 11;
+
+                string prompt = FlavorPromptBuilder.Build(request);
+
+                Assert.Contains("- " + FlavorRequest.ElectionArticleCount(theme) +
+                                " articles from local outlets covering the election just decided.",
+                                prompt);
+                Assert.DoesNotContain("- no articles this round", prompt);
+            }
+        }
+
+        [Fact]
+        public void TheElectionCountIsTheNumberOfPiecesTheBlockLists()
+        {
+            // The two halves of the same decision, pinned against each other: the count in the bullet
+            // and the lettered pieces underneath it. A piece added without moving the constant, or a
+            // constant moved without a piece, fails here rather than reaching a model that is asked
+            // for four articles and shown three jobs.
+            foreach (RegionTheme theme in new[] { RegionTheme.Eu, RegionTheme.Na })
+            {
+                var request = Request(districts: 6, districtIdLength: 12);
+                request.Reason = FlavorWakeReason.Election;
+                request.Theme = theme;
+
+                string block = ElectionBlock(FlavorPromptBuilder.Build(request));
+
+                int listed = 0;
+                foreach (string letter in new[] { "  a) ", "  b) ", "  c) ", "  d) " })
+                {
+                    if (block.Contains(letter)) listed++;
+                }
+
+                Assert.Equal(FlavorRequest.ElectionArticleCount(theme), listed);
+            }
+        }
+
+        [Fact]
+        public void ElectionRound_DemandsRefsAndBansAttributionToNobody()
         {
             // The two failure modes the instruction was rewritten for: an article that references no
             // id at all, and one that sources every claim to "residents". Both produced prose with no
             // identifiable subject, and both are only prevented by wording actually reaching the model.
-            string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = FlavorWakeReason.Election;
+            string prompt = FlavorPromptBuilder.Build(request);
 
             // The contract, and only the contract: every article carries a catalog id in refs, and
             // nothing is sourced to a subject the article did not name. The exact wording around them
@@ -154,11 +282,14 @@ namespace Agora.Core.Tests
         }
 
         [Fact]
-        public void EveryRound_StillPrintsBothLengthCapsFromTheMigrationConstants()
+        public void ElectionRound_StillPrintsBothLengthCapsFromTheMigrationConstants()
         {
             // The drift gate's arrangement: the prompt quotes FlavorCacheMigration rather than a
             // literal, so raising a cap in one place cannot leave the model writing to the old one.
-            string prompt = FlavorPromptBuilder.Build(Request(districts: 6, districtIdLength: 12));
+            // On the election round, because that is the only round that asks for articles at all.
+            var request = Request(districts: 6, districtIdLength: 12);
+            request.Reason = FlavorWakeReason.Election;
+            string prompt = FlavorPromptBuilder.Build(request);
 
             Assert.Contains(
                 "Headlines are at most " + FlavorCacheMigration.HeadlineMaxLength +
@@ -181,39 +312,60 @@ namespace Agora.Core.Tests
         }
 
         [Fact]
-        public void ElectionRound_IsTheOnlyThingThatChangesInTheProsePrompt()
+        public void ElectionRound_ChangesNothingButTheArticleSection()
         {
-            // The block is emitted inside WRITE rather than as a section of its own, so an election
-            // prompt must differ from a yearly one only by the block and the raised article count.
-            // Anything else moving means the ordering of the prompt changed for every round.
+            // The whole article instruction is emitted inside WRITE, in one run, between the roster
+            // bullets and eventProse - so an election prompt and an ordinary one may differ there and
+            // nowhere else. Anything else moving means the ordering of the prompt changed for every
+            // round, which is a change to every generation rather than to the election.
             var yearly = Request(districts: 6, districtIdLength: 12);
             yearly.Events.Add(Event());
 
             var election = Request(districts: 6, districtIdLength: 12);
             election.Events.Add(Event());
             election.Reason = FlavorWakeReason.Election;
-            election.ArticleCount = yearly.ArticleCount;
 
             string a = FlavorPromptBuilder.Build(yearly);
             string b = FlavorPromptBuilder.Build(election);
 
             // Occasion is set from Reason, so that one line legitimately differs; splice the yearly
-            // wording back in and the remainder must be the yearly prompt plus the block.
+            // wording back in and the remainder must differ only in the article section.
             b = b.Replace("Occasion: an election has just been decided",
                           "Occasion: the annual round-up");
 
-            int inserted = b.IndexOf("  The election just decided", System.StringComparison.Ordinal);
-            Assert.True(inserted > 0, "the block must be emitted");
+            Assert.Contains("  The election just decided", b);
+            Assert.Equal(WithoutArticleSection(a), WithoutArticleSection(b));
+        }
 
-            // The block runs to the line after it, which is eventProse — hence the event on both
-            // fixtures above. That is the arrangement of a real election round anyway: the tick that
-            // woke the flavor provider has just written the result event, so the block is never the
-            // last thing in WRITE in practice, and testing it as though it were would test a shape
-            // the mod does not produce.
-            int end = b.IndexOf("\n- eventProse", System.StringComparison.Ordinal);
-            Assert.True(end > inserted, "the fixtures carry an event, so eventProse follows the block");
+        /// <summary>
+        /// The prompt with its article section cut out: everything from the section's own bullet to
+        /// the next top-level WRITE bullet.
+        /// </summary>
+        /// <remarks>
+        /// Both rounds have such a section - the ordinary one's is the single "no articles" bullet -
+        /// so this cuts one from each rather than one from the longer of the two, which is what makes
+        /// the remainder a comparison of the parts neither round chose. The next bullet is eventProse
+        /// on the fixtures that carry an event, which is the arrangement of a real election round: the
+        /// tick that woke the flavor provider has just written the result event, so the section is
+        /// never the last thing in WRITE in practice.
+        /// </remarks>
+        private static string WithoutArticleSection(string prompt)
+        {
+            // The ordinary round's bullet is found at its own newline; the election round's count is
+            // drawn, so its bullet is found mid-line and backed up to the same place.
+            int start = prompt.IndexOf("\n- no articles this round", System.StringComparison.Ordinal);
+            if (start < 0)
+            {
+                int inside = prompt.IndexOf(" articles from local outlets", System.StringComparison.Ordinal);
+                Assert.True(inside >= 0, "every round emits an article bullet of one kind or the other");
+                start = prompt.LastIndexOf("\n- ", inside, System.StringComparison.Ordinal);
+            }
+            Assert.True(start >= 0);
 
-            Assert.Equal(a, b.Remove(inserted, end + 1 - inserted));
+            int end = prompt.IndexOf("\n- ", start + 1, System.StringComparison.Ordinal);
+            Assert.True(end > start, "the article section is followed by a top-level WRITE bullet");
+
+            return prompt.Remove(start, end - start);
         }
 
         // The block below is pinned whole, per theme, rather than by a handful of Contains. Two
@@ -557,17 +709,16 @@ namespace Agora.Core.Tests
             // carries words rather than figures precisely so that there is nothing here to quote. The
             // two caps are the only digits the section is entitled to.
             var request = Request(districts: 6, districtIdLength: 12);
-            request.ArticleCount = 5;
             request.Stories.Add(RunningStory());
             request.Stories.Add(ResolvedStory());
 
             string write = StripRuleNumbers(WriteSection(FlavorPromptBuilder.Build(request)));
 
+            // A story round is not an election round, so it asks for no articles and quotes neither
+            // article cap: the two story caps are the only lengths in the section, and the absence of
+            // the other pair is what says the ordinary month files nothing.
             var expected = new List<string>
             {
-                "5",                                                    // the article count asked for
-                FlavorCacheMigration.HeadlineMaxLength.ToString(),
-                FlavorCacheMigration.BodyMaxLength.ToString(),
                 FlavorCacheMigration.StoryHeadlineMaxLength.ToString(),
                 FlavorCacheMigration.StoryArticleMaxLength.ToString(),
                 "2031", "05", "01",                                     // the generatedAtSimDate echo
@@ -1089,19 +1240,24 @@ namespace Agora.Core.Tests
             var request = Request(districts: 6, districtIdLength: 12);
             request.Reason = reason;
             request.Theme = theme;
-            request.ArticleCount = 5;
 
             string prompt = FlavorPromptBuilder.Build(request);
             string write = StripRuleNumbers(WriteSection(prompt));
 
-            var expected = new List<string>
+            // An ordinary round is entitled to two fewer figures than an election one, and the pair
+            // it loses is the article caps: they are quoted inside the article instruction, which it
+            // does not emit. The count itself is the round's own, derived from the pieces.
+            var expected = new List<string>();
+            if (reason == FlavorWakeReason.Election)
             {
-                "5",                                                    // the article count asked for
-                FlavorCacheMigration.HeadlineMaxLength.ToString(),
-                FlavorCacheMigration.BodyMaxLength.ToString(),
-                "2031", "05", "01",                                     // the generatedAtSimDate echo
-                FlavorSchema.SupportedSchemaVersion.ToString()
-            };
+                expected.Add(FlavorRequest.ElectionArticleCount(theme).ToString());
+                expected.Add(FlavorCacheMigration.HeadlineMaxLength.ToString());
+                expected.Add(FlavorCacheMigration.BodyMaxLength.ToString());
+            }
+            expected.Add("2031");                                       // the generatedAtSimDate echo
+            expected.Add("05");
+            expected.Add("01");
+            expected.Add(FlavorSchema.SupportedSchemaVersion.ToString());
 
             Assert.Equal(expected, DigitRuns(write));
         }

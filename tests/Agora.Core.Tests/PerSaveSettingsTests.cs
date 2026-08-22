@@ -49,8 +49,7 @@ namespace Agora.Core.Tests
                     Enabled = false,
                     EffectsEnabled = false,
                     ThemeLocked = true,
-                    PauseOnMajorNews = false,
-                    ShowAllReports = true
+                    PauseOnMajorNews = false
                 };
 
                 Assert.True(store.SaveSettings(Save, written));
@@ -66,7 +65,6 @@ namespace Agora.Core.Tests
                 Assert.False(read.EffectsEnabled);
                 Assert.True(read.ThemeLocked);
                 Assert.False(read.PauseOnMajorNews);
-                Assert.True(read.ShowAllReports);
                 Assert.Equal(SidecarSchema.CurrentSettingsVersion, read.SchemaVersion);
             }
             finally

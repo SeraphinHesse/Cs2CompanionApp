@@ -2,7 +2,16 @@
 
 **Current milestone:** M6 · The Spectacle (in progress) — with a **fix-plan pass** (`fixplan.md`)
 running ahead of it against defects found in the first real play session.
-**Updated:** 2026-08-17
+**Updated:** 2026-08-19
+
+> ⚠️ **DO NOT LAUNCH THE GAME YET — the deployed mod is mid-wave and ahead of every save on disk.**
+> The player's live install (`…\Mods\Agora.Mod`) holds a build deployed **2026-08-19 17:08**, from the
+> middle of wave 7, carrying **settings v6 and state v8**. Every save on disk predates it. **No save
+> has been touched** — the newest sidecar is older than the deploy — but *loading one would migrate it
+> forward*, past what the released build can read, and a migration is not reversible. **Owner decision:
+> leave the install as it is and do not launch until wave 7 ships and deploys a coherent build.** This
+> is also why `dotnet build Agora.sln` and `npm run build` are not casual commands in this repo: both
+> deploy, so building to check something compiles is a deploy nobody asked for.
 
 > **The fix-plan pass is code complete across all seven workstreams.** W0–W6 and the backlog are
 > merged and independently reviewed; W5's popup lane, the largest remaining piece, was planned in
@@ -18,10 +27,13 @@ running ahead of it against defects found in the first real play session.
 
 ## Where the build actually is
 
-The mod **deploys, loads in-game, ticks the heartbeat, and renders three dashboard panels**
-(`council`, `districts`, `news` — see `TAB_ORDER` in `ui/src/shell/state.ts:21`). The engine,
-elections, government, flavor and effects layers are all implemented in `Agora.Core` /
-`Agora.Mod`.
+The mod **deploys, loads in-game, ticks the heartbeat, and renders four dashboard panels**
+(`council`, `parties`, `stories`, `districts` — see `TAB_ORDER` in `ui/src/shell/state.ts:39`).
+The news tab is **struck** as of wave 7's spine; the alert lane it shared is not, because that queue
+also carries elections, coalition changes and party founding — see wave 7 below. The engine,
+elections, government, flavor, effects and story layers are all implemented in `Agora.Core` /
+`Agora.Mod`. **Every claim about what the story layer looks like on screen is a review's reasoning
+or a gate row** — see the manual gate ledger.
 
 | Milestone | Code | Gate |
 |---|---|---|
@@ -34,8 +46,8 @@ elections, government, flavor and effects layers are all implemented in `Agora.C
 | **M5 · The World** | ✅ effect palette + dispatcher + resolver + schedule + validation; `Agora.Mod/Effects` ledger and application system; `data/timeline_eu.json`, `timeline_na.json`, `timeline_global.json` | ⚠️ 1990→2008 run not re-walked |
 | **M6 · The Spectacle** | 🟡 partial — crosstab explorer, mandate tracker, news archive present; **political map overlay and election-night broadcast mode not built** | ⬜ |
 
-**Test suite.** `tests/Agora.Core.Tests` is at **1319 tests**, up from 1033 at the
-start of this pass, spanning determinism, blocs, affinity, turnout,
+**Test suite.** `tests/Agora.Core.Tests` is at **2182 tests** on `event-system/wave-7` (1319 at the
+end of the fix-plan pass, 1033 at its start), spanning determinism, blocs, affinity, turnout,
 polling, indices, both electoral systems, coalitions, mandates, factions, party lifecycle,
 the fringe ceiling, the
 effect palette and application, the per-save reset seam, the scheduler, sim-clock math, start-year
@@ -80,7 +92,63 @@ lanes. `/nextwave` opens a wave, `/commitpushpr` closes it.
 | **4** | Tick wiring, effects and persistence — the cycle runs, effects dispatch, power moves, and stories move votes. `engine_tuning` v8. | ✅ **code complete**, eight lanes reviewed and merged, [PR #7](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/7) open into `EventSystemRefresh` · **fifteen manual gates outstanding, none walked** · 1978 → **2109 tests** |
 | **5** | Prose — both writers now produce a headline and an article for every story. The canned pool transcribes from the civic catalog and is the everyday voice; Claude is woken on the story-draft month and its prose is **added beside** the pool's, never over it. `politics_flavor` v3, `engine_tuning` v9, **settings v5 and state v7** — the first real sidecar migration since wave 1. | ✅ **code complete**, four lanes reviewed and merged, [PR #8](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/8) open into `EventSystemRefresh` · **seven manual gates outstanding, none walked** · 2109 → **2178 tests** | 
 | **6** | UI — the story system becomes visible. A fifth dashboard tab, a story card that interrupts once per story, a political-power counter, and the five commands wired at last. `ui_bindings.md` v9; **no sidecar schema moved at all.** | ✅ **code complete**, four lanes reviewed and merged, [PR #9](https://github.com/SeraphinHesse/Cs2CompanionApp/pull/9) open into `EventSystemRefresh` · **nineteen manual gates outstanding, none walked** · 2178 → **2178 tests, unchanged and correct** — see below |
-| **7** | retirement · balance · gates | not started |
+| **7** | Retirement, balance and gates — the news feed retires, the two published-but-dead settings get the presets behind them, the column budget is repaired, and the documentation the rework owes lands. `ui_bindings.md` v10, settings v6, state v8, all in the spine. | 🟡 **in progress** — spine landed (`f1259b8`), seven lanes open, ownership in `docs/plans/0004-wave-7-lanes.md` · base measured at **2182 tests, 0 failed** after the spine · **no new manual gates from 7d**; the wave's own rows land with its lanes |
+
+### The manual gate ledger — nothing has been walked, and that is the real state of this rework
+
+This is a section rather than a footnote because it is the single largest outstanding claim in the
+project. **The code is reviewed and the game has never been played with it.** The whole story system
+— the cycle, the effects, the power economy, the fifth tab, the card that holds the clock — has been
+built, reviewed adversarially and typechecked. **No row below has been walked. Not one.**
+
+| Wave | Rows | Where they are written out | Walked |
+|---|---|---|---|
+| **0** | 5 | `docs/status.md` § "Wave 0's manual gates", below | none |
+| **1** | 16 | `docs/plans/0004-wave-1-handoff.md` | none |
+| **4** | 15 (rows 0–14) | in full below, § "Wave 4's manual gates" | none |
+| **5** | 7 | in full below, § "Wave 5's manual gates" | none |
+| **6** | 19 | `docs/plans/0004-wave-6-lanes.md` § "Manual gate rows this wave opens" | none |
+| | **62** | | **0** |
+
+**The published figure is fifty-one and the rows add to sixty-two — both are recorded here rather than
+one being quietly picked.** `docs/plans/0004-wave-6-handoff.md` states "total outstanding: fifty-one
+rows" in the same paragraph that names 5 + 16 + 15 + 7 = 43 from earlier waves, which leaves 8 for a
+wave whose own lane document enumerates 19; `docs/plans/0004-wave-7-lanes.md` then carries the 51
+forward twice, including into the orchestrator's walkthrough deliverable. **Sixty-two is the count of
+rows that actually exist**, and the reconciliation belongs to whoever writes that walkthrough — it is
+the document that has to name every row, so it is the one place the discrepancy cannot survive. A
+walkthrough written to a target of 51 would silently drop eleven gates, which is why this is here and
+not in a footnote.
+
+**Why so many, and why none is a missing test.** `AgoraRuntime`, `AgoraRuntime.StoryCommands.cs`,
+everything under `src/Agora.Mod/UiBindings/` and every `GameSystemBase` sensor link into **no test at
+all**, by design: `tests/Agora.Core.Tests` must run with no copy of the game installed, and that
+constraint is the test that the Core/Mod split is real. A gate row is what evidence looks like on the
+far side of that boundary. **No coverage has been manufactured for any of them**, and faking the
+runtime to produce a number would be a review-blocking defect rather than a fix.
+
+**The four worth walking first**, because each one decides something rather than confirming it:
+wave 0's double-tick (the whole power economy rests on the month running once); wave 1's
+`AGORA-STATCOLLECTION` census (it decides whether five metrics mean "this month" or "since founding",
+and thresholds were authored without the answer); wave 4's rewound load (no test by construction, and
+three lanes were misdiagnosed before it was found); and wave 6's text entry under Gameface (six
+textareas per story, and the highest-risk unverified area in the project).
+
+**Wave 7's own rows accrue as its lanes report.** Two so far, both from lane 7e's column budget, and
+both recorded here because that lane does not own this file. Their line references are against 7e's
+branch, not the wave-7 spine:
+
+- **`max-height: 100vh` on `.shell` clamps the column with Settings open.** It is the **first
+  viewport unit anywhere in this codebase**, and if Gameface drops the declaration the failure is
+  total and silent: the column never shrinks, every panel's `max-height: 100%` resolves against an
+  unbounded slot, and the whole change does nothing while passing `npx tsc --noEmit`, `npm run check`
+  and every review. **Case:** Council or Stories, Settings **open**, at any interface scale — the
+  bottom of the panel must be on screen and reachable.
+- **`GameTopRight` has no top offset, so the column starts at y=0.** Acknowledged in a comment at
+  `Shell.module.scss:138-140` and equally unverifiable headless. If the hook point does carry an
+  offset, the budget is loose by exactly that amount and the drawer-open case still clips — so this
+  row is not a duplicate of the one above, it is the reason the one above can pass and still leave a
+  clipped panel.
 
 ### Wave 3 — the engine now has something to read, and still nothing runs it
 

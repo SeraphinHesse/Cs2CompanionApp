@@ -4,13 +4,12 @@ import { Button, Portal, Scrollable } from "cs2/ui";
 
 import { ArticleModalBoundary } from "./ArticleModalBoundary";
 import {
-  ackAlert, alerts$, EMPTY_NEWS_ALERT, enabled$, isFirstRun$, isAccepted, roster$, settings$,
-  writeMessage,
+  ackAlert, alerts$, article$, EMPTY_NEWS_ALERT, EMPTY_NEWS_ARTICLE, enabled$, isFirstRun$,
+  isAccepted, roster$, settings$, writeMessage,
 } from "./bindings";
 import { useSimulationHeldPaused } from "./pause";
-import { article$, EMPTY_NEWS_ARTICLE } from "../panels/News/bindings";
-import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "../panels/News/format";
-import { NEUTRAL_COLOR } from "../panels/News/lookup";
+import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "./format";
+import { NEUTRAL_COLOR } from "./lookup";
 import styles from "./ArticleModal.module.scss";
 
 /**
@@ -38,13 +37,13 @@ import styles from "./ArticleModal.module.scss";
  * are the same words a newsroom would put on the page. The desk line exists only here — the card is
  * the only place that prints a masthead.
  *
- * `KIND_LABEL` below does overlap `NewsFeed`'s map of the same name, and that is deliberate, not an
- * oversight to tidy up: this one is keyed by `NewsAlertKindName`, `NewsFeed`'s by `NewsKindName`,
- * which additionally carries `Mandate`. One shared map would either loosen this map's exhaustiveness
- * over its own narrower union or leave a dead `Mandate` entry sitting in it. Both maps fall back to
- * `UNKNOWN_KIND`, so drift between them costs a word on a badge, never a raw enum member. Contrast
- * `NEUTRAL_COLOR`, which is imported from `lookup.ts` precisely because a second copy would show up
- * as two different greys for one story.
+ * `KIND_LABEL` below used to be one of two maps of that name — `NewsFeed` held the other, keyed by
+ * `NewsKindName`. That file is gone with the News panel in wave 7, so this is now the only one, and
+ * there is nothing left for it to drift against. It stays keyed by `NewsAlertKindName` and keeps its
+ * `UNKNOWN_KIND` fallback, so a kind this build was never taught costs a word on a badge rather than
+ * printing a raw enum member. Contrast `NEUTRAL_COLOR`, which is imported from `lookup.ts` precisely
+ * because a second copy would show up as two different greys for one story — a rule that outlived the
+ * panel and is why `lookup.ts` moved into the shell rather than being deleted with it.
  */
 const DESK_LABEL: { [kind: string]: string } = {
   Article: "City Desk",
@@ -145,8 +144,10 @@ const ArticleModalInner = (): JSX.Element | null => {
   const open = enabled && !isFirstRun && current.id !== "";
 
   // Two orthogonal questions, and this is the second one. Whether the alert qualifies at all was
-  // decided in C# at emit time against `showAllReports`; whether it holds the clock is decided here,
-  // per alert. `major` is the engine's verdict and is never recomputed from `severity` — the
+  // decided in C# at emit time; whether it holds the clock is decided here, per alert. (Until v10
+  // the emit-time gate consulted `showAllReports`; that setting governed the article alert only, and
+  // both retired with the feed.) `major` is the engine's verdict and is never recomputed from
+  // `severity` — the
   // threshold lives in EngineTuning and a copy of it here would be a second definition of "major".
   // Advancing from a major alert to an ordinary one releases the barrier mid-queue, which is right.
   useSimulationHeldPaused(open && current.major && settings.pauseOnMajorNews);

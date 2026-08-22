@@ -45,10 +45,19 @@ namespace Agora.Mod.Llm
     /// <para>
     /// <b>Every article points at something.</b> <see cref="FlavorValidator"/> drops an article whose
     /// three ref fields are all empty, because the prompt tells the model it will - so the pool is
-    /// held to its own rule rather than exempted from it. Each article names a party or a district
-    /// and refs that same id, and a save with neither files no articles at all. That empty round is
-    /// the correct output for a city with no politics yet, not a gap to be filled with prose about
-    /// nobody.
+    /// held to its own rule rather than exempted from it. Every article names a party and refs that
+    /// same id, and a save with no roster files no articles at all. That empty round is the correct
+    /// output for a city with no politics yet, not a gap to be filled with prose about nobody.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>It writes the ballot, not the month.</b> General monthly coverage - the city piece and the
+    /// district piece - was written for the news feed, which v10 of
+    /// <c>docs/contracts/ui_bindings.md</c> retired, so both writers stopped producing it. What is
+    /// left is the election round, which is the one political occasion this provider is handed a
+    /// signal for; see the remarks on <see cref="PlanRound"/> for the three that still raise a card
+    /// and still reach no writer. An ordinary month therefore files party names, faction names, event
+    /// prose and story cards, and no articles - which is a smaller round, not a failed one.
     /// </para>
     /// </summary>
     public sealed class StaticPoolProvider : IFlavorProvider
@@ -386,18 +395,19 @@ namespace Agora.Mod.Llm
         }
 
         /// <summary>
-        /// What one article in a round is about. Every kind but <see cref="District"/> is about a
-        /// party and names it, so every article can carry a ref either way - which is what lets
-        /// <see cref="FlavorValidator"/> drop a refless article outright.
+        /// What one article in a round is about. Every kind is about a party and names it, so every
+        /// article carries a ref - which is what lets <see cref="FlavorValidator"/> drop a refless
+        /// article outright.
         /// </summary>
+        /// <remarks>
+        /// <b>The two general kinds are gone.</b> <c>CityMood</c> and <c>District</c> wrote the city's
+        /// ordinary month, which existed to fill the news feed; the feed was retired in v10 of
+        /// <c>docs/contracts/ui_bindings.md</c>, so that prose reached no reader. What is left is
+        /// coverage of the occasions that still raise a card, and the election is the only one this
+        /// provider is handed a signal for - see the remarks on <see cref="PlanRound"/>.
+        /// </remarks>
         private enum ArticleKind
         {
-            /// <summary>The whole city, through one party's week. <c>{party}</c> and <c>{mood}</c>.</summary>
-            CityMood,
-
-            /// <summary>One district. <c>{district}</c>.</summary>
-            District,
-
             /// <summary>Election slot (a): the result piece.</summary>
             ElectionResult,
 
@@ -425,25 +435,24 @@ namespace Agora.Mod.Llm
             // election round can never be quietly cut short here.
             if (count > FlavorRequest.ElectionArticleCountEu) count = FlavorRequest.ElectionArticleCountEu;
 
-            string mood = request.Snapshot == null
-                ? "hard to read"
-                : FlavorPromptBuilder.HappinessBand(request.Snapshot.Happiness);
+            // The mood no longer picks a template - only the two general kinds carried {mood} - but it
+            // still picks the round's register, which is the one thing about the city an election
+            // piece is allowed to know.
             int moodIndex = request.Snapshot == null
                 ? 2
                 : FlavorPromptBuilder.HappinessBandIndex(request.Snapshot.Happiness);
 
-            List<DistrictSnapshot> districts = SortedDistricts(request.Snapshot);
             List<PartyBrief> parties = SortedParties(request);
 
-            // NOTHING TO POINT AT, SO NOTHING TO FILE. Every article carries a ref, and the only ids
-            // this pool can honestly reference are a party's and a district's. A save with neither -
-            // the first months, before the roster is built - therefore gets no canned articles at
-            // all, on purpose. That is the correct outcome, not a gap: refless articles would be
-            // dropped by FlavorValidator anyway, and inventing an id to satisfy the rule would put a
-            // reference in front of the player that points at nothing.
-            if (parties.Count == 0 && districts.Count == 0) return array;
+            // NOTHING TO POINT AT, SO NOTHING TO FILE. Every article carries a ref, and every kind
+            // left is about a party, so a save with no roster - the first months, and any month whose
+            // roster failed to build - gets no canned articles at all, on purpose. That is the correct
+            // outcome, not a gap: refless articles would be dropped by FlavorValidator anyway, and
+            // inventing an id to satisfy the rule would put a reference in front of the player that
+            // points at nothing.
+            if (parties.Count == 0) return array;
 
-            List<ArticleKind> kinds = PlanRound(request, count, parties.Count > 0, districts.Count > 0);
+            List<ArticleKind> kinds = PlanRound(request, count);
             string datePart = request.Date.ToString();
 
             // A news round in which two outlets run the identical headline reads as a bug, so
@@ -478,64 +487,48 @@ namespace Agora.Mod.Llm
                                            usedOutlets, 0);
                 string tone = StaticPoolContent.Pick(StaticPoolContent.TonesByMood[moodIndex], rng);
 
-                Substitution subject;
-                Substitution second = NoSubstitution;
+                // Every kind is about a party. The id goes in refs and the same party's name goes in
+                // the prose, so the reference is one the reader can check.
+                PartyBrief party = PickParty(rng, parties,
+                                             kind == ArticleKind.ElectionChallenge ? claimPartyId : null);
+                if (kind == ArticleKind.ElectionClaim) claimPartyId = party.PartyId;
+
+                Substitution subject = Substitution.Of("{party}", PartyName(partyNames, party));
+                var refs = new JObject { ["partyId"] = party.PartyId };
+
                 string[] headlines;
                 string[] bodies;
-                JObject refs;
-
-                if (kind == ArticleKind.District)
+                switch (kind)
                 {
-                    DistrictSnapshot district = districts[rng.NextInt(0, districts.Count)];
-                    subject = Substitution.Of("{district}", SafeName(district));
-                    headlines = StaticPoolContent.DistrictHeadlines;
-                    bodies = StaticPoolContent.DistrictBodies;
-                    refs = new JObject { ["districtId"] = district.Id };
-                }
-                else
-                {
-                    // Every other kind is about a party. The id goes in refs and the same party's
-                    // name goes in the prose, so the reference is one the reader can check.
-                    PartyBrief party = PickParty(rng, parties,
-                                                 kind == ArticleKind.ElectionChallenge ? claimPartyId : null);
-                    if (kind == ArticleKind.ElectionClaim) claimPartyId = party.PartyId;
-
-                    subject = Substitution.Of("{party}", PartyName(partyNames, party));
-                    refs = new JObject { ["partyId"] = party.PartyId };
-
-                    switch (kind)
-                    {
-                        case ArticleKind.ElectionResult:
-                            headlines = StaticPoolContent.ElectionResultHeadlines;
-                            bodies = StaticPoolContent.ElectionResultBodies;
-                            break;
-                        case ArticleKind.ElectionClaim:
-                            headlines = StaticPoolContent.ElectionClaimHeadlines;
-                            bodies = StaticPoolContent.ElectionClaimBodies;
-                            break;
-                        case ArticleKind.ElectionChallenge:
-                            headlines = StaticPoolContent.ElectionChallengeHeadlines;
-                            bodies = StaticPoolContent.ElectionChallengeBodies;
-                            break;
-                        case ArticleKind.ElectionCoalition:
-                            headlines = StaticPoolContent.ElectionCoalitionHeadlines;
-                            bodies = StaticPoolContent.ElectionCoalitionBodies;
-                            break;
-                        default:
-                            headlines = StaticPoolContent.CityHeadlines;
-                            bodies = StaticPoolContent.CityBodies;
-                            second = Substitution.Of("{mood}", mood);
-                            break;
-                    }
+                    case ArticleKind.ElectionClaim:
+                        headlines = StaticPoolContent.ElectionClaimHeadlines;
+                        bodies = StaticPoolContent.ElectionClaimBodies;
+                        break;
+                    case ArticleKind.ElectionChallenge:
+                        headlines = StaticPoolContent.ElectionChallengeHeadlines;
+                        bodies = StaticPoolContent.ElectionChallengeBodies;
+                        break;
+                    case ArticleKind.ElectionCoalition:
+                        headlines = StaticPoolContent.ElectionCoalitionHeadlines;
+                        bodies = StaticPoolContent.ElectionCoalitionBodies;
+                        break;
+                    // The result piece, and the only kind PlanRound files first, so it is the default
+                    // rather than a case: a kind added without a branch here comes out as the piece
+                    // that says the count happened, which is the one claim true of every election
+                    // round whatever else it carries.
+                    default:
+                        headlines = StaticPoolContent.ElectionResultHeadlines;
+                        bodies = StaticPoolContent.ElectionResultBodies;
+                        break;
                 }
 
                 array.Add(new JObject
                 {
                     ["id"] = id,
                     ["outlet"] = Cap(outlet, OutletMaxLength),
-                    ["headline"] = Fitting(rng, headlines, subject, second, StaticPoolContent.GenericHeadlines,
+                    ["headline"] = Fitting(rng, headlines, subject, NoSubstitution, StaticPoolContent.GenericHeadlines,
                                            usedHeadlines, FlavorCacheMigration.HeadlineMaxLength),
-                    ["body"] = Fitting(rng, bodies, subject, second, StaticPoolContent.GenericBodies,
+                    ["body"] = Fitting(rng, bodies, subject, NoSubstitution, StaticPoolContent.GenericBodies,
                                        usedBodies, FlavorCacheMigration.BodyMaxLength),
                     ["tone"] = tone,
                     ["refs"] = refs
@@ -550,43 +543,47 @@ namespace Agora.Mod.Llm
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Four combinations of "are there parties" and "are there districts", and all four have to
-        /// work. With both, the round alternates city and district pieces as it always has. With only
-        /// parties, every article is a city piece; with only districts, every article is a district
-        /// piece - because the missing side has no id to put in refs, and the old <c>i % 2 == 1</c>
-        /// alternation would have filed a refless city article on a save with no parties. With
-        /// neither, the caller has already returned an empty round.
+        /// <b>A round files the pieces its occasion calls for and nothing else.</b> An election wake
+        /// files the same set <c>FlavorPromptBuilder.AppendElectionCoverage</c> asks the model for -
+        /// result, claim, challenge, and the coalition outlook under EU rules - and every other round
+        /// files no articles at all. The two general kinds that used to pad a round out to
+        /// <see cref="FlavorRequest.ArticleCount"/> were written for the news feed, which v10 of
+        /// <c>docs/contracts/ui_bindings.md</c> retired, so padding now means writing prose no surface
+        /// renders and spending the de-duplication budget of the pieces that are read.
         /// </para>
         /// <para>
-        /// An election wake leads with the same four pieces <c>FlavorPromptBuilder.AppendElectionCoverage</c>
-        /// asks the model for, and only when there is a party to name in them.
+        /// <b>The count is a ceiling, not a quota.</b> An empty round is the ordinary output of an
+        /// ordinary month and is not a failure - <c>FlavorValidationResult.ArticlesAllDiscarded</c> is
+        /// zero out of some, never zero out of zero, so a document carrying no articles validates,
+        /// caches and loads like any other.
+        /// </para>
+        /// <para>
+        /// The three other things that still raise a card - a coalition forming, a coalition ending,
+        /// a party founded or dissolved - get no piece here, because nothing on the request says any
+        /// of them happened: <see cref="FlavorRequest"/> carries a roster and not the month's
+        /// occasions, and <see cref="FlavorWakeReason"/> has no value for them. Inferring one from the
+        /// roster is not available either; a dissolved party wears its standing word for the rest of
+        /// the save, so a round written off that word would report the same dissolution every month
+        /// for as long as the city stood.
         /// </para>
         /// </remarks>
-        private List<ArticleKind> PlanRound(FlavorRequest request, int count, bool haveParties, bool haveDistricts)
+        private List<ArticleKind> PlanRound(FlavorRequest request, int count)
         {
             var kinds = new List<ArticleKind>(count);
+            if (request.Reason != FlavorWakeReason.Election) return kinds;
 
-            if (request.Reason == FlavorWakeReason.Election && haveParties)
-            {
-                kinds.Add(ArticleKind.ElectionResult);
-                kinds.Add(ArticleKind.ElectionClaim);
-                kinds.Add(ArticleKind.ElectionChallenge);
+            kinds.Add(ArticleKind.ElectionResult);
+            kinds.Add(ArticleKind.ElectionClaim);
+            kinds.Add(ArticleKind.ElectionChallenge);
 
-                // _theme rather than request.Theme, for the same reason BuildParties reads _theme:
-                // a round whose coverage came from one theme and whose party names came from the
-                // other would be a visible split down the middle of one document.
-                if (_theme == RegionTheme.Eu) kinds.Add(ArticleKind.ElectionCoalition);
+            // _theme rather than request.Theme, for the same reason BuildParties reads _theme:
+            // a round whose coverage came from one theme and whose party names came from the
+            // other would be a visible split down the middle of one document.
+            if (_theme == RegionTheme.Eu) kinds.Add(ArticleKind.ElectionCoalition);
 
-                // A round asked for fewer articles than the election set has pieces keeps the first
-                // ones, which is the order the prompt lists them in.
-                if (kinds.Count > count) kinds.RemoveRange(count, kinds.Count - count);
-            }
-
-            for (int i = kinds.Count; i < count; i++)
-            {
-                bool local = haveDistricts && (!haveParties || (i % 2 == 1));
-                kinds.Add(local ? ArticleKind.District : ArticleKind.CityMood);
-            }
+            // A round asked for fewer articles than the election set has pieces keeps the first
+            // ones, which is the order the prompt lists them in.
+            if (kinds.Count > count) kinds.RemoveRange(count, kinds.Count - count);
 
             return kinds;
         }
@@ -1106,41 +1103,6 @@ namespace Agora.Mod.Llm
                 return name;
             }
             return party.PartyId;
-        }
-
-        private static List<DistrictSnapshot> SortedDistricts(CitySnapshot snapshot)
-        {
-            var districts = new List<DistrictSnapshot>();
-            if (snapshot == null || snapshot.Districts == null) return districts;
-
-            for (int i = 0; i < snapshot.Districts.Count; i++)
-            {
-                DistrictSnapshot district = snapshot.Districts[i];
-                if (district != null && !string.IsNullOrEmpty(district.Id)) districts.Add(district);
-            }
-
-            // The snapshot contract already sorts by Id, but sorting again costs nothing and makes
-            // this class's determinism independent of that guarantee holding.
-            districts.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
-            return districts;
-        }
-
-        /// <summary>
-        /// The district's name, or its id when it has none.
-        /// </summary>
-        /// <remarks>
-        /// Deliberately not length-capped any more. Capping here cut a player's district name mid-word
-        /// before it had even reached a template, and the composed headline was then cut a second time
-        /// at ninety, which took the template's own trailing words with it. Length is
-        /// <see cref="Fitting"/>'s problem now: an over-long name makes every <c>{district}</c> line
-        /// miss the cap, and the article takes a clean generic headline instead of a mangled specific
-        /// one.
-        /// </remarks>
-        private static string SafeName(DistrictSnapshot district)
-        {
-            string name = district.Name;
-            if (string.IsNullOrEmpty(name)) name = district.Id;
-            return name ?? string.Empty;
         }
 
         /// <summary>Enum value to pool index, clamped. The pools are ordered by <c>Issues.All</c>.</summary>

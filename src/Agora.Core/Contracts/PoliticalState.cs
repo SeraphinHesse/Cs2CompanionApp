@@ -180,7 +180,7 @@ namespace Agora.Core.Contracts
     /// </summary>
     public sealed class AgoraSettings
     {
-        public int SchemaVersion { get; set; } = 5;
+        public int SchemaVersion { get; set; } = 7;
 
         /// <summary>Political start year. Default 1990, chosen at save creation, locked afterward (§3).</summary>
         public int StartYear { get; set; } = 1990;
@@ -234,11 +234,10 @@ namespace Agora.Core.Contracts
         /// </summary>
         public bool PauseOnMajorNews { get; set; } = true;
 
-        /// <summary>
-        /// Raise a modal for <i>every</i> report, not just the major ones. Default off: on a large
-        /// city this interrupts constantly.
-        /// </summary>
-        public bool ShowAllReports { get; set; } = false;
+        // ShowAllReports was removed at settings v7. It raised a modal for every article rather
+        // than only the major ones, and wave 7 retired the article alert with the feed that fed it —
+        // leaving a switch that persisted a value and changed no number, which is the defect W5
+        // closed for PauseOnMajorNews and is not being kept alive under a second name.
 
         /// <summary>
         /// How decisively blocs convert preference into votes. Default means "use the shipped
@@ -298,6 +297,28 @@ namespace Agora.Core.Contracts
         public StoryDifficulty StoryDifficulty { get; set; } = StoryDifficulty.Default;
 
         /// <summary>
+        /// Pause the sim and hold the clock when a <i>story</i> card the engine has judged major
+        /// opens. Default on, matching <see cref="PauseOnMajorNews"/>'s default and the behaviour
+        /// every save has had since the story card shipped.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A separate switch from <see cref="PauseOnMajorNews"/> rather than a reuse of it, and the
+        /// distinction is the point. That control's player-facing hint enumerates elections,
+        /// governments, party lifecycle and serious events — all <i>news</i> — so neither position of
+        /// it is a statement about stories, and repointing it would silently redefine a choice
+        /// existing saves already made about something else.
+        /// </para>
+        /// <para>
+        /// Before this field the story card held the clock on the engine's <c>major</c> verdict alone,
+        /// and a player who wanted it not to had no control short of <see cref="StoriesEnabled"/>,
+        /// which turns the whole feature off. The card stays dismissable either way: this decides
+        /// whether the clock stops, never whether the card appears.
+        /// </para>
+        /// </remarks>
+        public bool PauseOnMajorStory { get; set; } = true;
+
+        /// <summary>
         /// A field-by-field copy.
         /// </summary>
         /// <remarks>
@@ -329,7 +350,6 @@ namespace Agora.Core.Contracts
                 EffectsEnabled = EffectsEnabled,
                 ThemeLocked = ThemeLocked,
                 PauseOnMajorNews = PauseOnMajorNews,
-                ShowAllReports = ShowAllReports,
                 VoteSharpness = VoteSharpness,
                 NewsInfluence = NewsInfluence,
                 BrandDiscipline = BrandDiscipline,
@@ -338,7 +358,8 @@ namespace Agora.Core.Contracts
                 EventsPerStory = EventsPerStory,
                 PoliticalPowerEnabled = PoliticalPowerEnabled,
                 PowerIntensity = PowerIntensity,
-                StoryDifficulty = StoryDifficulty
+                StoryDifficulty = StoryDifficulty,
+                PauseOnMajorStory = PauseOnMajorStory
             };
         }
     }
@@ -432,7 +453,7 @@ namespace Agora.Core.Contracts
         /// object that was never v4 and "upgraded" fields it had never written. Whoever bumps
         /// <c>CurrentStateVersion</c> bumps this in the same commit.
         /// </remarks>
-        public int SchemaVersion { get; set; } = 7;
+        public int SchemaVersion { get; set; } = 9;
 
         /// <summary>
         /// Agora's own save identity (§5). Written into the save via the serialization hooks, never

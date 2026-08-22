@@ -7,6 +7,10 @@
 //
 // `rem` is the CS2 UI's scaling unit: the game scales it with the interface size setting, so a
 // rem-based panel tracks the rest of the HUD instead of shrinking on a 4K screen.
+//
+// The panel is a header plus one scrolling region, capped at 100% of the shell's panel slot. Nothing
+// sits below the scroll region, and nothing new should: an element pinned outside it at the bottom
+// of the panel is the one thing the column budget cannot rescue, because it never scrolls into view.
 
 // Colours come from the shared token file — see _tokens.scss for why none are declared here.
 @use "../../shell/tokens" as *;
@@ -22,16 +26,60 @@
   font-size: 13rem;
   min-width: 320rem;
   max-width: 340rem;
+  // The COLUMN owns the height budget, not the panel — see `.panelSlot` in Shell.module.scss, and
+  // the same line on the Districts, Parties and Stories sheets. This panel had no ceiling at all
+  // until now: its height was simply the sum of what the election returned, and with the settings
+  // drawer open the bottom of it fell off the screen.
+  //
+  // What grows is the party rows, not the chamber. `buildHemicycle` sizes the chart into a fixed
+  // 296rem-wide box, so the chart is ~156rem tall at nine seats and ~153rem at three hundred — it
+  // never grows with the seat count and the comment that used to say so here was wrong. The two
+  // chip columns take one row per party up to `parties.maxPartiesTotal`, and the unseated legend
+  // wraps, which together move this panel by ~150rem between its smallest and largest state.
+  //
+  // 100% of a slot that is itself bounded is a ceiling on every interface scale without naming a
+  // figure here.
+  max-height: 100%;
 }
 
 // -- header --------------------------------------------------------------------------------------
 
+// The one thing that does not scroll. It names the panel and the chamber it is describing, which is
+// the line that has to stay put while the body moves under it.
 .header {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
   align-items: baseline;
+  flex: 0 0 auto;
   margin-bottom: 4rem;
+}
+
+// -- the scrolling body --------------------------------------------------------------------------
+
+// `flex: 1 1 auto` over `min-height: 0` is the recipe every scrolling region in this build uses, and
+// both halves are load-bearing: a flex item's default `min-height: auto` is its content's intrinsic
+// height, so without the zero this region grows to fit its whole body instead of scrolling — and
+// the panel's own `max-height: 100%` above cannot bind, because an automatic minimum outranks a
+// maximum.
+.scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+// The scrolled content. Its children are all `flex: 0 0 auto`: they are scrolled content, and a
+// shrinkable child is squeezed to the region's height and overflows its own box rather than
+// scrolling. The chart is the one that would fail loudest: its box carries an inline rem height
+// computed by `buildHemicycle`, and the dots inside it are absolutely positioned against that box,
+// so a squeezed chart does not draw a shorter chart — it drops the outer rows out of the bottom of
+// one, with no scrollbar anywhere to say they are missing.
+.body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .title {
@@ -57,6 +105,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-height: 64rem;
 }
 
@@ -72,6 +121,7 @@
   display: flex;
   position: relative;
   align-self: center;
+  flex: 0 0 auto;
   margin: 2rem 0 6rem 0;
 }
 
@@ -87,6 +137,7 @@
   display: flex;
   flex-direction: row;
   position: relative;
+  flex: 0 0 auto;
   height: 10rem;
   border-radius: 2rem;
   overflow: hidden;
@@ -123,6 +174,7 @@
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
+  flex: 0 0 auto;
   margin-top: 4rem;
   margin-bottom: 8rem;
 }
@@ -164,6 +216,7 @@
   display: flex;
   flex-direction: row;
   align-items: stretch;
+  flex: 0 0 auto;
 }
 
 .bloc {
@@ -297,6 +350,7 @@
 .meters {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   margin-top: 8rem;
 }
 
@@ -393,6 +447,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex: 0 0 auto;
   margin-top: 8rem;
   padding-top: 8rem;
   border-top: 1rem solid $line;
@@ -450,6 +505,7 @@
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
+  flex: 0 0 auto;
   margin-top: 8rem;
   padding-top: 6rem;
   border-top: 1rem solid $line;

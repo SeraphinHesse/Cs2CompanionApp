@@ -1,15 +1,29 @@
 /**
- * Display formatting for the News panel. English only.
+ * Display formatting shared by the shell and by more than one panel. English only.
+ *
+ * **Why this module exists.** Until wave 7 these helpers lived in `ui/src/panels/News/format.ts`,
+ * and two things outside that panel imported them: `ArticleModal` and `StoryModal`, both in the
+ * shell. Wave 7 deletes the News panel. `ArticleModal` retires with it; `StoryModal` does not, so
+ * the helpers had to move somewhere that outlives the panel or the build breaks in a way only
+ * `npx tsc --noEmit` reports. They live in the shell because the shell is what still needs them
+ * after every panel that once did is gone.
+ *
+ * The Stories panel had independently written its own `cx`, `formatSimDate` and `splitParagraphs`
+ * one wave earlier — byte-comparable implementations of the same three functions. They are
+ * reconciled here into one definition rather than left as two, so a fix to one is not silently a
+ * fix to only half the screen.
  *
  * Everything here is presentation over already-published values. Nothing derives a new political
- * number: no share is recomputed, no progress is recalculated, nothing is re-sorted. Where a value
- * is clamped it is clamped only to keep a CSS width inside its track.
+ * number: no share is recomputed, no progress is recalculated, nothing is re-sorted, and no tier or
+ * outcome is inferred. Where a value is clamped it is clamped only to keep a CSS width inside its
+ * track. Panel-specific vocabulary — what a response is called, what a tier means — stays in that
+ * panel's own `format.ts`, because it is that panel's copy to keep (contract section 6).
  *
- * `toLocaleString` is deliberately avoided — Gameface ships a trimmed JS runtime and locale data
- * is not guaranteed to be present, so thousands grouping is done by hand.
+ * `toLocaleString` is deliberately avoided — Gameface ships a trimmed JS runtime and locale data is
+ * not guaranteed to be present, so thousands grouping is done by hand.
  */
 
-/** Class-name joiner. Hand-rolled so the panel pulls in no runtime dependency. */
+/** Class-name joiner. Hand-rolled so the UI pulls in no runtime dependency. */
 export function cx(...parts: (string | false | null | undefined)[]): string {
   const out: string[] = [];
   for (let i = 0; i < parts.length; i++) {
@@ -26,8 +40,8 @@ const MONTHS = [
 ];
 
 /**
- * "YYYY-MM-DD" -> "Mar 1994". The wire format is engine-owned, so splitting it is safe;
- * an absent date is "" (never null) and renders as an em dash.
+ * "YYYY-MM-DD" -> "Mar 1994". The wire format is engine-owned (contract section 2), so splitting it
+ * is safe; an absent date is "" (never null) and renders as an em dash.
  */
 export function formatSimDate(date: string): string {
   if (!date) {
@@ -103,8 +117,9 @@ export function humanizeEnum(name: string): string {
 }
 
 /**
- * Deadline copy. A mandate whose metric is unreadable is HELD, not failing — its clock is not
- * described as running out, because the engine will not defy it for a stall it did not cause.
+ * Deadline copy for the mandate tracker. A mandate whose metric is unreadable is HELD, not failing —
+ * its clock is not described as running out, because the engine will not defy it for a stall it did
+ * not cause (contract section 4.5).
  */
 export function formatMonthsRemaining(monthsRemaining: number, isStalled: boolean): string {
   if (isStalled) {
@@ -124,12 +139,11 @@ export function formatMonthsRemaining(monthsRemaining: number, isStalled: boolea
 }
 
 /**
- * Split an article body into display paragraphs.
+ * Split prose into display paragraphs.
  *
- * This is layout, not parsing: the prose is never inspected for meaning and no number is ever
- * read out of it (non-negotiable 1). Splitting on newlines simply stops a 120-word body being
- * rendered as one undifferentiated wall, without relying on `white-space: pre-wrap` being
- * implemented in Gameface.
+ * This is layout, not parsing: the prose is never inspected for meaning and no number is ever read
+ * out of it (non-negotiable 1). Splitting on newlines simply stops a long body being rendered as one
+ * undifferentiated wall, without relying on `white-space: pre-wrap` being implemented in Gameface.
  */
 export function splitParagraphs(body: string): string[] {
   if (!body) {

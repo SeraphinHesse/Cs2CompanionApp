@@ -4,11 +4,11 @@ import { Button, Portal, Scrollable } from "cs2/ui";
 
 import {
   ackStoryAlert, EMPTY_STORY_ALERT, EMPTY_STORY_ARTICLE, enabled$, isAccepted, isFirstRun$,
-  stories$, storyAlerts$, writeMessage,
+  settings$, stories$, storyAlerts$, writeMessage,
 } from "./bindings";
 import { useSimulationHeldPaused } from "./pause";
 import { StoryModalBoundary } from "./StoryModalBoundary";
-import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "../panels/News/format";
+import { cx, formatSimDate, splitParagraphs, SEVERITY_STEPS } from "./format";
 import styles from "./StoryModal.module.scss";
 
 /**
@@ -203,6 +203,7 @@ const StoryModalInner = (): JSX.Element | null => {
   const isFirstRun = useValue(isFirstRun$);
   const alerts = useValue(storyAlerts$);
   const stories = useValue(stories$);
+  const settings = useValue(settings$);
 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -247,12 +248,21 @@ const StoryModalInner = (): JSX.Element | null => {
     [stories, current.id],
   );
 
-  // Whether this card holds the clock is the ENGINE'S verdict, decided once when the alert was
-  // raised from the story's own major slot against the tuned threshold. It is never recomputed from a
-  // severity here — a copy of the threshold in the UI would be a second definition of "major", and it
-  // would drift into disagreeing with the price the engine charges. Advancing from a major card to an
-  // ordinary one releases the barrier mid-queue, which is right.
-  useSimulationHeldPaused(open && current.major);
+  // Whether this card is GRAVE ENOUGH to hold the clock is the ENGINE'S verdict, decided once when
+  // the alert was raised from the story's own major slot against the tuned threshold. It is never
+  // recomputed from a severity here — a copy of the threshold in the UI would be a second definition
+  // of "major", and it would drift into disagreeing with the price the engine charges. Advancing from
+  // a major card to an ordinary one releases the barrier mid-queue, which is right.
+  //
+  // Whether the clock is ACTUALLY held is the separate question `pauseOnMajorStory` answers, and it
+  // is deliberately not `pauseOnMajorNews`: that control's hint enumerates elections, governments,
+  // party lifecycle and serious events — all news — so neither of its positions is an answer about
+  // stories, and reading it here would enforce a choice the player made about something else. Wave 6
+  // shipped with the hold unconditional and no way to stop it short of turning stories off entirely;
+  // this is that gap closed. The card still APPEARS either way and is still always dismissable —
+  // this decides only whether the sim stops while it is up.
+  const holdsClock = open && current.major && settings.pauseOnMajorStory;
+  useSimulationHeldPaused(holdsClock);
 
   // A new card is a clean slate: a refusal left over from the previous one would be read as this
   // one's, and a stuck `busy` would leave both buttons dead.
@@ -320,7 +330,10 @@ const StoryModalInner = (): JSX.Element | null => {
             <span className={styles.kickerLabel}>Story</span>
             <span className={styles.kickerSep}>&#183;</span>
             <span className={styles.kickerDate}>{formatSimDate(current.date)}</span>
-            {current.major ? <span className={styles.held}>Clock held</span> : null}
+            {/* The badge tracks whether the clock is ACTUALLY held, not merely whether the engine
+                called the story major — a card that says "Clock held" over a running sim is worse
+                than no badge at all. */}
+            {holdsClock ? <span className={styles.held}>Clock held</span> : null}
           </div>
 
           <div className={styles.headline}>{current.headline}</div>
