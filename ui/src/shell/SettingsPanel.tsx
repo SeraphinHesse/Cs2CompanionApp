@@ -14,9 +14,12 @@ import styles from "./SettingsPanel.module.scss";
  * saying where that is. This is it, kept deliberately small: without it `ThemeLocked` is a mechanic
  * no player can reach, and W5's two press settings need the same surface anyway.
  *
- * The three voter-model levels at the bottom are the one place a player can reach an engine
- * coefficient. They are levels rather than numbers on purpose: the value each maps to lives in
- * `engine_tuning.json`, so this file holds no coefficient and cannot drift from the engine.
+ * The five level rows — three voter-model, plus story difficulty and power intensity — are the one
+ * place a player can reach an engine coefficient. They are levels rather than numbers on purpose:
+ * the value each maps to lives in `engine_tuning.json`, so this file holds no coefficient and cannot
+ * drift from the engine. No hint here quotes a figure either, for the same reason: `"Default"` means
+ * "leave the tuning file alone", so the numbers behind every level are free to be retuned, and a
+ * hint that named one would go quietly wrong the first time they were.
  *
  * It is a row in the dashboard shell rather than a fourth tab — a queued plan puts Parties in that
  * slot, and settings are not a panel of political data.
@@ -37,7 +40,10 @@ type SettingKey =
   | "storiesEnabled"
   | "storiesPerCycle"
   | "eventsPerStory"
-  | "politicalPowerEnabled";
+  | "storyDifficulty"
+  | "pauseOnMajorStory"
+  | "politicalPowerEnabled"
+  | "powerIntensity";
 
 /** One level of a voter-model setting: the wire name, a label, and what it does. */
 interface Level {
@@ -111,6 +117,26 @@ const VOTER_SETTINGS: {
       { value: "Locked", label: "Locked" },
     ],
   },
+];
+
+/**
+ * The two levels that carry a preset table rather than a single coefficient.
+ *
+ * Wire names from contract §4.1, sent verbatim — the engine parses them by enum name. `"Default"` is
+ * not a value: it is an instruction to leave `engine_tuning.json` alone, which is what lets the
+ * shipped numbers be retuned later and reach every save that never chose otherwise. That is also why
+ * neither hint promises a specific figure — the figure is content and may move under the player.
+ */
+const POWER_INTENSITY_LEVELS: Level[] = [
+  { value: "Lenient", label: "Lenient" },
+  { value: "Default", label: "Default" },
+  { value: "Harsh", label: "Harsh" },
+];
+
+const STORY_DIFFICULTY_LEVELS: Level[] = [
+  { value: "Forgiving", label: "Forgiving" },
+  { value: "Default", label: "Default" },
+  { value: "Demanding", label: "Demanding" },
 ];
 
 /**
@@ -293,6 +319,18 @@ export const SettingsPanel = (): JSX.Element => {
       return pending.value;
     }
     return String(published);
+  }
+
+  /**
+   * The same optimistic render again, for a setting whose published value is already the wire name.
+   * Separate from `shownCount` only because that one has to stringify; folding the two together
+   * would mean stringifying an enum name, which reads as a coincidence rather than a rule.
+   */
+  function shownLevel(key: SettingKey, published: string): string {
+    if (pending !== null && pending.key === key) {
+      return pending.value;
+    }
+    return published;
   }
 
   function requestTheme(theme: Agora.RegionThemeName): void {
@@ -486,6 +524,37 @@ export const SettingsPanel = (): JSX.Element => {
           }}
         />
 
+        <LevelRow
+          label="How hard story goals are to meet"
+          hint="Forgiving lets one answered problem carry a whole story, and eases the pressure a live story puts on the city. Demanding wants every problem answered and leans harder on the city while you work. It never changes what an individual problem asks for — those figures were written for the month you get to act in."
+          levels={STORY_DIFFICULTY_LEVELS}
+          value={shownLevel("storyDifficulty", settings.storyDifficulty)}
+          disabled={busy}
+          onChange={function (next) {
+            if (next !== shownLevel("storyDifficulty", settings.storyDifficulty)) {
+              send("storyDifficulty", next);
+            }
+          }}
+        />
+
+        {/*
+          Stories, not news, and the hint must not borrow the other switch's list.
+
+          `pauseOnMajorNews` enumerates elections, governments, party lifecycle and serious events, so
+          neither of its positions is an answer about stories. Repeating those categories here would
+          make one row look like a duplicate of the other and leave a player who wanted one and got
+          the other with no way to tell which they had set.
+        */}
+        <ToggleRow
+          label="Pause on a major story"
+          hint="Stop the clock when the city puts a story to you that it judges major. The card comes up either way and can always be dismissed; this decides only whether the sim keeps running behind it."
+          value={shownFlag("pauseOnMajorStory", settings.pauseOnMajorStory)}
+          disabled={busy}
+          onChange={function (next) {
+            send("pauseOnMajorStory", next ? "true" : "false");
+          }}
+        />
+
         <ToggleRow
           label="Political power"
           hint="On, answering a story well earns political power you can spend to make an awkward problem go away, and answering badly costs it. Off, nothing can be bought off in this city and no debt can build up — stories still draft and still resolve."
@@ -497,32 +566,28 @@ export const SettingsPanel = (): JSX.Element => {
         />
 
         {/*
-          Two published story settings and NO control for either, deliberately.
-
-          Contract §4.1's key table lists every writable key and states plainly that there is none for
-          `powerIntensity` or `storyDifficulty`: the preset tables behind them do not exist yet, so a
-          write would persist a value, republish it, and change no number in the engine — and would be
-          answered `UnknownKey` in the meantime. A switch that does nothing under hint text promising
-          behaviour there is none of is exactly what `PauseOnMajorNews` and `ShowAllReports` were before
-          W5, and it is not being shipped again. They are shown as text because a player who finds them
-          in a save file is owed an explanation of why they cannot be reached, and the note says when
-          they arrive rather than leaving that to be guessed at.
+          Disabled from a PUBLISHED value, exactly as the theme buttons are — never from the pending
+          one. With the currency switched off there is no economy for a level to describe, and a row
+          that stayed live would be a choice with nothing behind it, which is the defect this pair of
+          rows exists to end rather than repeat in a new place. The hint says why, because a greyed
+          control with no explanation is the same defect wearing a different face.
         */}
-        <div className={styles.row}>
-          <div className={styles.rowLabel}>How stories are pitched</div>
-          <div className={styles.rowHint}>
-            What this city currently carries in its save. Neither can be changed yet.
-          </div>
-          <div className={styles.readOnlyValue}>
-            Power intensity: {settings.powerIntensity} &#183; Story difficulty:{" "}
-            {settings.storyDifficulty}
-          </div>
-          <div className={styles.readOnlyNote}>
-            Both are recorded and neither changes anything in this build. The settings that would give
-            them meaning arrive in a later pass, and they become adjustable in the same update — a
-            control here now would look like a choice and be none.
-          </div>
-        </div>
+        <LevelRow
+          label="How punishing political power is"
+          hint={
+            settings.politicalPowerEnabled
+              ? "Lenient earns you more for answering a story well, charges less for answering badly, and prices buying a problem away within reach. Harsh does the opposite: engagement pays less, failure costs nearly as much as success earns, and buying your way out is a decision you save up for."
+              : "Political power is off in this city, so there is no economy for this to describe. Turn it on above to choose a level."
+          }
+          levels={POWER_INTENSITY_LEVELS}
+          value={shownLevel("powerIntensity", settings.powerIntensity)}
+          disabled={busy || !settings.politicalPowerEnabled}
+          onChange={function (next) {
+            if (next !== shownLevel("powerIntensity", settings.powerIntensity)) {
+              send("powerIntensity", next);
+            }
+          }}
+        />
       </Scrollable>
 
       {/* The engine's verdict, in English. Never a code and never an exception message. */}

@@ -28,7 +28,7 @@ namespace Agora.Core.Tuning
         /// because every other test in the suite runs against <see cref="Default"/> rather than the
         /// file — so a value that differs here is a value the shipped engine never verified.
         /// </summary>
-        public int SchemaVersion { get; internal set; } = 9;
+        public int SchemaVersion { get; internal set; } = 10;
 
         public BlocsTuning Blocs { get; internal set; } = new BlocsTuning();
         public PartiesTuning Parties { get; internal set; } = new PartiesTuning();
@@ -1576,6 +1576,27 @@ namespace Agora.Core.Tuning
         public int SuccessThreshold { get; internal set; } = 2;
 
         /// <summary>
+        /// <see cref="SuccessThreshold"/> at <c>StoryDifficulty.Forgiving</c>. Read only by
+        /// <c>TuningPresets</c>; the engine itself never sees a level.
+        /// </summary>
+        /// <remarks>
+        /// There is no <c>Default</c> twin, here or on any other preset pair, and that is the rule
+        /// that makes the ladder safe: <c>Default</c> means "leave the tuning file alone", so a later
+        /// balance pass on <see cref="SuccessThreshold"/> reaches every save that never chose
+        /// otherwise. A spelled-out default would freeze today's number into all of them.
+        /// </remarks>
+        public int SuccessThresholdForgiving { get; internal set; } = 1;
+
+        /// <summary><see cref="SuccessThreshold"/> at <c>StoryDifficulty.Demanding</c>.</summary>
+        /// <remarks>
+        /// Every slot, at the shipped story size. Safe above that size because the threshold is
+        /// clamped into <c>[1, scoredCount]</c> in <c>StoryResolution.Verdict</c>, so a story
+        /// shortened by an unreadable check asks for the slots it actually has rather than becoming
+        /// unwinnable.
+        /// </remarks>
+        public int SuccessThresholdDemanding { get; internal set; } = 3;
+
+        /// <summary>
         /// How much older than <c>today - WindowMonths</c> a delta's earlier sample may be before the
         /// reading is refused as <c>Unmeasurable</c>.
         /// </summary>
@@ -1726,6 +1747,31 @@ namespace Agora.Core.Tuning
         /// <summary>Magnitude scale for effects applied while a story is live.</summary>
         public double ActiveEffectScale { get; internal set; } = 0.5;
 
+        /// <summary>
+        /// <see cref="ActiveEffectScale"/> at <c>StoryDifficulty.Forgiving</c>.
+        /// </summary>
+        /// <remarks>
+        /// The difficulty ladder's effect-magnitude dial, and the live phase rather than either
+        /// resolution phase because that is the pressure the player is being <i>asked about</i> —
+        /// how hard the crisis leans on the city while there is still time to answer it.
+        /// </remarks>
+        public double ActiveEffectScaleForgiving { get; internal set; } = 0.40;
+
+        /// <summary>
+        /// <see cref="ActiveEffectScale"/> at <c>StoryDifficulty.Demanding</c>, and it sits exactly on
+        /// the headroom ceiling rather than near it.
+        /// </summary>
+        /// <remarks>
+        /// 0.55 is a bound, not a preference: <c>EffectResolver.ScaleForSeverity</c> multiplies by up
+        /// to 1.8 and the result is clamped back to the palette cap, so 0.55 reaches 0.99 of the cap
+        /// at severity 5 and anything above it collapses the top severities into one number. That is
+        /// also why <see cref="SuccessEffectScale"/> and <see cref="FailureEffectScale"/> are not on
+        /// the ladder at all — both already sit on the ceiling, so no level could raise either, and a
+        /// dial that could only ever soften a consequence would leave Demanding indistinguishable
+        /// from Default on the half of the system a player notices most.
+        /// </remarks>
+        public double ActiveEffectScaleDemanding { get; internal set; } = 0.55;
+
         /// <summary>Magnitude scale for effects applied on a met slot.</summary>
         public double SuccessEffectScale { get; internal set; } = 0.55;
 
@@ -1770,6 +1816,24 @@ namespace Agora.Core.Tuning
         /// </remarks>
         public double WrappedEventHappinessGoalPoints { get; internal set; } = 2.0;
 
+        /// <summary>
+        /// <see cref="WrappedEventHappinessGoalPoints"/> at <c>StoryDifficulty.Forgiving</c>.
+        /// </summary>
+        /// <remarks>
+        /// The wrapped goal is the only threshold in the system the <i>engine</i> derives — every
+        /// other one is authored in <c>events_*.json</c> against the one-month window a story is open
+        /// for, and none of them is scaled from here. That is why the difficulty ladder moves this
+        /// and the slot count and nothing else.
+        /// </remarks>
+        public double WrappedEventHappinessGoalPointsForgiving { get; internal set; } = 1.0;
+
+        /// <summary>
+        /// <see cref="WrappedEventHappinessGoalPoints"/> at <c>StoryDifficulty.Demanding</c>. Level
+        /// with <c>mandates.defiedHappinessPenalty</c>, so the severity-1 wrapped goal asks for a
+        /// gain the size of the worst mandate penalty the engine spends.
+        /// </summary>
+        public double WrappedEventHappinessGoalPointsDemanding { get; internal set; } = 3.0;
+
         internal static StoriesTuning Read(TuningReader r, StoriesTuning d) => new StoriesTuning
         {
             Enabled = r.Flag("enabled", d.Enabled),
@@ -1777,6 +1841,8 @@ namespace Agora.Core.Tuning
             EventsPerStory = r.Int("eventsPerStory", d.EventsPerStory),
             CycleMonths = r.Int("cycleMonths", d.CycleMonths),
             SuccessThreshold = r.Int("successThreshold", d.SuccessThreshold),
+            SuccessThresholdForgiving = r.Int("successThresholdForgiving", d.SuccessThresholdForgiving),
+            SuccessThresholdDemanding = r.Int("successThresholdDemanding", d.SuccessThresholdDemanding),
             DeltaWindowSlackMonths = r.Int("deltaWindowSlackMonths", d.DeltaWindowSlackMonths),
             MandatorySeverityThreshold = r.Int("mandatorySeverityThreshold", d.MandatorySeverityThreshold),
             MajorSeverityThreshold = r.Int("majorSeverityThreshold", d.MajorSeverityThreshold),
@@ -1790,13 +1856,19 @@ namespace Agora.Core.Tuning
             MaxStoryEffectsPerModifier = r.Int("maxStoryEffectsPerModifier", d.MaxStoryEffectsPerModifier),
             ResolutionEffectMonths = r.Int("resolutionEffectMonths", d.ResolutionEffectMonths),
             ActiveEffectScale = r.Num("activeEffectScale", d.ActiveEffectScale),
+            ActiveEffectScaleForgiving = r.Num("activeEffectScaleForgiving", d.ActiveEffectScaleForgiving),
+            ActiveEffectScaleDemanding = r.Num("activeEffectScaleDemanding", d.ActiveEffectScaleDemanding),
             SuccessEffectScale = r.Num("successEffectScale", d.SuccessEffectScale),
             FailureEffectScale = r.Num("failureEffectScale", d.FailureEffectScale),
             AlienationWeight = r.Num("alienationWeight", d.AlienationWeight),
             EnfranchisementWeight = r.Num("enfranchisementWeight", d.EnfranchisementWeight),
             FreeTextMaxLength = r.Int("freeTextMaxLength", d.FreeTextMaxLength),
             WrappedEventHappinessGoalPoints =
-                r.Num("wrappedEventHappinessGoalPoints", d.WrappedEventHappinessGoalPoints)
+                r.Num("wrappedEventHappinessGoalPoints", d.WrappedEventHappinessGoalPoints),
+            WrappedEventHappinessGoalPointsForgiving =
+                r.Num("wrappedEventHappinessGoalPointsForgiving", d.WrappedEventHappinessGoalPointsForgiving),
+            WrappedEventHappinessGoalPointsDemanding =
+                r.Num("wrappedEventHappinessGoalPointsDemanding", d.WrappedEventHappinessGoalPointsDemanding)
         };
     }
 
@@ -1852,11 +1924,67 @@ namespace Agora.Core.Tuning
         public PowerTierAmounts OverrideCost { get; internal set; } = new PowerTierAmounts(50, 100, 500);
 
         /// <summary>
-        /// Fraction of city income debited per month while the balance is negative. Also the
-        /// <c>magnitudeCap</c> on the debt effect, which is not a <c>CityModifier</c> and so gets no
-        /// cap from <c>EffectDispatcher</c>.
+        /// Fraction of city income debited per month while the balance is negative.
         /// </summary>
+        /// <remarks>
+        /// <b>Not on the <c>PowerIntensity</c> ladder, and the reason is a bound rather than a
+        /// preference.</b> This value is the magnitude of an <c>EffectRequest</c> for
+        /// <c>city-service-building-upkeep</c>, whose palette <c>magnitudeCap</c> is 0.20;
+        /// <c>EffectResolver</c> clamps every request to that cap, so the shipped value already sits
+        /// exactly on it and a "Harsh" number above it would be clamped straight back to the shipped
+        /// one — a level that persists a value and moves nothing, which is precisely the defect the
+        /// two write keys behind this ladder exist to avoid. Only a Lenient entry could have worked,
+        /// and a dial with one live level is worse than none, so <see cref="MaxMonthlyGain"/> carries
+        /// the fourth position instead.
+        /// </remarks>
         public double DebtRevenuePenalty { get; internal set; } = 0.20;
+
+        // ------------------------------------------------------- the PowerIntensity preset ladder
+        //
+        // Read only by TuningPresets, which writes the chosen level's values over MaxMonthlyGain,
+        // SuccessGain, FailureLossRatio and OverrideCost. All four dials carry a level because they
+        // are one economy: cheapening an override without trimming the award makes buying a story off
+        // the ordinary move, and raising the loss ratio without raising the award makes engagement
+        // cost more than it pays. There is no Default quartet — Default means "leave the tuning file
+        // alone", so a retune of the shipped economy reaches every save that never chose otherwise.
+
+        /// <summary><see cref="MaxMonthlyGain"/> at <c>PowerIntensity.Lenient</c>.</summary>
+        /// <remarks>
+        /// The passive half of the economy: accrual is <c>cap * share^curve</c> truncated toward
+        /// zero, so a government on 40% of the vote draws 3 a month here against 2 at the shipped
+        /// value. Small beside a cycle's story awards, and that is the intent — it decides how far a
+        /// player who engages with nothing can still drift back out of debt.
+        /// </remarks>
+        public int MaxMonthlyGainLenient { get; internal set; } = 8;
+
+        /// <summary><see cref="MaxMonthlyGain"/> at <c>PowerIntensity.Harsh</c>.</summary>
+        public int MaxMonthlyGainHarsh { get; internal set; } = 3;
+
+        /// <summary><see cref="SuccessGain"/> at <c>PowerIntensity.Lenient</c>.</summary>
+        public PowerTierAmounts SuccessGainLenient { get; internal set; } = new PowerTierAmounts(15, 30, 75);
+
+        /// <summary><see cref="SuccessGain"/> at <c>PowerIntensity.Harsh</c>.</summary>
+        public PowerTierAmounts SuccessGainHarsh { get; internal set; } = new PowerTierAmounts(6, 12, 30);
+
+        /// <summary><see cref="FailureLossRatio"/> at <c>PowerIntensity.Lenient</c>.</summary>
+        public double FailureLossRatioLenient { get; internal set; } = 0.25;
+
+        /// <summary>
+        /// <see cref="FailureLossRatio"/> at <c>PowerIntensity.Harsh</c>. Still below 1: the level
+        /// makes failure hurt, and never makes it hurt more than success pays.
+        /// </summary>
+        public double FailureLossRatioHarsh { get; internal set; } = 0.85;
+
+        /// <summary><see cref="OverrideCost"/> at <c>PowerIntensity.Lenient</c>.</summary>
+        /// <remarks>
+        /// Above <see cref="SuccessGainLenient"/> at every tier, which is the one invariant the
+        /// schema states and cannot check: a cost at or below the award pays for itself, and the
+        /// currency becomes free at the level whose whole point is that it is generous.
+        /// </remarks>
+        public PowerTierAmounts OverrideCostLenient { get; internal set; } = new PowerTierAmounts(35, 70, 350);
+
+        /// <summary><see cref="OverrideCost"/> at <c>PowerIntensity.Harsh</c>.</summary>
+        public PowerTierAmounts OverrideCostHarsh { get; internal set; } = new PowerTierAmounts(75, 150, 750);
 
         /// <summary>Absolute ceiling on one month's debt debit, whatever the city earns.</summary>
         public int DebtPenaltyCapPerMonth { get; internal set; } = 50000;
@@ -1868,10 +1996,18 @@ namespace Agora.Core.Tuning
         {
             Enabled = r.Flag("enabled", d.Enabled),
             MaxMonthlyGain = r.Int("maxMonthlyGain", d.MaxMonthlyGain),
+            MaxMonthlyGainLenient = r.Int("maxMonthlyGainLenient", d.MaxMonthlyGainLenient),
+            MaxMonthlyGainHarsh = r.Int("maxMonthlyGainHarsh", d.MaxMonthlyGainHarsh),
             GainPopularityCurve = r.Num("gainPopularityCurve", d.GainPopularityCurve),
             SuccessGain = PowerTierAmounts.Read(r.Section("successGain"), d.SuccessGain),
+            SuccessGainLenient = PowerTierAmounts.Read(r.Section("successGainLenient"), d.SuccessGainLenient),
+            SuccessGainHarsh = PowerTierAmounts.Read(r.Section("successGainHarsh"), d.SuccessGainHarsh),
             FailureLossRatio = r.Num("failureLossRatio", d.FailureLossRatio),
+            FailureLossRatioLenient = r.Num("failureLossRatioLenient", d.FailureLossRatioLenient),
+            FailureLossRatioHarsh = r.Num("failureLossRatioHarsh", d.FailureLossRatioHarsh),
             OverrideCost = PowerTierAmounts.Read(r.Section("overrideCost"), d.OverrideCost),
+            OverrideCostLenient = PowerTierAmounts.Read(r.Section("overrideCostLenient"), d.OverrideCostLenient),
+            OverrideCostHarsh = PowerTierAmounts.Read(r.Section("overrideCostHarsh"), d.OverrideCostHarsh),
             DebtRevenuePenalty = r.Num("debtRevenuePenalty", d.DebtRevenuePenalty),
             DebtPenaltyCapPerMonth = r.Int("debtPenaltyCapPerMonth", d.DebtPenaltyCapPerMonth),
             LedgerRetention = r.Int("ledgerRetention", d.LedgerRetention)

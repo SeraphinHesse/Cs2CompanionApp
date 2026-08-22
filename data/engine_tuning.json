@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "_comment": "Every coefficient the engine uses. If a number affects behaviour it lives here, never in C#. One top-level section per engine packet, so two packets can never fight over the same key. Read it through Agora.Core.Tuning.EngineTuning — never parse it yourself. Values are M2 defaults; the simulation harness tunes them against real runs.",
 
   "blocs": {
@@ -483,6 +483,10 @@
     "cycleMonths": 2,
     "successThreshold": 2,
 
+    "_difficultyComment": "The StoryDifficulty preset ladder, read by TuningPresets and by nothing else. It moves exactly three coefficients — successThreshold here, activeEffectScale and wrappedEventHappinessGoalPoints below — and Forgiving/Demanding are the only levels that carry a number; Default has NO entry anywhere on purpose, so it keeps whatever those three are retuned to and a later balance pass reaches every save that never chose otherwise. successThreshold is the honest difficulty dial because it is what decides a verdict from the slots: 1 lets one answered slot carry a story, 3 asks for all of them. It is clamped into [1, scoredCount] at resolution, so Demanding degrades to 'every scored slot' on a story shortened by an unreadable check rather than making it unwinnable — and by the same clamp Forgiving stops helping on such a story, which is the honest reading of a verdict taken over fewer slots than the story shipped with. Nothing here scales an AUTHORED threshold: every check in events_*.json was hand-derived against the one-month window a story is open for, and a difficulty level that multiplied them would rewrite forty pieces of authoring from a file nobody was editing. Story FREQUENCY is deliberately not on this ladder either: storiesPerCycle and eventsPerStory already have their own player controls in the settings drawer, and a preset writing them would fight a control rendered two rows above it; cycleMonths is frozen outright by the one-month window.",
+    "successThresholdForgiving": 1,
+    "successThresholdDemanding": 3,
+
     "_deltaSlackComment": "A Delta spec takes the newest sample at or before today - windowMonths, with no lower bound on how far before. On a sparse history that answers a two-month window with a six-month change and calls it the two-month change — the same harm as a window outrunning the history, by a different route. Samples are monthly, so 2 tolerates an ordinary gap while refusing a stale answer. Deliberately does NOT change MetricHistory.TrendOver, which widens without bound: a trend line is drawn for a human to read, a threshold here decides whether the player is charged.",
     "deltaWindowSlackMonths": 2,
 
@@ -511,12 +515,18 @@
     "successEffectScale": 0.55,
     "failureEffectScale": 0.55,
 
+    "_activeScaleDifficultyComment": "activeEffectScale is the difficulty ladder's effect-magnitude dial: it is how hard the crisis itself presses on the city while the story is OPEN, which is the pressure the player is being asked to answer. 0.55 is the ceiling and Demanding sits exactly on it — the headroom argument above is a hard bound, not a preference, because 0.55 * 1.8 reaches 0.99 of the cap and anything above it clamps severities together. successEffectScale and failureEffectScale are deliberately NOT laddered: both already sit on that ceiling, so no level could raise either, and a one-sided ladder that only ever softened the consequence would make Demanding indistinguishable from Default on the half of the system a player notices most.",
+    "activeEffectScaleForgiving": 0.40,
+    "activeEffectScaleDemanding": 0.55,
+
     "alienationWeight": 1.00,
     "enfranchisementWeight": 1.00,
 
     "freeTextMaxLength": 500,
     "_wrappedGoalComment": "In HAPPINESS POINTS on the 0-100 scale, for a severity-1 generically wrapped timeline event; the demand falls linearly to zero at catalog.severityMax. The unit is why this key exists. The wrapper's threshold was first derived from catalog.severityEffectScale, which is a dimensionless effect multiplier everywhere else it is used, producing demands of 0.8 down to 0.0 points out of 100 - narrower than the month-to-month drift of a population mean, so every severity collapsed to 'has happiness not fallen'. Calibrated against the happiness deltas the engine already spends: mandates.fulfilledHappinessBonus is 2.0 and defiedHappinessPenalty is 3.0.",
-    "wrappedEventHappinessGoalPoints": 2.0
+    "wrappedEventHappinessGoalPoints": 2.0,
+    "wrappedEventHappinessGoalPointsForgiving": 1.0,
+    "wrappedEventHappinessGoalPointsDemanding": 3.0
   },
 
   "power": {
@@ -529,6 +539,16 @@
     "successGain": { "minor": 10, "major": 20, "mandatory": 50 },
     "failureLossRatio": 0.50,
     "overrideCost": { "minor": 50, "major": 100, "mandatory": 500 },
+
+    "_intensityComment": "The PowerIntensity preset ladder, read by TuningPresets and by nothing else. Lenient and Harsh carry numbers; Default has NO entry, so it keeps the four values above and a later retune of the shipped economy reaches every save that never chose otherwise. All four dials move together because they are one economy and moving one of them alone inverts it: cheaper overrides with unchanged awards makes buying off a story the ordinary move, and a heavier failure ratio with unchanged awards makes engagement cost more than it pays, which is the property failureLossRatio exists to prevent. Both ladders keep the invariant above — overrideCost exceeds successGain at every tier, at every level — and both keep failureLossRatio inside (0, 1). DEBT IS DELIBERATELY NOT ON THIS LADDER: debtRevenuePenalty is the magnitude of an EffectRequest for city-service-building-upkeep, whose palette magnitudeCap is 0.20, and EffectResolver clamps every request to that cap — so the shipped 0.20 already sits exactly on it and a 'Harsh' value above it would be silently clamped back to Default, a level that persists a number and moves nothing. Lowering it for Lenient alone would leave Harsh dead, so the dial is left out entirely and maxMonthlyGain carries the fourth position instead.",
+    "maxMonthlyGainLenient": 8,
+    "maxMonthlyGainHarsh": 3,
+    "successGainLenient": { "minor": 15, "major": 30, "mandatory": 75 },
+    "successGainHarsh": { "minor": 6, "major": 12, "mandatory": 30 },
+    "failureLossRatioLenient": 0.25,
+    "failureLossRatioHarsh": 0.85,
+    "overrideCostLenient": { "minor": 35, "major": 70, "mandatory": 350 },
+    "overrideCostHarsh": { "minor": 75, "major": 150, "mandatory": 750 },
 
     "debtRevenuePenalty": 0.20,
     "debtPenaltyCapPerMonth": 50000,
