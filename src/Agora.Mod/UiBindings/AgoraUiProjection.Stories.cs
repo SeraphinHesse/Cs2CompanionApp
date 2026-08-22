@@ -25,7 +25,7 @@ namespace Agora.Mod.UiBindings
         /// <remarks>
         /// A payload bound, not a retention policy: <c>stories.archiveRetention</c> decides what the
         /// engine keeps and this decides how much of it crosses the bridge at once, the same split
-        /// <see cref="NewsFeedMax"/> makes against the feed.
+        /// the news feed's own cap (removed in wave 7) makes against the feed.
         /// </remarks>
         internal const int StoryArchiveMax = 24;
 

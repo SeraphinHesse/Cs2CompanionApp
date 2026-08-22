@@ -113,9 +113,9 @@ because `ui/src/panels/News/**` is deleted in the same wave.
   the mod, and the story system still writes prose. Both controls moved into the Stories panel with
   the mandate tracker.
 
-So `agora.news` shrinks from eight bindings to five and keeps its name. **The group is now named for
+So `agora.news` shrinks from eight bindings to six and keeps its name. **The group is now named for
 a panel that no longer exists**, which is ugly and is deliberate: renaming it to `agora.stories.*`
-would break five live consumers to fix a word, and §7's rule exists precisely to stop that trade.
+would break six live consumers to fix a word, and §7's rule exists precisely to stop that trade.
 
 **Two shapes changed outside the removals:**
 

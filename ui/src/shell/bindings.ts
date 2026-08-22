@@ -49,7 +49,7 @@ export const EMPTY_FLAVOR_STATUS: Agora.FlavorStatus = {
  * barrier.
  */
 export const EMPTY_NEWS_ALERT: Agora.NewsAlert = {
-  id: "", kind: "Article", date: "", headline: "", summary: "", outletName: "",
+  id: "", kind: "Event", date: "", headline: "", summary: "", outletName: "",
   partyId: "", districtId: "", eventId: "", severity: 0, major: false, hasArticle: false,
 };
 
