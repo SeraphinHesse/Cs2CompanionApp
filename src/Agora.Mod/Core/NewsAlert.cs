@@ -26,8 +26,7 @@ namespace Agora.Mod.Core
     public sealed class NewsAlert
     {
         /// <summary>
-        /// The ack key, and the <c>agora.news.article</c> map key a card with
-        /// <see cref="HasArticle"/> fetches its body under.
+        /// The ack key, and the key a card fetches its body under from <c>agora.news.article</c>.
         /// <para>
         /// Every id is prefixed, and as of v10 there is no exception —
         /// <c>"event:&lt;id&gt;"</c>, <c>"election:&lt;id&gt;"</c>, <c>"coalition:&lt;id&gt;"</c> for
@@ -42,6 +41,15 @@ namespace Agora.Mod.Core
         /// empty payload rather than throwing, so the player got a blank masthead and nothing was
         /// logged. The article alert is gone and the asymmetry with it; do not reintroduce an id that
         /// doubles as a lookup key without reading this paragraph first.
+        /// </para>
+        /// <para>
+        /// <b>An id is still not itself an article id, and nothing on this class says whether a body
+        /// exists.</b> The flag that used to is gone: its only producer retired with the feed, so it
+        /// was false on every alert the engine raises and copying it into the payload published a
+        /// permanent "no body" over prose that had been written. The answer is computed instead, at
+        /// publish time, by <see cref="ElectionCoverage.ResolveArticleId"/> — the one resolver both
+        /// <c>BuildAlerts</c> and <c>BuildArticle</c> ask, so the flag and the fetch cannot disagree.
+        /// A field here could only be a second, staler copy of it.
         /// </para>
         /// </summary>
         public string Id = "";
@@ -86,16 +94,14 @@ namespace Agora.Mod.Core
         public bool Major;
 
         /// <summary>
-        /// Whether <c>agora.news.article</c> may be fetched for <see cref="Id"/>.
+        /// The alert id for an election, built in one place because two sites build it: the wake that
+        /// records the round's coverage (<see cref="ElectionCoverage.Expect"/>) and the raise that
+        /// enqueues the card. They must produce the identical string or the card resolves no body,
+        /// and a second literal concatenation is how that comes to be untrue.
         /// </summary>
-        /// <remarks>
-        /// <b>No raise path sets this today, and that is honest rather than an oversight.</b> The only
-        /// one that ever did was the article alert, retired with the feed in v10. The map behind it is
-        /// kept and still answers, but it is keyed on <c>Article.Id</c>, and no writer yet emits an
-        /// article under an alert's prefixed id. Setting the flag before one does is precisely the
-        /// blank-masthead-with-nothing-logged failure the id doc above describes: a card claiming a
-        /// body that no lookup can find. Set it where the two ids are known to agree, not on faith.
-        /// </remarks>
-        public bool HasArticle;
+        public static string ElectionAlertId(string electionId)
+        {
+            return string.IsNullOrEmpty(electionId) ? "" : "election:" + electionId;
+        }
     }
 }

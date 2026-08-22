@@ -1122,6 +1122,17 @@ namespace Agora.Mod.UiBindings
         public string EventId = "";
         public int Severity;
         public bool Major;
+
+        /// <summary>
+        /// Whether <c>agora.news.article</c> holds a body for this card's <c>id</c>.
+        /// </summary>
+        /// <remarks>
+        /// Computed in <c>AgoraUiProjection.BuildAlerts</c> from
+        /// <c>ElectionCoverage.ResolveArticleId</c> — the same resolver the fetch goes through — and
+        /// deliberately not copied off <c>NewsAlert</c>, which carries no such field. A flag set when
+        /// the card is raised is a flag decided before the prose that answers it can have arrived,
+        /// and a stale one here is a blank masthead with nothing logged.
+        /// </remarks>
         public bool HasArticle;
 
         public void Write(IJsonWriter writer)

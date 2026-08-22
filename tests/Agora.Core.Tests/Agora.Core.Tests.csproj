@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <!--
-    Thirty-six Agora.Mod files compiled in BY LINK, not by project reference.
+    Thirty-eight Agora.Mod files compiled in BY LINK, not by project reference.
 
     politicsmodplan.md §7 and tests/CLAUDE.md suite 4 put "every palette entry proves its caps" in
     this suite, and non-negotiable #8 puts the clock here too — but both of those layers live in
@@ -132,11 +132,22 @@
     was written against System.* and Agora.Core only so that it could be asserted here rather than
     reasoned about in AgoraRuntime, which no test can load.
 
-    All thirty-six files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
+    ElectionCoverage is the newest, with NewsAlert beside it, and it is here because it decides a
+    thing that fails silently in exactly the way this repo keeps meeting. An election alert's id is
+    not an article id, so a card's body is found through a session-scoped join; if the flag that says
+    "there is a body" and the fetch that returns one can ever disagree, the player gets a blank
+    masthead and NOTHING is logged. One resolver with two callers is what prevents that, and the only
+    way to assert it is to compile the resolver here. The total order over a round's pieces is the
+    second reason: "whichever article happened to be first" reads identically to a declared order and
+    differs across runs. NewsAlert comes with it because the id the join is keyed on is minted there,
+    and the assertion that matters most is that the two sites agree on the string. Both files were
+    written against System.* and Agora.Core only so that they could be linked.
+
+    All thirty-eight files are deliberately free of every Game.*, Colossal.* and Unity.* type (they
     use only System.*, Newtonsoft and Agora.Core), so linking them keeps the property this suite
     exists to protect: it still builds and passes on a machine with no copy of Cities: Skylines II.
     Adding a file here that does reference the game will fail this project's build immediately, which
-    is the guard — and if a game type is ever added to one of these twenty-eight, that is the alarm
+    is the guard — and if a game type is ever added to one of these, that is the alarm
     we want, because it means logic the tests cover has drifted out of their reach.
 
     Everything is in THIS project rather than in a sibling test project so that the one gate command
@@ -144,6 +155,8 @@
     second suite that the gate command does not run is a suite that rots.
   -->
   <ItemGroup>
+    <Compile Include="..\..\src\Agora.Mod\Core\NewsAlert.cs" Link="ModCore\NewsAlert.cs" />
+    <Compile Include="..\..\src\Agora.Mod\Core\ElectionCoverage.cs" Link="ModCore\ElectionCoverage.cs" />
     <Compile Include="..\..\src\Agora.Mod\Effects\ModifierDelta.cs" Link="ModEffects\ModifierDelta.cs" />
     <Compile Include="..\..\src\Agora.Mod\Effects\EffectLedger.cs" Link="ModEffects\EffectLedger.cs" />
     <Compile Include="..\..\src\Agora.Mod\Time\SimClockMath.cs" Link="ModTime\SimClockMath.cs" />

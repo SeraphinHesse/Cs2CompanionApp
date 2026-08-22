@@ -211,6 +211,17 @@ namespace Agora.Mod.Core
             new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>
+        /// Which articles cover the election the newest election alert announces.
+        /// </summary>
+        /// <remarks>
+        /// Beside the ring and cleared with it, because it is exactly as long-lived: an alert does not
+        /// replay after a reload, so neither may the join that gives it a body. The rest of the
+        /// reasoning — one slot, the total order over a round's pieces, and why this needs no schema
+        /// change — is on <see cref="ElectionCoverage"/>, which is where it can be tested.
+        /// </remarks>
+        private static readonly ElectionCoverage _electionCoverage = new ElectionCoverage();
+
+        /// <summary>
         /// How many unanswered alerts the ring will hold before it starts dropping the oldest.
         /// </summary>
         /// <remarks>
@@ -501,6 +512,15 @@ namespace Agora.Mod.Core
             get { return _storyAlerts; }
         }
 
+        /// <summary>
+        /// The election-alert-to-article join the news projection resolves a card's body through.
+        /// Never null; empty until an election round's prose lands.
+        /// </summary>
+        public static ElectionCoverage ElectionCoverage
+        {
+            get { return _electionCoverage; }
+        }
+
         /// <summary>The prose currently in force, or null when none has ever been produced.</summary>
         public static FlavorPayload Prose
         {
@@ -784,6 +804,12 @@ namespace Agora.Mod.Core
                 // reload is already clean; this is the quit-to-menu path, where the statics survive.
                 _alerts.Clear();
                 _raisedAlertIds.Clear();
+
+                // Same line of the same block as the ring it belongs to, and not a line later: the
+                // association points at article ids drawn for city A's election, and a card in city B
+                // resolving one of them is the carry-over this method exists for. It is cleared here
+                // rather than in the prose block above only because the ring is what it is scoped to.
+                _electionCoverage.Clear();
 
                 // The story ring, for identically the same reason and in the same block so the two
                 // cannot drift apart. Story ids are minted per save, so a card from city A popping
@@ -2394,7 +2420,7 @@ namespace Agora.Mod.Core
             {
                 Enqueue(new NewsAlert
                 {
-                    Id = "election:" + tick.Election.Id,
+                    Id = NewsAlert.ElectionAlertId(tick.Election.Id),
                     Kind = "Election",
                     Date = today,
                     Headline = tick.Election.IsSnapElection ? "Snap election held" : "Election held",
@@ -2502,9 +2528,9 @@ namespace Agora.Mod.Core
         /// The <c>":formed"</c> suffix is not decoration: it is what keeps a government's birth and its
         /// death distinct in the ack key, so one coalition cannot dedupe the other out of the ring.
         /// That half stands on its own today. The other half — that the two must not fetch each
-        /// other's body from <c>agora.news.article</c> — is dormant rather than false: no coalition
-        /// alert sets <see cref="NewsAlert.HasArticle"/> until the article/alert id join lands, and it
-        /// becomes load-bearing again the moment it does.
+        /// other's body from <c>agora.news.article</c> — is dormant rather than false: nothing records
+        /// coverage for a coalition alert, so <see cref="ElectionCoverage.ResolveArticleId"/> answers
+        /// both of them <c>""</c>, and the half becomes load-bearing again the day one does.
         /// </remarks>
         private static void RaiseCoalitionAlerts(SimDate today)
         {
@@ -2849,6 +2875,16 @@ namespace Agora.Mod.Core
             if (reason == FlavorWakeReason.Election)
             {
                 request.ArticleCount = FlavorRequest.ElectionArticleCount(request.Theme);
+
+                // Which election this round is about, taken from the tick that ran it rather than
+                // worked out from the date later — the runtime knows, and a second derivation of "the
+                // election of this month" is a second thing that can be wrong. RaiseAlerts, a few
+                // lines further down this tick, mints the card's id from the same helper, so the two
+                // strings cannot drift. Unconditional on whether RequestFlavor is accepted: a refused
+                // wake simply produces nothing to record, and the expectation lapses on its own.
+                _electionCoverage.Expect(
+                    tick.Election != null ? NewsAlert.ElectionAlertId(tick.Election.Id) : null,
+                    today);
             }
 
             FillBriefs(request, tick.State);
@@ -3327,6 +3363,12 @@ namespace Agora.Mod.Core
                 _flavorPayload = payload;
                 _lastFlavorDate = today;
                 _pendingWake = false;
+
+                // Immediately after the payload it describes, so the join can never name articles a
+                // different payload is holding. It files nothing unless this round is the one an
+                // election wake asked for, and nothing at all when the round carried no articles —
+                // the ordinary case, and the reason the expectation survives an ordinary poll.
+                _electionCoverage.Absorb(payload, today);
 
                 // Before the party names, and outside the _state guard, because neither depends on
                 // the other and story prose is the reason this method now runs at all on most ticks.

@@ -1253,11 +1253,25 @@ namespace Agora.Mod.UiBindings
         /// An unknown id answers an empty payload rather than throwing — the card then renders a blank
         /// masthead, which is why <c>hasArticle</c> and not the id is what a consumer branches on.
         /// </para>
+        /// <para>
+        /// <b>An alert id is not an article id, so it is translated first.</b> An election card's id
+        /// is <c>"election:&lt;electionId&gt;"</c> and no article carries it; the round that covered
+        /// that election is named by <see cref="AgoraRuntime.ElectionCoverage"/>, and this asks it
+        /// through the same resolver <see cref="BuildAlerts"/> uses to decide <c>hasArticle</c>. One
+        /// function and two callers, deliberately: were these two to answer differently the player
+        /// would get a card promising a body and a blank masthead behind it, with nothing logged.
+        /// The resolver is asked first and answers <c>""</c> for everything it holds no coverage
+        /// against, so an id that already names an article falls straight through to the direct
+        /// match below and keeps working exactly as it did.
+        /// </para>
         /// </remarks>
         internal static NewsArticlePayload BuildArticle(FlavorPayload prose, string id)
         {
             var payload = new NewsArticlePayload();
             if (prose == null || string.IsNullOrEmpty(id)) return payload;
+
+            string resolved = AgoraRuntime.ElectionCoverage.ResolveArticleId(prose, id);
+            if (!string.IsNullOrEmpty(resolved)) id = resolved;
 
             for (int i = 0; i < prose.Articles.Count; i++)
             {
@@ -1289,11 +1303,23 @@ namespace Agora.Mod.UiBindings
         /// asked to answer them in. Re-sorting it here would change which card comes up first — a
         /// view deciding something the engine decided (<c>docs/contracts/ui_bindings.md</c> §7 rule
         /// 7), and the reason this builder is a copy rather than a projection.
+        /// <para>
+        /// <b>The one field that is not copied is <c>hasArticle</c>, and that is what makes it
+        /// honest.</b> No alert carries the answer any more — the flag's only producer retired with
+        /// the feed — so it is computed here, per publish, from the same resolver
+        /// <see cref="BuildArticle"/> fetches through. That is also what makes it self-correcting:
+        /// the canned pool answers a wake synchronously and a CLI round lands ticks later, so a card
+        /// published before its prose arrived turns the flag true on the next publish, and turns it
+        /// false again if the payload behind it is replaced. False when nothing resolves, always: a
+        /// headline and a summary is a correct card, a blank masthead is not.
+        /// </para>
         /// </remarks>
         internal static List<NewsAlertPayload> BuildAlerts(IList<NewsAlert> alerts)
         {
             var rows = new List<NewsAlertPayload>();
             if (alerts == null) return rows;
+
+            FlavorPayload prose = AgoraRuntime.Prose;
 
             for (int i = 0; i < alerts.Count; i++)
             {
@@ -1313,7 +1339,8 @@ namespace Agora.Mod.UiBindings
                     EventId = alert.EventId,
                     Severity = alert.Severity,
                     Major = alert.Major,
-                    HasArticle = alert.HasArticle
+                    HasArticle = !string.IsNullOrEmpty(
+                        AgoraRuntime.ElectionCoverage.ResolveArticleId(prose, alert.Id))
                 });
             }
 
