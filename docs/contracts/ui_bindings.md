@@ -663,6 +663,13 @@ of failing loudly. **Branch on `hasArticle`, never on `kind`** — unchanged sin
 more in v10 than before, because the writer now covers four kinds rather than every item and
 `hasArticle` is the only honest answer to "is there a body".
 
+**`hasArticle` is false on every alert with no Claude CLI round behind it, and that is the design
+rather than a gap.** An election card's body is the coverage the model wrote for that election's
+round, joined to the card in session state; the canned pool's election pieces never reach that join,
+so an offline save shows a headline and a summary on every card, permanently. A consumer needs to
+handle exactly what it already handles — the flag being false — and must not treat a card without a
+body as a failed fetch or render a placeholder for one.
+
 What changed underneath is which ids can be present: the feed is gone, so an id is no longer "a feed
 row's id" but simply the alert's own. Nothing a consumer does had to change.
 
