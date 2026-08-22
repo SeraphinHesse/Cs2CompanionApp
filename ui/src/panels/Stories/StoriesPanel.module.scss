@@ -572,6 +572,377 @@
   font-variant-numeric: tabular-nums;
 }
 
+// -- the mandate tracker --------------------------------------------------------------------------
+//
+// Ported with MandateTracker.tsx from the deleted News panel. The rules that were load bearing there
+// are load bearing here: every flex child holding text sets `min-width: 0` (the default `min-width:
+// auto` makes an item refuse to shrink below its content and overflow the row instead), flavor text
+// is clamped by max-height rather than `-webkit-line-clamp`, which Gameface cannot be relied on to
+// implement, and long unbroken tokens break rather than push the panel wider.
+//
+// The chips are this panel's own — `.chip`, `.chipQuiet`, `.chipHeld` above — rather than a second
+// set with the same job. A held mandate wears `.chipHeld`, the same chip an unmeasurable slot wears,
+// so "held" looks like one thing across the whole panel and never like a failure.
+
+// Free text off the flavor layer: contained, breakable, never able to widen the panel.
+@mixin prose {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.mandateList {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mandateItem {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+  padding: 6rem 2rem;
+  border-bottom: 1rem solid $line-soft;
+}
+
+// A mandate whose metric is unreadable is HELD, not failing. It reads as paused, never as behind.
+.mandateItemHeld {
+  background-color: $surface-inset;
+}
+
+// The party colour stripe. Fixed basis so no amount of text can squeeze it out.
+.rail {
+  display: block;
+  flex: 0 0 3rem;
+  width: 3rem;
+  align-self: stretch;
+  margin-right: 8rem;
+  border-radius: 2rem;
+}
+
+.mandateBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.metaRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 3rem;
+}
+
+.statusChip {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0 6rem 2rem 0;
+  padding: 0 5rem;
+  border-radius: 8rem;
+  font-size: 9rem;
+  font-weight: bold;
+  line-height: 14rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.statusActive {
+  background-color: $surface-hover;
+  color: $accent;
+}
+
+.statusPending {
+  background-color: $surface-raised;
+  color: $text-dim;
+}
+
+.statusPartial {
+  background-color: $surface-raised;
+  color: $warn;
+}
+
+.statusFulfilled {
+  background-color: $surface-raised;
+  color: $good;
+}
+
+.statusDefied {
+  background-color: $surface-raised;
+  color: $bad;
+}
+
+.statusAbandoned {
+  background-color: $surface-inset;
+  color: $text-faint;
+}
+
+.metaKind {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0 6rem 2rem 0;
+  color: $accent;
+  font-size: 9rem;
+  line-height: 14rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+// Two lines, hard stop — flavor text has no length guarantee.
+.mandateText {
+  @include prose;
+  margin-bottom: 4rem;
+  color: $text-dim;
+  font-size: 11rem;
+  line-height: 15rem;
+  max-height: 30rem;
+}
+
+.metricRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 3rem;
+}
+
+// text-overflow only ellipsises text in a BLOCK box; on a flex element the ellipsis silently never
+// appears. Its flex behaviour comes from `flex:` as a flex ITEM.
+.metricName {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 6rem;
+  font-size: 11rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// Bar and figure on one row, so the percentage is read as belonging to the fill beside it.
+.progressRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+}
+
+.progressTrack {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  // Takes the slack in the row; min-width: 0 keeps it shrinkable beside the fixed figure.
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 5rem;
+  border-radius: 3rem;
+  background-color: $surface-track;
+  overflow: hidden;
+}
+
+// The width is the published `progress`, set inline. `flex: 0 0 auto` keeps it exactly that: a
+// shrinkable fill would quietly under-report progress.
+.progressFill {
+  display: block;
+  flex: 0 0 auto;
+  height: 5rem;
+  border-radius: 3rem;
+  background-color: $accent;
+}
+
+// Held: a neutral wash, never the warning colour and never styled as falling behind. Lighter than
+// the track it sits in, or the fill would vanish and read as no progress at all.
+.progressFillHeld {
+  background-color: $line-strong;
+}
+
+.progressFillDone {
+  background-color: $good;
+}
+
+.progressValue {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  width: 32rem;
+  margin-left: 6rem;
+  font-size: 11rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.progressValueHeld {
+  color: $text-faint;
+}
+
+.numberRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  min-width: 0;
+  margin-top: 5rem;
+}
+
+.numberBlock {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-right: 6rem;
+}
+
+.numberLabel {
+  display: block;
+  color: $text-faint;
+  font-size: 9rem;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.numberValue {
+  display: block;
+  min-width: 0;
+  font-size: 11rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.numberValueDim {
+  color: $text-faint;
+}
+
+.mandateFooter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  margin-top: 5rem;
+}
+
+.footerLabel {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: $text-dim;
+  font-size: 10rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footerValue {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: 6rem;
+  color: $text-dim;
+  font-size: 10rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.spacer {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.deadline {
+  display: flex;
+  flex: 0 0 auto;
+  color: $text-dim;
+  font-size: 10rem;
+}
+
+.deadlineOverdue {
+  color: $bad;
+  font-weight: bold;
+}
+
+// "Clock held" — the metric is unreadable, so the deadline is not described as running out.
+.deadlineHeld {
+  color: $warn;
+}
+
+.salienceRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  margin-top: 4rem;
+}
+
+.salienceTrack {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 3rem;
+  margin: 0 6rem;
+  border-radius: 2rem;
+  background-color: $surface-raised;
+  overflow: hidden;
+}
+
+.salienceFill {
+  display: block;
+  flex: 0 0 auto;
+  height: 3rem;
+  border-radius: 2rem;
+  background-color: $line-strong;
+}
+
+// -- the prose writer -----------------------------------------------------------------------------
+
+.flavor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4rem 2rem;
+}
+
+.flavorActions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+// The manual wake. Outlined like the other request buttons on this panel, because it is one: it asks
+// and the engine answers.
+.wake {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  margin: 0 6rem 2rem 0;
+  padding: 0 9rem;
+  border: 1rem solid $line-strong;
+  border-radius: 3rem;
+  background-color: transparent;
+  color: $text;
+  font-size: 10rem;
+  line-height: 18rem;
+  white-space: nowrap;
+}
+
+.flavorNote {
+  display: block;
+  flex: 1 1 220rem;
+  min-width: 0;
+  color: $text-faint;
+  font-size: 10rem;
+  line-height: 1.4;
+}
+
 // -- what came back -------------------------------------------------------------------------------
 
 // A write that WAS accepted and carries a warning. Never styled as a refusal.

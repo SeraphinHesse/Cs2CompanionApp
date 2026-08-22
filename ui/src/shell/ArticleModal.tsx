@@ -37,13 +37,13 @@ import styles from "./ArticleModal.module.scss";
  * are the same words a newsroom would put on the page. The desk line exists only here — the card is
  * the only place that prints a masthead.
  *
- * `KIND_LABEL` below does overlap `NewsFeed`'s map of the same name, and that is deliberate, not an
- * oversight to tidy up: this one is keyed by `NewsAlertKindName`, `NewsFeed`'s by `NewsKindName`,
- * which additionally carries `Mandate`. One shared map would either loosen this map's exhaustiveness
- * over its own narrower union or leave a dead `Mandate` entry sitting in it. Both maps fall back to
- * `UNKNOWN_KIND`, so drift between them costs a word on a badge, never a raw enum member. Contrast
- * `NEUTRAL_COLOR`, which is imported from `lookup.ts` precisely because a second copy would show up
- * as two different greys for one story.
+ * `KIND_LABEL` below used to be one of two maps of that name — `NewsFeed` held the other, keyed by
+ * `NewsKindName`. That file is gone with the News panel in wave 7, so this is now the only one, and
+ * there is nothing left for it to drift against. It stays keyed by `NewsAlertKindName` and keeps its
+ * `UNKNOWN_KIND` fallback, so a kind this build was never taught costs a word on a badge rather than
+ * printing a raw enum member. Contrast `NEUTRAL_COLOR`, which is imported from `lookup.ts` precisely
+ * because a second copy would show up as two different greys for one story — a rule that outlived the
+ * panel and is why `lookup.ts` moved into the shell rather than being deleted with it.
  */
 const DESK_LABEL: { [kind: string]: string } = {
   Article: "City Desk",
