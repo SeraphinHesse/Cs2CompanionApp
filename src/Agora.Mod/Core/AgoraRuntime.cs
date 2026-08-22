@@ -251,9 +251,11 @@ namespace Agora.Mod.Core
         /// nothing downstream can depend on a hash order (non-negotiable #3).
         /// </summary>
         /// <remarks>
-        /// Story ids are engine-authored, so this needs no compound key: the reason
-        /// <see cref="_raisedAlertIds"/> prefixes with a kind is that an article id is model-authored
-        /// and could collide with an engine-written one. Nothing here is model-authored.
+        /// Story ids are engine-authored, so this needs no compound key. Neither, strictly, does
+        /// <see cref="_raisedAlertIds"/> any more: it prefixes with a kind because an article id was
+        /// bare and model-authored and could collide with an engine-written one, and that alert
+        /// retired with the feed in v10. It keeps the compound key against the next raise path
+        /// regardless; this set has never had a reason to want one.
         /// </remarks>
         private static readonly HashSet<string> _raisedStoryAlertIds =
             new HashSet<string>(StringComparer.Ordinal);
@@ -2353,8 +2355,10 @@ namespace Agora.Mod.Core
             MaybeWakeFlavor(today, snapshot, tick);
 
             // Last, and beside the wake for the same reason: both are one-shot consequences of a tick
-            // that has already been stored. Article alerts are not raised here — they are raised from
-            // CollectProse, which also runs from Tick when a background generation lands mid-month.
+            // that has already been stored. This is the ONLY entry point to the alert system — until
+            // v10 CollectProse was a second one, raising the month's article alerts wherever a
+            // background generation happened to land, and a card that never appeared could have come
+            // from either. It cannot now: every alert the player sees is raised below.
             RaiseAlerts(today, tick);
         }
 
@@ -2499,8 +2503,11 @@ namespace Agora.Mod.Core
         /// </summary>
         /// <remarks>
         /// The <c>":formed"</c> suffix is not decoration: it is what keeps a government's birth and its
-        /// death distinct in the ack key and in the <c>agora.news.article</c> lookup, so one coalition
-        /// cannot dedupe the other out of the ring or fetch the other's body.
+        /// death distinct in the ack key, so one coalition cannot dedupe the other out of the ring.
+        /// That half stands on its own today. The other half — that the two must not fetch each
+        /// other's body from <c>agora.news.article</c> — is dormant rather than false: no coalition
+        /// alert sets <see cref="NewsAlert.HasArticle"/> until the article/alert id join lands, and it
+        /// becomes load-bearing again the moment it does.
         /// </remarks>
         private static void RaiseCoalitionAlerts(SimDate today)
         {
@@ -2711,7 +2718,9 @@ namespace Agora.Mod.Core
         /// <remarks>
         /// <para>
         /// No compound key, unlike <see cref="Enqueue"/>: every id on this ring is an engine-minted
-        /// story id, so there is no model-authored namespace to keep apart from an engine-written one.
+        /// story id, so there has never been a model-authored namespace to keep apart from an
+        /// engine-written one. <see cref="Enqueue"/> kept its key after v10 retired the id that
+        /// forced it — see <see cref="_raisedAlertIds"/>; this ring had no such id to begin with.
         /// </para>
         /// <para>
         /// <b>The drop is logged at Warn, not Info</b> — the difference from the news lane is the
