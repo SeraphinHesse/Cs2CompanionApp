@@ -3725,32 +3725,21 @@ declare namespace Agora {
   type EventOriginName = "Catalog" | "Procedural" | "Political";
 
   /**
-   * What produced a feed item. Drives the icon, not the layout.
+   * What produced an alert.
    *
-   * **`"Mandate"` is declared but no publisher emits it.** `AgoraUiProjection.BuildFeed` produces
-   * exactly `Article`, `Event`, `Election`, `Coalition` and `Party` — mandates are surfaced by the
-   * News tab's tracker off `agora.news.mandates`, never as a feed row. The member is retained
-   * because removing it is a shape change and would have to go through `/schema-change`; a union
-   * member no publisher emits is harmless (unlike a required field no publisher fills, which is the
-   * defect W4 shipped once and had to fix). **Do not write a `"Mandate"` branch and expect to reach
-   * it.** Recorded by the contract-drift audit, 2026-08-09.
-   */
-  /**
-   * Retained after `NewsHeadline` retired in v10 because `NewsAlertKindName` is documented as a
-   * subset of it and the two doc comments below only make sense read together.
-   */
-  type NewsKindName = "Article" | "Event" | "Election" | "Coalition" | "Mandate" | "Party";
-
-  /**
-   * What produced an alert. A SUBSET of `NewsKindName` — `"Mandate"` is absent because a mandate
-   * being issued or resolved is a state change the tracker already shows, not an interruption.
-   * (Note the feed does not emit `"Mandate"` either, so this is a narrowing of the declared union
-   * rather than of anything actually published — see above.)
+   * **`NewsKindName` retired in v10** with `NewsHeadline` and the feed it typed. It carried a
+   * `"Mandate"` member no publisher ever emitted, kept only because removing it was a shape change;
+   * the whole union went with the feed, so the question is now moot.
    *
-   * Kept as its own union rather than reusing `NewsKindName` so the narrower set is checked: a
-   * modal switching on `NewsKindName` would need a `"Mandate"` branch that can never be reached.
+   * **`"Article"` retired in v10 too.** The article alert existed to interrupt over general monthly
+   * prose, and there is no longer any: the feed it filled is gone. Nothing emits this kind and no
+   * consumer may branch on it — it is listed here only so a save-era payload carrying the old string
+   * still type-checks against this union rather than widening it to `string`.
+   *
+   * What remains is the four things that happen TO the player and that nothing else in the mod
+   * announces. `"Event"` is a timeline event above the severity gate.
    */
-  type NewsAlertKindName = "Article" | "Event" | "Election" | "Coalition" | "Party";
+  type NewsAlertKindName = "Event" | "Election" | "Coalition" | "Party" | "Article";
 
   /**
    * Engine-authored failure code for the flavor provider. NEVER LLM output and never a raw
@@ -4491,11 +4480,14 @@ declare namespace Agora {
    * sorted at all: this is the order they happened in, which is the order the player answers them
    * in. Do not re-sort it. Bounded by the engine; empty value: [].
    *
-   * Each entry POINTS AT A FEED ROW that already exists — `id` is that row's id, so anything the
-   * modal shows can be found again in the News tab. When `hasArticle` is true the body may be
-   * fetched from `agora.news.article` keyed by the same `id`; when it is false there is no body and
-   * the map binding would answer with EMPTY_NEWS_ARTICLE rather than throwing, which renders as a
-   * blank masthead. Branch on `hasArticle`, never on `kind`.
+   * **Since v10 there is no feed to point at.** An entry's `id` used to be a feed row's id; it is
+   * now simply the alert's own, and there is nowhere else to find the item afterwards — the card IS
+   * the surface. When `hasArticle` is true the body may be fetched from `agora.news.article` keyed
+   * by that same `id`; when it is false there is no body and the map would answer with
+   * `EMPTY_NEWS_ARTICLE` rather than throwing, which renders as a blank masthead. **Branch on
+   * `hasArticle`, never on `kind`** — that has been the rule since W5 and it matters more now, since
+   * the article writer covers only some kinds and `hasArticle` is the only honest answer to "is
+   * there a body".
    *
    * Dismiss through `agora.news.ackAlert(id)`, or `ackAlert("*")` for all of them.
    *

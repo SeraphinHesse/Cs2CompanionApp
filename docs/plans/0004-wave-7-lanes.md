@@ -33,7 +33,7 @@ wrong about the code, and each was resolved by the owner or against the tree bef
 4. **`agora.news.wakeFlavor` stays.** The plan lists it for removal. It is the only manual route to a
    prose refresh anywhere in the mod, and the story system still writes prose. It moves into the
    Stories panel with `flavorStatus` and the mandate tracker.
-5. **`AgoraNewsUISystem.cs` is not deleted.** It still publishes five bindings. The plan's row says
+5. **`AgoraNewsUISystem.cs` is not deleted.** It still publishes six bindings. The plan's row says
    "delete"; it means "reduce".
 6. **The mandate tracker goes into the Stories panel**, not its own tab — owner decision. That is
    why lane 7g owns `ui/src/panels/Stories/**` and lane 7e must not touch it.
@@ -76,7 +76,9 @@ Branch `event-system/w7-<lane>`, worktree `.claude/worktrees/w7-<lane>`, all cut
 
 Stop publishing `agora.news.feed` and `agora.news.events`; delete `BuildFeed`, `BuildArticle`'s feed
 half, the `NewsHeadline` and `TimelineEventBrief` payloads, and the feed/event caps. **Reduce**
-`AgoraNewsUISystem` to the five surviving bindings — do not delete the file. Remove
+`AgoraNewsUISystem` to the **six** surviving bindings — do not delete the file. (`mandates`,
+`flavorStatus`, `wakeFlavor`, `alerts`, `ackAlert`, `article`. An earlier draft of this row said
+five; it forgot `article`, which is the binding the whole keep-the-alert-lane decision turns on.) Remove
 `RaiseArticleAlerts` and the `Article` member of the alert kind union, and re-home
 `EMPTY_NEWS_ALERT`'s default kind, which currently reads `"Article"`.
 
