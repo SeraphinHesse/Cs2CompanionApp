@@ -1795,6 +1795,23 @@ namespace Agora.Mod.Core
                 _pendingWake = false;
                 _lastFlavorState = FlavorProviderState.Idle;
 
+                // The alert ring and the join that gives its cards a body, together and in that
+                // order, for the reason the ResetForNewSave comment gives: a ring cleared in one
+                // place and a join cleared in another is how the two come to disagree. Unreachable
+                // today — the payload above has just been nulled, so the association resolves to ""
+                // whatever is in the ring, and the pool's new ids are date-keyed and cannot collide
+                // with the old round's — but "unreachable" is a property of the current ordering and
+                // this is the second site that has to hold it. The cards themselves are city-A-shaped
+                // regardless: an election card whose whole party field has just been regenerated is
+                // announcing a count under a system the save no longer uses.
+                //
+                // _storyAlerts is deliberately not touched from here. Whether a retheme should drop
+                // story cards is a question about stories, and answering it inside a one-line fix to
+                // this join would be a second change hidden in the first.
+                _alerts.Clear();
+                _raisedAlertIds.Clear();
+                _electionCoverage.Clear();
+
                 // Dispose, then delete, then create — see the remarks. Disposing first is what stops a
                 // finishing generation writing the file back after the delete.
                 DisposeFlavor();

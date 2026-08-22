@@ -43,6 +43,30 @@ namespace Agora.Mod.Core
     /// replaces them, and an ordinary month's payload carries no articles at all.
     /// </para>
     /// <para>
+    /// <b>A body reaches an election card only when a CLI round lands. The canned pool's election
+    /// articles never reach <see cref="Absorb"/>, and that is ratified rather than a gap</b> — with
+    /// no Claude CLI the card shows its engine-written headline and summary, which is a correct card.
+    /// Three separate mechanisms close that path, and anyone tempted to "fix" it by making the pool
+    /// emit articles has to move all three in one edit or change nothing at all:
+    /// </para>
+    /// <para>
+    /// (1) <c>AgoraRuntime.SeedFlavorRoster</c> runs at the top of every month and installs a roster
+    /// carrying the default wake reason, and <c>StaticPoolProvider.PlanRound</c> writes articles only
+    /// for <c>FlavorWakeReason.Election</c>. (2) The election-reason roster is installed by
+    /// <c>MaybeWakeFlavor</c>, which runs <i>after</i> that month's <c>CollectProse</c> — so it sits
+    /// unread until month M+1, where the roster reset overwrites it first; and the other
+    /// <c>CollectProse</c> call site, the daily heartbeat, fires only on a provider transition to
+    /// <c>FlavorProviderState.Succeeded</c>, which never happens when there is no CLI to succeed.
+    /// (3) <c>StaticPoolProvider.TryGetFlavor</c> answers at most once per date, so even inserting a
+    /// re-poll between the wake and the end of the tick returns null.
+    /// </para>
+    /// <para>
+    /// The ordering behind (1) and (2) is the prose plumbing every month runs through, and (3) is the
+    /// guard that stops the pool re-deriving a save's party names on every sim day. Neither is worth
+    /// disturbing for a card body, so this class is honest about answering <c>""</c> on the offline
+    /// path rather than pretending to cover it.
+    /// </para>
+    /// <para>
     /// Deliberately free of every <c>Game.*</c>, <c>Colossal.*</c> and <c>Unity.*</c> type, so it is
     /// compile-linked into <c>Agora.Core.Tests</c>: <c>AgoraRuntime</c> and <c>UiBindings</c> link
     /// into no test, and this is the part of the mechanism worth asserting on.
