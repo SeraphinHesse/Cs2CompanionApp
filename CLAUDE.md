@@ -7,7 +7,8 @@ the player's city. Canonical design doc: `politicsmodplan.md` — do not re-liti
 
 1. **LLM is flavor-only.** No number entering engine state may originate from Claude output.
 2. **No naked randomness.** Every draw uses a named seeded stream: `Hash(saveGuid, simDate, streamName)`.
-3. **Determinism.** Engine state is a pure function of (metrics history, prior state, seeds, catalogs, settings).
+3. **Determinism.** Engine state is a pure function of (metrics history, prior state, seeds, catalogs,
+   settings, **and the dated log of player commands** — replayed, never re-solicited; §5).
 4. **No map mutation.** Never create or modify districts, zoning, buildings, or terrain.
 5. **Effects are capped.** Every effect declares scope, magnitude cap, duration cap, and a fallback.
 6. **Sidecar integrity.** Atomic writes (temp file + rename). Load must never desync.
@@ -21,6 +22,8 @@ the player's city. Canonical design doc: `politicsmodplan.md` — do not re-liti
 | Task | Read |
 |---|---|
 | Engine, voter model, elections, events | `src/CLAUDE.md` + `src/Agora.Core/CLAUDE.md` |
+| Stories, civic events, political power | `politicsmodplan.md` §15 + `src/Agora.Core/CLAUDE.md` |
+| Authoring an event (timeline **or** civic) | `/add-event` + `data/CLAUDE.md` |
 | Sensors, ECS queries, game glue | `src/CLAUDE.md` + `src/Agora.Mod/CLAUDE.md` + newest `docs/scout/` |
 | Effects | `src/Agora.Mod/CLAUDE.md` + `politicsmodplan.md` §7 |
 | Dashboard UI | `ui/CLAUDE.md` + `docs/contracts/ui_bindings.md` |
