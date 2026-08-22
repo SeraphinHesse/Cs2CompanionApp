@@ -8,7 +8,15 @@ spine. Lanes below own strictly disjoint paths. **A merge conflict is a bug in t
 something to resolve by hand.
 
 **Base measured, not read:** `dotnet build` 0 warnings 0 errors · **2178 tests, 0 failed** ·
-`npx tsc --noEmit` clean. After the spine: **2182 tests, 0 failed**.
+`npx tsc --noEmit` clean. After the spine: **2182 tests, 0 failed**. After all seven lanes merged and
+the `showAllReports` removal: **2237 tests, 0 failed**, `tsc` clean, **zero merge conflicts** —
+the eighth wave running to prove the spine-first law.
+
+> **Do not launch the game until this wave ships and deploys.** Lane 7e ran a deploying build
+> mid-wave (2026-08-19 17:08), so the player's live `…\Mods\Agora.Mod` holds a build one schema
+> version ahead of every save on disk. **No save was touched** — the newest sidecar predates the
+> deploy — but loading one now migrates it past what the last released build can read. Owner's
+> decision: leave the install as it is rather than restore it.
 
 ---
 
@@ -270,6 +278,38 @@ question is why a Core tuning file sits in a lane at all.
 `lookup.ts`, `bindings.ts`, `state.ts`, `Dashboard.tsx`, `StoryModal.tsx`, and the Districts and
 Parties style sheets are **spine-only for the rest of the wave**. A lane that needs one of them has
 found a bug in this table; report it rather than editing.
+
+## Corrections to this table, made while the wave ran
+
+Both are the orchestrator's, and both are recorded rather than quietly patched because the next
+reader's question is why a file sits where it does.
+
+1. **`src/Agora.Core/Tuning/EngineTuning.cs` belongs to 7b.** A preset ladder needs somewhere for its
+   per-level coefficients to live; the row named only `TuningPresets.cs`, which reads them. Nothing
+   collided — no other lane touches the file — but a lane following its row exactly could not have
+   finished.
+2. **`src/Agora.Mod/Llm/FlavorRequest.cs` belongs to 7f.** The article count constants live there and
+   nowhere else. Found by 7f's review, which noted this table claims every path appears in exactly
+   one row. It appeared in none.
+
+## Lane 7h — added after the other seven merged
+
+Not in the original plan. Wave 7 kept the alert lane and narrowed the article writer so elections are
+still covered, and only then did it become visible that **nothing sets `hasArticle` any more** — its
+only producer was `RaiseArticleAlerts`, which retired with the feed. So the election prose 7f
+preserved reaches no surface.
+
+The first estimate was that closing it needed a `politics_flavor` schema move, because
+`FlavorValidator.cs:270` discards any article whose `eventId` is not a known catalog event and there
+is no other ref an election id could ride on. That estimate was wrong in a useful direction: **the
+alert ring is session state and is deliberately never persisted**, so the association only has to
+live as long as the alert does. It is held beside the ring and cleared in `ResetForNewSave` — no
+persisted field, no schema move, no cache migration, no validator change.
+
+| | |
+|---|---|
+| **Owns** | `src/Agora.Mod/Core/AgoraRuntime.cs` · `NewsAlert.cs` · `UiBindings/AgoraUiProjection.cs` · `AgoraUiPayloads.cs` · new tests |
+| **Constraint** | `BuildAlerts` and `BuildArticle` must resolve through **one shared helper**. If they disagree the player gets a blank masthead and nothing is logged — §4.5's oldest warning. |
 
 ## The orchestrator's own deliverable, after every lane merges
 
