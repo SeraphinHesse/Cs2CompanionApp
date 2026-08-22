@@ -29,6 +29,16 @@ namespace Agora.Core.Tests
     /// than over generated output, so a future author adding a template that breaks a rule fails the
     /// build rather than shipping one bad article in one seed nobody rolls.
     /// </para>
+    ///
+    /// <para>
+    /// <b>What the pool writes changed in wave 7: the ballot, not the month.</b> General monthly
+    /// coverage — the city piece and the district piece — existed to fill the news feed, and v10 of
+    /// <c>docs/contracts/ui_bindings.md</c> retired the feed. So an ordinary month now files no
+    /// articles at all, which is a smaller round and not a failed one, and an election month files
+    /// exactly the dedicated pieces: three under NA rules and four under EU. The tests that used to
+    /// prove the city and district branches are gone with the branches; what replaced them is the
+    /// pair that proves an ordinary month is silent and an election month is not.
+    /// </para>
     /// </summary>
     public class StaticPoolPressTests
     {
@@ -46,39 +56,111 @@ namespace Agora.Core.Tests
                                    FlavorValidator.Create(null, NullFlavorLog.Instance),
                                    NullFlavorLog.Instance);
 
-        // ---- refs ---------------------------------------------------------------------------------
+        // ---- what a round is for -------------------------------------------------------------------
 
         [Theory]
-        [InlineData(FlavorWakeReason.Yearly, RegionTheme.Eu, 4)]
-        [InlineData(FlavorWakeReason.Yearly, RegionTheme.Na, 4)]
-        [InlineData(FlavorWakeReason.Election, RegionTheme.Eu, 8)]
-        [InlineData(FlavorWakeReason.Election, RegionTheme.Na, 7)]
-        public void EveryArticleInARoundPointsAtSomething(FlavorWakeReason reason, RegionTheme theme, int count)
+        [InlineData(FlavorWakeReason.Yearly)]
+        [InlineData(FlavorWakeReason.Manual)]
+        [InlineData(FlavorWakeReason.StoryDraft)]
+        public void AnOrdinaryMonthFilesNoArticlesAtAll(FlavorWakeReason reason)
         {
-            // Several seeds, because the branch an article takes and the party or district it lands on
-            // are both drawn: a single date would exercise one path through the round and call it the
-            // round. The count assertion is half the test — FlavorValidator now drops a refless
-            // article, so a city piece that lost its refs would show up here as a short round rather
-            // than as an article failing the loop below.
+            // The whole of this lane, in one assertion. The four articles an ordinary month used to
+            // file were general coverage of the city, written for the news feed; the feed is gone, so
+            // that prose reached no reader. A full roster and a city full of districts is deliberately
+            // handed in: the round is silent because there is no occasion, not because there is
+            // nothing to write about.
+            for (int month = 1; month <= 12; month++)
+            {
+                FlavorRequest request = Request(new SimDate(2031, month, 1), reason, RegionTheme.Eu,
+                                                parties: 4, districts: 5);
+
+                FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
+
+                Assert.NotNull(document);
+                Assert.Empty(document.Articles);
+
+                // And the round is not thereby empty: the parts of it a surface still renders are
+                // untouched, which is what makes a silent month a smaller round rather than a lost one.
+                Assert.Equal(4, document.PartyFlavor.Count);
+            }
+        }
+
+        [Theory]
+        [InlineData(RegionTheme.Eu, FlavorRequest.ElectionArticleCountEu)]
+        [InlineData(RegionTheme.Na, FlavorRequest.ElectionArticleCountNa)]
+        public void AnElectionMonthFilesExactlyTheDedicatedPieces(RegionTheme theme, int expected)
+        {
+            // The count is the pieces, not a number carried over from the old round: three under NA
+            // rules — result, claim, challenge — and four under EU, which adds the coalition outlook.
+            // Several seeds, because the party each piece lands on is drawn.
             for (int month = 1; month <= 12; month++)
             {
                 var date = new SimDate(2031, month, 1);
-                FlavorRequest request = Request(date, reason, theme, parties: 3, districts: 4);
-                request.ArticleCount = count;
+                FlavorRequest request = Request(date, FlavorWakeReason.Election, theme,
+                                                parties: 3, districts: 4);
 
                 FlavorDocument document = Pool(theme).Generate(request);
                 Assert.NotNull(document);
-                Assert.Equal(count, document.Articles.Count);
+                Assert.Equal(expected, document.Articles.Count);
 
                 for (int i = 0; i < document.Articles.Count; i++)
                 {
                     ArticleEntry article = document.Articles[i];
-                    Assert.True(!string.IsNullOrEmpty(article.PartyId) ||
-                                !string.IsNullOrEmpty(article.DistrictId) ||
-                                !string.IsNullOrEmpty(article.EventId),
-                                "article " + article.Id + " in " + date + " points at nothing.");
+                    Assert.False(string.IsNullOrEmpty(article.PartyId),
+                                 "article " + article.Id + " in " + date + " points at nothing.");
+
+                    // Districts are in the snapshot and reach no article: the district piece went with
+                    // the city piece, and a ref this pool cannot name in its prose is one it must not
+                    // write.
+                    Assert.Equal(string.Empty, article.DistrictId);
                 }
             }
+        }
+
+        [Fact]
+        public void TheElectionCountIsTheNumberOfDistinctPiecesTheRoundFiles()
+        {
+            // The derivation itself, asserted rather than asserted about: whatever
+            // ElectionArticleCount says, the round has to be that many *different* pieces. A count
+            // raised without a piece to spend it on would show up here as a short list of pools drawn
+            // from, and a piece added without raising the count as a short round.
+            foreach (RegionTheme theme in new[] { RegionTheme.Eu, RegionTheme.Na })
+            {
+                FlavorRequest request = Request(Date, FlavorWakeReason.Election, theme,
+                                                parties: 3, districts: 4);
+
+                FlavorDocument document = Pool(theme).Generate(request);
+                Assert.NotNull(document);
+
+                int pieces = 0;
+                foreach (string[] pool in ElectionHeadlinePools())
+                {
+                    if (DrawnFrom(document, pool)) pieces++;
+                }
+
+                Assert.Equal(FlavorRequest.ElectionArticleCount(theme), pieces);
+                Assert.Equal(FlavorRequest.ElectionArticleCount(theme), document.Articles.Count);
+            }
+        }
+
+        [Fact]
+        public void TheRosterCopysCeilingStillBuysAWholeEuElectionRound()
+        {
+            // FlavorRequest.RosterCopy hands the pool DefaultArticleCount, and the pool is the only
+            // writer on the no-CLI path — so a ceiling below the EU set would cut the coalition piece
+            // off the one round that most needs it, silently and only for players without the CLI.
+            Assert.True(FlavorRequest.DefaultArticleCount >= FlavorRequest.ElectionArticleCountEu,
+                        "the roster's ceiling has fallen below the EU election set.");
+
+            FlavorRequest request = Request(Date, FlavorWakeReason.Election, RegionTheme.Eu,
+                                            parties: 3, districts: 4);
+            request.ArticleCount = FlavorRequest.DefaultArticleCount;
+
+            FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
+            Assert.NotNull(document);
+
+            Assert.True(DrawnFrom(document, StaticPoolContent.ElectionCoalitionHeadlines),
+                        "the coalition piece did not fit inside the roster copy's ceiling.");
         }
 
         [Fact]
@@ -97,49 +179,12 @@ namespace Agora.Core.Tests
         }
 
         [Fact]
-        public void PartiesButNoDistricts_FilesEveryArticleAgainstAParty()
-        {
-            // The old alternation was "district on odd i", so with no districts every other article
-            // took the city branch, which carried no refs. Now the branch with nothing to point at is
-            // not taken at all.
-            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
-                                            parties: 3, districts: 0);
-
-            FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
-            Assert.NotNull(document);
-            Assert.Equal(FlavorRequest.DefaultArticleCount, document.Articles.Count);
-
-            for (int i = 0; i < document.Articles.Count; i++)
-            {
-                Assert.False(string.IsNullOrEmpty(document.Articles[i].PartyId));
-                Assert.Equal(string.Empty, document.Articles[i].DistrictId);
-            }
-        }
-
-        [Fact]
-        public void DistrictsButNoParties_FilesEveryArticleAgainstADistrict()
-        {
-            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
-                                            parties: 0, districts: 4);
-
-            FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
-            Assert.NotNull(document);
-            Assert.Equal(FlavorRequest.DefaultArticleCount, document.Articles.Count);
-
-            for (int i = 0; i < document.Articles.Count; i++)
-            {
-                Assert.False(string.IsNullOrEmpty(document.Articles[i].DistrictId));
-                Assert.Equal(string.Empty, document.Articles[i].PartyId);
-            }
-        }
-
-        [Fact]
         public void AnArticleNamesTheVeryPartyItRefs()
         {
             // The ref is only checkable by a reader if the prose names the same party the id points
             // at, which means the article has to use the name this document gave that party rather
             // than a fresh draw.
-            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
+            FlavorRequest request = Request(Date, FlavorWakeReason.Election, RegionTheme.Eu,
                                             parties: 3, districts: 0);
 
             FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
@@ -200,6 +245,8 @@ namespace Agora.Core.Tests
         [Fact]
         public void AYearlyRoundFilesNoElectionCoverage()
         {
+            // The ceiling is set as high as anything ever sets it, and buys nothing: the round's
+            // occasion decides what it files, and a yearly round has no election to cover.
             FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
                                             parties: 3, districts: 4);
             request.ArticleCount = FlavorRequest.ElectionArticleCountEu;
@@ -211,98 +258,34 @@ namespace Agora.Core.Tests
             Assert.False(DrawnFrom(document, StaticPoolContent.ElectionClaimHeadlines));
             Assert.False(DrawnFrom(document, StaticPoolContent.ElectionChallengeHeadlines));
             Assert.False(DrawnFrom(document, StaticPoolContent.ElectionCoalitionHeadlines));
+            Assert.Empty(document.Articles);
         }
 
         [Fact]
-        public void AnElectionWithNoPartiesFallsBackToAnOrdinaryRound()
+        public void AnElectionWithNoPartiesFilesNothingRatherThanSomethingElse()
         {
             // Every election piece names a party, so a roster that failed to build cannot have one.
-            // Filing district pieces instead is the fail-closed answer (non-negotiable #7); inventing
-            // a subject for the result piece is not.
+            // Filing nothing is the fail-closed answer (non-negotiable #7); inventing a subject for
+            // the result piece is not, and the district pieces this used to fall back to no longer
+            // exist to fall back to.
             FlavorRequest request = Request(Date, FlavorWakeReason.Election, RegionTheme.Eu,
                                             parties: 0, districts: 4);
 
             FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
             Assert.NotNull(document);
-            Assert.Equal(FlavorRequest.DefaultArticleCount, document.Articles.Count);
-
-            Assert.False(DrawnFrom(document, StaticPoolContent.ElectionResultHeadlines));
-            for (int i = 0; i < document.Articles.Count; i++)
-            {
-                Assert.False(string.IsNullOrEmpty(document.Articles[i].DistrictId));
-            }
+            Assert.Empty(document.Articles);
         }
 
-        // ---- length, and the headline truncator -------------------------------------------------
-
-        [Fact]
-        public void AnAbsurdlyLongDistrictNameCostsThePlaceholder_NotTheLastWord()
-        {
-            // The defect: SafeName cut the name at sixty, mid-word, and Cap then cut the composed
-            // headline at ninety, taking the template's own trailing words with it —
-            // "{district} says it has been waiting long enough" came out ending "...waiting long e".
-            // The rule now is to drop the placeholder rather than cut a name, so the article gets a
-            // clean generic headline instead of a mangled specific one.
-            string name = NameThatOverflowsAHeadlineButNotABody();
-
-            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
-                                            parties: 0, districts: 3);
-            for (int i = 0; i < request.Snapshot.Districts.Count; i++) request.Snapshot.Districts[i].Name = name;
-
-            FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
-            Assert.NotNull(document);
-            Assert.Equal(FlavorRequest.DefaultArticleCount, document.Articles.Count);
-
-            for (int i = 0; i < document.Articles.Count; i++)
-            {
-                ArticleEntry article = document.Articles[i];
-
-                Assert.True(article.Headline.Length <= FlavorCacheMigration.HeadlineMaxLength,
-                            "headline over the cap: " + article.Headline);
-
-                // Whole, not cut: the headline is one of the pool's own lines, and with a name this
-                // long that has to be a generic one. A truncated line would match neither.
-                Assert.True(MatchesSome(article.Headline, StaticPoolContent.GenericHeadlines),
-                            "headline is neither a generic line nor a whole one: " + article.Headline);
-
-                // The body has four hundred and twenty characters to play with, so a name this long
-                // still fits one and the placeholder is kept. Which pool it came from is the point:
-                // the fallback is per line and per cap, not a switch thrown for the whole article.
-                Assert.True(article.Body.Length <= FlavorCacheMigration.BodyMaxLength);
-                Assert.True(MatchesSome(article.Body, StaticPoolContent.DistrictBodies) ||
-                            MatchesSome(article.Body, StaticPoolContent.GenericBodies),
-                            "body came in neither whole nor generic: " + article.Body);
-                Assert.EndsWith(".", article.Body, StringComparison.Ordinal);
-            }
-        }
-
-        [Fact]
-        public void ADistrictNameLongerThanAnArticle_StillProducesAWholeArticle()
-        {
-            // Past the body cap as well as the headline cap, which is the only way to reach the body's
-            // own fallback. Nothing here may throw, nothing may be cut, and the round must still be
-            // the length it was asked for — a player who names a district by pasting a paragraph into
-            // the box is a nuisance, not a crash (non-negotiable #7).
-            string name = new string('x', FlavorCacheMigration.BodyMaxLength + 100);
-
-            FlavorRequest request = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
-                                            parties: 0, districts: 3);
-            for (int i = 0; i < request.Snapshot.Districts.Count; i++) request.Snapshot.Districts[i].Name = name;
-
-            FlavorDocument document = Pool(RegionTheme.Eu).Generate(request);
-            Assert.NotNull(document);
-            Assert.Equal(FlavorRequest.DefaultArticleCount, document.Articles.Count);
-
-            for (int i = 0; i < document.Articles.Count; i++)
-            {
-                ArticleEntry article = document.Articles[i];
-                Assert.True(MatchesSome(article.Headline, StaticPoolContent.GenericHeadlines),
-                            "headline came in cut rather than generic: " + article.Headline);
-                Assert.True(MatchesSome(article.Body, StaticPoolContent.GenericBodies),
-                            "body came in cut rather than generic: " + article.Body);
-                Assert.False(string.IsNullOrEmpty(article.DistrictId));
-            }
-        }
+        // ---- length -------------------------------------------------------------------------------
+        //
+        // Two tests went with the district piece, and what they proved is worth recording because
+        // nothing replaces it: they drove a player-typed district name past the headline cap and then
+        // past the body cap, and pinned that StaticPoolProvider.Fitting drops the placeholder and
+        // takes a whole generic line rather than cutting the name mid-word. No template left
+        // substitutes a string the player controls — a party's prose name is drawn from
+        // StaticPoolContent's own pools, whose worst case is computable and pinned below — so the
+        // fallback is now reachable only if an authored pool grows past a cap. The floor under it is
+        // still asserted, and it is still the reason a cut line can never be published.
 
         [Fact]
         public void EveryHeadlineAndBodyAcrossManyRoundsComesInWholeAndInsideItsCap()
@@ -420,15 +403,11 @@ namespace Agora.Core.Tests
         [Fact]
         public void EveryTemplateNamesTheSubjectItsArticleWillRef()
         {
-            // The rule that makes every ref checkable. City and election pieces ref a party and must
-            // name it; district pieces ref a district and must name it. The generic pool is the one
-            // exception and carries neither, by construction — it exists precisely for the case where
-            // the name will not fit.
+            // The rule that makes every ref checkable. Every piece refs a party and must name it.
+            // The generic pool is the one exception and carries no placeholder at all, by
+            // construction — it exists precisely for the case where the name will not fit.
             foreach (string[] pool in PartyHeadlinePools()) AssertEachContains(pool, "{party}");
             foreach (string[] pool in PartyBodyPools()) AssertEachContains(pool, "{party}");
-
-            AssertEachContains(StaticPoolContent.DistrictHeadlines, "{district}");
-            AssertEachContains(StaticPoolContent.DistrictBodies, "{district}");
 
             AssertEachContainsNoPlaceholder(StaticPoolContent.GenericHeadlines);
             AssertEachContainsNoPlaceholder(StaticPoolContent.GenericBodies);
@@ -444,9 +423,9 @@ namespace Agora.Core.Tests
             // at the largest count anything asks for, across both themes and a year of seeds.
             //
             // A repeat is only unavoidable when one pool has to fill more slots than it has lines;
-            // UniqueLine's bounded retry then gives up and allows one. PlanRound spreads an election
-            // round over five pools and an ordinary one over two, so at these counts no pool is asked
-            // for more than it holds and no repeat is legitimate.
+            // UniqueLine's bounded retry then gives up and allows one. PlanRound gives each election
+            // piece its own pool, so no pool is asked for more than one line and no repeat is
+            // legitimate — outlets are the one pool a round draws several times from.
             foreach (RegionTheme theme in new[] { RegionTheme.Eu, RegionTheme.Na })
             {
                 foreach (FlavorWakeReason reason in new[] { FlavorWakeReason.Yearly, FlavorWakeReason.Election })
@@ -459,7 +438,8 @@ namespace Agora.Core.Tests
 
                         FlavorDocument document = Pool(theme).Generate(request);
                         Assert.NotNull(document);
-                        Assert.Equal(request.ArticleCount, document.Articles.Count);
+                        Assert.Equal(reason == FlavorWakeReason.Election ? request.ArticleCount : 0,
+                                     document.Articles.Count);
 
                         var headlines = new HashSet<string>(StringComparer.Ordinal);
                         var bodies = new HashSet<string>(StringComparer.Ordinal);
@@ -562,40 +542,13 @@ namespace Agora.Core.Tests
                          Fingerprint(Pool(RegionTheme.Eu).Generate(backwards)));
         }
 
-        [Fact]
-        public void TheSameRequestTwiceIsStillByteIdenticalWhenCandidatesAreRejected()
-        {
-            // The two cases above use short district names, so every substituted headline fits and
-            // UniqueLine never takes its "over the cap: continue" branch — the interesting path was
-            // going unexercised. It matters because a rejected candidate is not a free skip: Pick has
-            // already consumed a NextInt by the time the continue fires, so the stream is further on
-            // than the number of published lines suggests. That is fine, and deterministic, but only
-            // a same-seed comparison down the rejecting path can say so.
-            string name = NameThatOverflowsAHeadlineButNotABody();
-
-            // Yearly, because only the district branch substitutes a name the player controls: an
-            // election round at the default count is all party pieces, and a party name is ours and
-            // always fits.
-            FlavorRequest first = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
-                                          parties: 5, districts: 6);
-            FlavorRequest second = Request(Date, FlavorWakeReason.Yearly, RegionTheme.Eu,
-                                           parties: 5, districts: 6);
-            for (int i = 0; i < first.Snapshot.Districts.Count; i++)
-            {
-                first.Snapshot.Districts[i].Name = name;
-                second.Snapshot.Districts[i].Name = name;
-            }
-
-            FlavorDocument a = Pool(RegionTheme.Eu).Generate(first);
-            FlavorDocument b = Pool(RegionTheme.Eu).Generate(second);
-
-            // The rejecting path must actually have been taken, or this is the short-name case again
-            // wearing a long name: a district headline that fits would never reach the generic pool.
-            Assert.True(DrawnFrom(a, StaticPoolContent.GenericHeadlines),
-                        "no article fell back, so no candidate was rejected.");
-
-            Assert.Equal(Fingerprint(a), Fingerprint(b));
-        }
+        // The third determinism case here drove a player-typed district name past the headline cap
+        // and pinned that the same seed still produced the same round down UniqueLine's rejecting
+        // path — the path where Pick has already consumed a NextInt before the candidate is thrown
+        // away, so the stream is further on than the number of published lines suggests. It went with
+        // the district piece: no template left substitutes a string the player controls, so nothing a
+        // save can contain reaches that branch any more. If a piece is ever added that substitutes
+        // one, restore it rather than reinventing it.
 
         // ---- stories and resolutions ----------------------------------------------------------------
 
@@ -1077,45 +1030,6 @@ namespace Agora.Core.Tests
         }
 
 
-        /// <summary>
-        /// A district name too long for a headline and comfortably short enough for a body — the
-        /// only band in which the headline's fallback fires and the body's does not.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Derived from the caps, never written out.</b> These two tests used to hold a
-        /// hand-written hundred-character name and assert only that it was longer than sixty. That
-        /// made them silently vacuous the moment the headline cap tripled from 90 to 270: the name
-        /// now fit, no candidate was ever rejected, and the tests were exercising the ordinary path
-        /// while claiming to prove the fallback. One of them said so out loud and went red; the
-        /// other would have gone on passing and proving nothing.
-        /// </para>
-        /// <para>
-        /// Built from real words rather than a run of <c>x</c>, because the headline rule is about
-        /// dropping a placeholder rather than cutting a name, and a name with no spaces in it cannot
-        /// tell a clean drop from a lucky cut at a word boundary.
-        /// </para>
-        /// </remarks>
-        private static string NameThatOverflowsAHeadlineButNotABody()
-        {
-            const string unit = "The Old Harbourside Wharves and Cooperage Quarter Conservation Area " +
-                                "Extension, North Bank; ";
-
-            var sb = new StringBuilder();
-            while (sb.Length <= FlavorCacheMigration.HeadlineMaxLength) sb.Append(unit);
-
-            string name = sb.ToString();
-
-            Assert.True(name.Length > FlavorCacheMigration.HeadlineMaxLength,
-                        "the fixture must overflow a headline or the fallback never fires.");
-            Assert.True(name.Length < FlavorCacheMigration.BodyMaxLength,
-                        "the fixture must fit a body, or this is the body-fallback case instead. " +
-                        "If the caps ever come close enough together to make that impossible, these " +
-                        "two tests need a different fixture, not a wider one.");
-
-            return name;
-        }
-
         private static FlavorRequest Request(SimDate date, FlavorWakeReason reason, RegionTheme theme,
                                              int parties, int districts)
         {
@@ -1170,10 +1084,6 @@ namespace Agora.Core.Tests
         /// <summary>Every press pool, by the name the failure message should print.</summary>
         private static IEnumerable<KeyValuePair<string, string[]>> AllPressPools()
         {
-            yield return Pair("CityHeadlines", StaticPoolContent.CityHeadlines);
-            yield return Pair("CityBodies", StaticPoolContent.CityBodies);
-            yield return Pair("DistrictHeadlines", StaticPoolContent.DistrictHeadlines);
-            yield return Pair("DistrictBodies", StaticPoolContent.DistrictBodies);
             yield return Pair("GenericHeadlines", StaticPoolContent.GenericHeadlines);
             yield return Pair("GenericBodies", StaticPoolContent.GenericBodies);
             yield return Pair("ElectionResultHeadlines", StaticPoolContent.ElectionResultHeadlines);
@@ -1194,9 +1104,15 @@ namespace Agora.Core.Tests
         private static KeyValuePair<string, string[]> Pair(string name, string[] pool) =>
             new KeyValuePair<string, string[]>(name, pool);
 
+        /// <summary>
+        /// Every headline pool an article can be written from. Since wave 7 that is the election set
+        /// and nothing else, so this and <see cref="ElectionHeadlinePools"/> are the same list read
+        /// two ways: this one asks "does every template name its party", the other "did the round
+        /// file every piece". They are kept apart because the first would still be the right question
+        /// if a piece for another political occasion were ever added.
+        /// </summary>
         private static string[][] PartyHeadlinePools() => new[]
         {
-            StaticPoolContent.CityHeadlines,
             StaticPoolContent.ElectionResultHeadlines,
             StaticPoolContent.ElectionClaimHeadlines,
             StaticPoolContent.ElectionChallengeHeadlines,
@@ -1205,11 +1121,19 @@ namespace Agora.Core.Tests
 
         private static string[][] PartyBodyPools() => new[]
         {
-            StaticPoolContent.CityBodies,
             StaticPoolContent.ElectionResultBodies,
             StaticPoolContent.ElectionClaimBodies,
             StaticPoolContent.ElectionChallengeBodies,
             StaticPoolContent.ElectionCoalitionBodies
+        };
+
+        /// <summary>The four dedicated election pieces, in the order <c>PlanRound</c> files them.</summary>
+        private static string[][] ElectionHeadlinePools() => new[]
+        {
+            StaticPoolContent.ElectionResultHeadlines,
+            StaticPoolContent.ElectionClaimHeadlines,
+            StaticPoolContent.ElectionChallengeHeadlines,
+            StaticPoolContent.ElectionCoalitionHeadlines
         };
 
         private static void AssertPoolFits(string[] pool, int maxLength, string party, string mood)
